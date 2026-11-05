@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : BinarySearchTree                                                      *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      BinarySearchTree incl. volume Search method                               *
@@ -24,7 +24,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_BinarySearchTree
@@ -75,10 +75,10 @@ namespace TMVA {
       // destructor
       virtual ~BinarySearchTree( void );
 
-      virtual Node * CreateNode( UInt_t ) const { return new BinarySearchTreeNode(); }
-      virtual BinaryTree* CreateTree() const { return new BinarySearchTree(); }
+      Node * CreateNode( UInt_t ) const override { return new BinarySearchTreeNode(); }
+      BinaryTree* CreateTree() const override { return new BinarySearchTree(); }
       static BinarySearchTree* CreateFromXML(void* node, UInt_t tmva_Version_Code = TMVA_VERSION_CODE);
-      virtual const char* ClassName() const { return "BinarySearchTree"; }
+      const char* ClassName() const override { return "BinarySearchTree"; }
 
       // Searches for a node with the specified data
       // by calling  the private, recursive, function for searching
@@ -170,7 +170,7 @@ namespace TMVA {
       Bool_t                      fCanNormalize; ///< the tree can be normalised
       std::vector< std::pair<Double_t,const TMVA::Event*> > fNormalizeTreeTable;
 
-      ClassDef(BinarySearchTree,0); // Binary search tree including volume search method
+      ClassDefOverride(BinarySearchTree,0); // Binary search tree including volume search method
    };
 
 } // namespace TMVA

@@ -8,10 +8,6 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-////////////////////////////////////////////////////////////////////////////////
-
-
-
 #include <string>
 #include <exception>
 #include <vector>
@@ -21,7 +17,50 @@
 #include "RooStats/HistFactory/ConfigParser.h"
 #include "RooStats/HistFactory/MakeModelAndMeasurementsFast.h"
 #include "HFMsgService.h"
-#include "hist2workspaceCommandLineOptionsHelp.h"
+
+// When updating the docs for the hist2workspace executable, please recreate
+// the Python file with the get_argparse() function (code below), and run the
+// following argparse2help.py invocations:
+//
+// 1. To generate the string in the kCommandLineOptionsHelp variable
+//
+//      python cmake/scripts/argparse2help.py hist2workspace-argparse.py hist2workspaceCommandLineOptionsHelp.h
+//
+// 2. Recreate the man file that should be put in roofit/man/man1/:
+//
+//      python cmake/scripts/argparse2help.py hist2workspace-argparse.py hist2workspace.1
+//
+// The content of hist2workspace-argparse.py is:
+//
+// ```Python
+// import argparse
+//
+//
+// def get_argparse():
+//     DESCRIPTION = "hist2workspace is a utility to create RooFit/RooStats workspace from histograms"
+//     parser = argparse.ArgumentParser(prog="hist2workspace", description=DESCRIPTION)
+//     parser.add_argument("-v", help="switch HistFactory message stream to INFO level", action="store_true")
+//     parser.add_argument("-vv", help="switch HistFactory message stream to DEBUG level", action="store_true")
+//     parser.add_argument(
+//         "-disable_binned_fit_optimization",
+//         help="disable the binned fit optimization used in HistFactory since ROOT 6.28",
+//         action="store_true",
+//     )
+//     return parser
+// ```
+
+constexpr static const char kCommandLineOptionsHelp[] = R"RAW(
+usage: hist2workspace [-h] [-v] [-vv] [-disable_binned_fit_optimization]
+
+hist2workspace is a utility to create RooFit/RooStats workspace from histograms
+
+OPTIONS:
+  -h, --help                                  show this help message and exit
+  -v                                          switch HistFactory message stream to INFO level
+  -vv                                         switch HistFactory message stream to DEBUG level
+  -disable_binned_fit_optimization            disable the binned fit optimization used in HistFactory since ROOT 6.28
+)RAW";
+
 
 namespace RooStats {
   namespace HistFactory {
@@ -73,7 +112,6 @@ int main(int argc, char** argv) {
 
   //Switch off ROOT histogram memory management
   gROOT->SetMustClean(false);
-  TDirectory::AddDirectory(false);
   cxcoutIHF << "hist2workspace is less verbose now. Use -v and -vv for more details." << std::endl;
   RooMsgService::instance().getStream(1).minLevel = RooFit::PROGRESS;
   RooMsgService::instance().getStream(2).minLevel = RooFit::PROGRESS;
@@ -110,22 +148,7 @@ int main(int argc, char** argv) {
     driverArg = argv[i];
   }
 
-  try {
-    RooStats::HistFactory::fastDriver(driverArg, cfg);
-  }
-  catch(const std::string &str) {
-    std::cerr << "hist2workspace - Caught exception: " << str << std::endl ;
-    return 1;
-  }
-  catch( const std::exception& e ) {
-    std::cerr << "hist2workspace - Caught Exception: " << e.what() << std::endl;
-    return 1;
-  }
-  catch(...) {
-    std::cerr << "hist2workspace - Caught Exception" << std::endl;
-    return 1;
-  }
-
+  RooStats::HistFactory::fastDriver(driverArg, cfg);
 
   return 0;
 }

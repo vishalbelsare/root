@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : SVWorkingSet                                                          *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Implementation                                                            *
@@ -22,7 +22,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 /*! \class TMVA::SVWorkingSet
@@ -392,8 +392,6 @@ void TMVA::SVWorkingSet::Train(UInt_t nMaxIter)
    std::vector<TMVA::SVEvent*>::iterator idIter;
 
    while ((numChanged > 0) || (examineAll > 0)) {
-     if (fIPyCurrentIter) *fIPyCurrentIter = numit;
-     if (fExitFromTraining && *fExitFromTraining) break;
       numChanged = 0;
       if (examineAll) {
          for (idIter = fInputData->begin(); idIter!=fInputData->end(); ++idIter){
@@ -503,7 +501,7 @@ Bool_t TMVA::SVWorkingSet::TakeStepReg(TMVA::SVEvent* ievt,TMVA::SVEvent* jevt )
 
    // main loop
    while(!terminated) {
-      const Float_t null = 0.; //!!! dummy float null declaration because of problems with TMath::Max/Min(Float_t, Float_t) function
+      const Float_t null = 0.; // dummy float null declaration because of problems with TMath::Max/Min(Float_t, Float_t) function
       Float_t low, high;
       Float_t tmp_alpha_i, tmp_alpha_j;
       tmp_alpha_i = tmp_alpha_j = 0.;

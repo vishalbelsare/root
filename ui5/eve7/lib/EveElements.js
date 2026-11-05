@@ -27,7 +27,7 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(/*EveManager*/) {
 
          let s = this.obj3d.scene;
          if (s && (typeof s[fname] == "function"))
-            return s[fname](this.obj3d, arg, this.event);
+            return s[fname](this.obj3d.eve_el, arg, this.event);
          return false;
       }
 
@@ -586,6 +586,61 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(/*EveManager*/) {
 
 
    //==============================================================================
+
+
+   class GeoTopNodeControl extends EveElemControl {
+      DrawForSelection(sec_idcs, res, extra) {
+         if (extra.stack.length > 0) {
+            let x = this.obj3d.clones.createObject3D(extra.stack, this.obj3d, 'force');
+            if (x)
+            res.geom.push(x);
+         }
+      }
+      getTooltipText() {
+         return this.pick.object.name;
+      }
+      extractIndex(instance) {
+         this.pick = instance;
+      }
+
+      sendSocketMassage(t1, t2)
+      {
+         let topNode = this.obj3d.eve_el;
+         let aa = this.pick.object.stack || [];
+         let mgr = this.obj3d.scene.mgr;
+
+         let hbr = mgr.GetElement(topNode.dataId);
+         if (!hbr.hasOwnProperty("websocket")) {
+            let websocket = mgr.handle.createChannel();
+            mgr.handle.send("SETCHANNEL:" + hbr.fElementId + "," + websocket.getChannelId());
+            hbr.websocket = websocket;
+         }
+
+         let name = this.obj3d.clones.getStackName(aa);
+         const myArray = name.split("/");
+         let msg = '[';
+         let lastIdx = myArray.length - 1;
+         for (let p = 0; p < myArray.length; ++p) {
+            let np = "\"" + myArray[p] + "\"";
+            msg += np;
+            if (p == lastIdx)
+               msg += ']';
+            else
+               msg += ",";
+
+         }
+         hbr.websocket.sendLast(t1, 200, t2 + msg);
+      }
+
+      elementSelected(idx, event) {
+         this.sendSocketMassage('click', 'CLICK:');
+      }
+
+      elementHighlighted(idx, event) {
+         this.sendSocketMassage('hover', 'HOVER:');
+      }
+   }
+   //==============================================================================
    // EveElements
    //==============================================================================
 
@@ -594,6 +649,8 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(/*EveManager*/) {
    class EveElements {
 
       constructor() { }
+
+      GenerateTypeName(obj) { return "THREE." + obj.type; }
 
       /** Test if render data has vertex buffer. Make logging if not. Only for debug purposes */
       TestRnr(name, obj, rnrData) {
@@ -800,6 +857,16 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(/*EveManager*/) {
          return mesh;
       }
 
+
+      makeGeoTopNode(tn, rnr_data)
+      {
+         let json = atob(tn.geomDescription);
+         let zz = EVE.JSR.parse(json);
+         let obj3d = EVE.JSR.build(zz);
+         delete tn.geomDescription;
+         obj3d.get_ctrl = function () { return new GeoTopNodeControl(this); };
+         return obj3d;
+      }
 
       makeFlatBox(ebox, rnrData, idxBegin, idxEnd)
       {
@@ -1228,9 +1295,10 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(/*EveManager*/) {
          let geom = this.makeEveGeometry(rnr_data);
 
          let fcol = EVE.JSR.getColor(egs.fFillColor);
+         let mop = 1 - egs.fMainTransparency/100;
 
          let material = new THREE.MeshPhongMaterial({// side: THREE.DoubleSide,
-                             depthWrite: false, color:fcol, transparent: true, opacity: 0.2 });
+                             depthWrite: false, color:fcol, transparent: true, opacity: mop });
 
          let mesh = new THREE.Mesh(geom, material);
 
@@ -1249,9 +1317,10 @@ sap.ui.define(['rootui5/eve7/lib/EveManager'], function(/*EveManager*/) {
          let ib_len = rnr_data.idxBuff.length;
 
          let fcol = EVE.JSR.getColor(psp.fMainColor);
+         let mop = Math.min( 1, 1 - psp.fMainTransparency/100);
          var line_mat = new THREE.LineBasicMaterial({color:fcol });
          var mesh_mat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, depthWrite: false,
-                                                      color:fcol, transparent: true, opacity: 0.4 });
+                                                      color:fcol, transparent: true, opacity: mop });
 
          for (let ib_pos = 0; ib_pos < ib_len; )
          {

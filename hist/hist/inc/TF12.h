@@ -31,7 +31,7 @@ protected:
 
 public:
    TF12();
-   TF12(const char *name, TF2 *f2, Double_t xy, Option_t *option="x");
+   TF12(const char *name, TF2 *f2, Double_t xy, Option_t *option="x", EAddToList addToGlobList = EAddToList::kDefault);
    TF12(const TF12 &f12);
      ~TF12() override;
    void     Copy(TObject &f12) const override;
@@ -39,7 +39,7 @@ public:
    Double_t Eval(Double_t x, Double_t y=0, Double_t z=0, Double_t t=0) const override;
    Double_t EvalPar(const Double_t *x, const Double_t *params=nullptr) override;
 
-#ifdef R__HAS_VECCORE
+#ifdef R__HAS_STD_EXPERIMENTAL_SIMD
    using TF1::Eval;    // to not hide the vectorized version
    using TF1::EvalPar; // to not hide the vectorized version
 #endif

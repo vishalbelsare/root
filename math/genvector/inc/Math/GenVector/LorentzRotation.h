@@ -34,6 +34,8 @@
 #include "Math/GenVector/BoostY.h"
 #include "Math/GenVector/BoostZ.h"
 
+#include <algorithm>
+
 namespace ROOT {
 
   namespace Math {
@@ -49,7 +51,7 @@ namespace ROOT {
 
      @ingroup GenVector
 
-     @sa Overview of the @ref GenVector "physics vector library"
+     @see GenVector
   */
 
 class LorentzRotation {
@@ -116,7 +118,7 @@ public:
      Note:  (0,0) refers to the XX component; (3,3) refers to the TT component.
   */
   template<class ForeignMatrix>
-  explicit LorentzRotation(const ForeignMatrix & m) { SetComponents(m); }
+  explicit constexpr LorentzRotation(const ForeignMatrix & m) { SetComponents(m); }
 
   /**
      Construct from four orthosymplectic vectors (which must have methods

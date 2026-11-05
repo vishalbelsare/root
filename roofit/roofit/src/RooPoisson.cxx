@@ -14,26 +14,25 @@ Poisson pdf
 
 #include "RooPoisson.h"
 #include "RooRandom.h"
-#include "RooMath.h"
 #include "RooNaNPacker.h"
 #include "RooBatchCompute.h"
+#include "RooHelpers.h"
 
-#include "Math/ProbFuncMathCore.h"
+#include <RooFit/Detail/MathFuncs.h>
 
-ClassImp(RooPoisson);
+#include <array>
+#include <limits>
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor
 
-RooPoisson::RooPoisson(const char *name, const char *title,
-             RooAbsReal& _x,
-             RooAbsReal& _mean,
-             bool noRounding) :
-  RooAbsPdf(name,title),
-  x("x","x",this,_x),
-  mean("mean","mean",this,_mean),
-  _noRounding(noRounding)
+RooPoisson::RooPoisson(const char *name, const char *title, RooAbsReal::Ref _x, RooAbsReal::Ref _mean, bool noRounding)
+   : RooAbsPdf(name, title), x("x", "x", this, _x), mean("mean", "mean", this, _mean), _noRounding(noRounding)
 {
+   RooHelpers::checkRangeOfParameters(
+      /*callingClass=*/this, /*pars=*/{&x.arg(), &mean.arg()}, /*min=*/0.,
+      /*max=*/std::numeric_limits<double>::infinity(),
+      /*limitsInAllowedRange=*/true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,17 +58,16 @@ double RooPoisson::evaluate() const
     np.setPayload(-mean);
     return np._payload;
   }
-  return TMath::Poisson(k,mean) ;
+  return RooFit::Detail::MathFuncs::poisson(k, mean);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute multiple values of the Poisson distribution.
-void RooPoisson::computeBatch(cudaStream_t* stream, double* output, size_t nEvents, RooFit::Detail::DataMap const& dataMap) const
+void RooPoisson::doEval(RooFit::EvalContext &ctx) const
 {
-  auto dispatch = stream ? RooBatchCompute::dispatchCUDA : RooBatchCompute::dispatchCPU;
-  dispatch->compute(stream, RooBatchCompute::Poisson, output, nEvents,
-    {dataMap.at(x), dataMap.at(mean)},
-    {static_cast<double>(_protectNegative), static_cast<double>(_noRounding)});
+   std::array<double, 2> extraArgs{static_cast<double>(_protectNegative), static_cast<double>(_noRounding)};
+   RooBatchCompute::compute(ctx.config(this), RooBatchCompute::Poisson, ctx.output(), {ctx.at(x), ctx.at(mean)},
+                            extraArgs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -87,59 +85,9 @@ double RooPoisson::analyticalIntegral(Int_t code, const char* rangeName) const
 {
   R__ASSERT(code == 1 || code == 2) ;
 
-  if(_protectNegative && mean<0)
-    return exp(-2*mean); // make it fall quickly
-
-  if (code == 1) {
-    // Implement integral over x as summation. Add special handling in case
-    // range boundaries are not on integer values of x
-    const double xmin = std::max(0., x.min(rangeName));
-    const double xmax = x.max(rangeName);
-
-    if (xmax < 0. || xmax < xmin) {
-      return 0.;
-    }
-    if (!x.hasMax() || RooNumber::isInfinite(xmax)) {
-      //Integrating the full Poisson distribution here
-      return 1.;
-    }
-
-    // The range as integers. ixmin is included, ixmax outside.
-    const unsigned int ixmin = xmin;
-    const unsigned int ixmax = std::min(xmax + 1.,
-                                        (double)std::numeric_limits<unsigned int>::max());
-
-    // Sum from 0 to just before the bin outside of the range.
-    if (ixmin == 0) {
-      return ROOT::Math::poisson_cdf(ixmax - 1, mean);
-    }
-    else {
-      // If necessary, subtract from 0 to the beginning of the range
-      if (ixmin <= mean) {
-        return ROOT::Math::poisson_cdf(ixmax - 1, mean) - ROOT::Math::poisson_cdf(ixmin - 1, mean);
-      }
-      else {
-        //Avoid catastrophic cancellation in the high tails:
-        return ROOT::Math::poisson_cdf_c(ixmin - 1, mean) - ROOT::Math::poisson_cdf_c(ixmax - 1, mean);
-      }
-
-    }
-
-  } else if(code == 2) {
-
-    // the integral with respect to the mean is the integral of a gamma distribution
-    double mean_min = mean.min(rangeName);
-    double mean_max = mean.max(rangeName);
-
-    double ix;
-    if(_noRounding) ix = x + 1;
-    else ix = Int_t(TMath::Floor(x)) + 1.0; // negative ix does not need protection (gamma returns 0.0)
-
-    return ROOT::Math::gamma_cdf(mean_max, ix, 1.0) - ROOT::Math::gamma_cdf(mean_min, ix, 1.0);
-  }
-
-  return 0;
-
+  RooRealProxy const &integrand = code == 1 ? x : mean;
+  return RooFit::Detail::MathFuncs::poissonIntegral(
+     code, mean, _noRounding ? x : std::floor(x), integrand.min(rangeName), integrand.max(rangeName), _protectNegative);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -158,7 +106,7 @@ void RooPoisson::generateEvent(Int_t code)
 {
   R__ASSERT(code==1) ;
   double xgen ;
-  while(1) {
+  while(true) {
     xgen = RooRandom::randomGenerator()->Poisson(mean);
     if (xgen<=x.max() && xgen>=x.min()) {
       x = xgen ;

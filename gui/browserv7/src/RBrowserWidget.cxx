@@ -1,6 +1,5 @@
 // Author: Sergey Linev <S.Linev@gsi.de>
 // Date: 2021-01-22
-// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2021, Rene Brun and Fons Rademakers.               *
@@ -17,10 +16,8 @@
 #include "TSystem.h"
 #include "TBufferJSON.h"
 
-
 using namespace std::string_literals;
-using namespace ROOT::Experimental;
-
+using namespace ROOT;
 
 ///////////////////////////////////////////////////////////////
 /// Returns string which can be send to browser client to set/change
@@ -64,9 +61,9 @@ RBrowserWidgetProvider::ProvidersMap_t& RBrowserWidgetProvider::GetMap()
 }
 
 ///////////////////////////////////////////////////////////////
-/// Create specified widget
+/// Returns provider for specified kind
 
-std::shared_ptr<RBrowserWidget> RBrowserWidgetProvider::CreateWidget(const std::string &kind, const std::string &name)
+RBrowserWidgetProvider *RBrowserWidgetProvider::GetProvider(const std::string &kind)
 {
    auto &map = GetMap();
    auto iter = map.find(kind);
@@ -84,7 +81,18 @@ std::shared_ptr<RBrowserWidget> RBrowserWidgetProvider::CreateWidget(const std::
       if (iter == map.end())
          return nullptr;
    }
-   return iter->second->Create(name);
+   return iter->second;
+}
+
+
+///////////////////////////////////////////////////////////////
+/// Create specified widget
+
+std::shared_ptr<RBrowserWidget> RBrowserWidgetProvider::CreateWidget(const std::string &kind, const std::string &name)
+{
+   auto provider = GetProvider(kind);
+
+   return provider ? provider->Create(name) : nullptr;
 }
 
 ///////////////////////////////////////////////////////////////
@@ -92,21 +100,19 @@ std::shared_ptr<RBrowserWidget> RBrowserWidgetProvider::CreateWidget(const std::
 
 std::shared_ptr<RBrowserWidget> RBrowserWidgetProvider::CreateWidgetFor(const std::string &kind, const std::string &name, std::shared_ptr<Browsable::RElement> &element)
 {
-   auto &map = GetMap();
-   auto iter = map.find(kind);
-   if (iter == map.end()) {
-      // try to load necessary libraries
-      if (kind == "geom"s)
-         gSystem->Load("libROOTBrowserGeomWidget");
-      else if (kind == "tree"s)
-         gSystem->Load("libROOTBrowserTreeWidget");
-      else if (kind == "tcanvas"s)
-         gSystem->Load("libROOTBrowserTCanvasWidget");
-      else if (kind == "rcanvas"s)
-         gSystem->Load("libROOTBrowserRCanvasWidget");
-      iter = map.find(kind);
-      if (iter == map.end())
-         return nullptr;
-   }
-   return iter->second->CreateFor(name, element);
+   auto provider = GetProvider(kind);
+
+   return provider ? provider->CreateFor(name, element) : nullptr;
 }
+
+///////////////////////////////////////////////////////////////
+/// Check if catch window can be identified and normal widget can be created
+/// Used for TCanvas created in macro and catch by RBrowser
+
+std::shared_ptr<RBrowserWidget> RBrowserWidgetProvider::DetectCatchedWindow(const std::string &kind, RWebWindow &win)
+{
+   auto provider = GetProvider(kind);
+
+   return provider ? provider->DetectWindow(win) : nullptr;
+}
+

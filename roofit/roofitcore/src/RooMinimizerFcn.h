@@ -1,3 +1,5 @@
+/// \cond ROOFIT_INTERNAL
+
 /*****************************************************************************
  * Project: RooFit                                                           *
  * Package: RooFitCore                                                       *
@@ -16,46 +18,50 @@
 #define ROO_MINIMIZER_FCN
 
 #include "Math/IFunction.h"
-#include "Fit/ParameterSettings.h"
-#include "Fit/FitResult.h"
 
 #include "RooAbsReal.h"
 #include "RooArgList.h"
 
 #include <fstream>
+#include <mutex>
 #include <vector>
 
 #include "RooAbsMinimizerFcn.h"
 
-template<typename T> class TMatrixTSym;
-using TMatrixDSym = TMatrixTSym<double>;
-
 // forward declaration
 class RooMinimizer;
 
-class RooMinimizerFcn : public RooAbsMinimizerFcn, public ROOT::Math::IBaseFunctionMultiDim {
+class RooMinimizerFcn : public RooAbsMinimizerFcn {
 
 public:
    RooMinimizerFcn(RooAbsReal *funct, RooMinimizer *context);
-   RooMinimizerFcn(const RooMinimizerFcn &other);
-   ~RooMinimizerFcn() override;
 
-   ROOT::Math::IBaseFunctionMultiDim *Clone() const override;
-   unsigned int NDim() const override { return getNDim(); }
+   void initMinimizer(ROOT::Math::Minimizer &, RooMinimizer *context) override;
 
    std::string getFunctionName() const override;
    std::string getFunctionTitle() const override;
 
-   void setOptimizeConstOnFunction(RooAbsArg::ConstOpCode opcode, bool doAlsoTrackingOpt) override;
-
    void setOffsetting(bool flag) override;
-   bool fit(ROOT::Fit::Fitter& fitter) const override { return fitter.FitFCN(*this); };
-   ROOT::Math::IMultiGenFunction* getMultiGenFcn() override { return this; };
+
+   double operator()(const double *x) const;
+   void evaluateGradient(const double *x, double *out) const;
+   bool evaluateHessian(std::span<const double> x, double *out) const;
+
+   RooArgSet freezeDisconnectedParameters() const override;
+
+   bool secondDerivativeAlwaysVanishes(unsigned int i, unsigned int j) const;
 
 private:
-   double DoEval(const double *x) const override;
+   void buildSecondDerivMask() const;
 
-   RooAbsReal *_funct;
+   RooAbsReal *_funct = nullptr;
+   std::unique_ptr<ROOT::Math::IBaseFunctionMultiDim> _multiGenFcn;
+   mutable std::vector<double> _gradientOutput;
+   mutable std::vector<double> _hessianOutput;
+   mutable std::vector<bool> _secondDerivMask; ///< Lazily built, see buildSecondDerivMask().
+   mutable std::once_flag _secondDerivMaskOnce;
 };
 
 #endif
+
+/// \endcond

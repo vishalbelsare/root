@@ -22,7 +22,16 @@
 class TGSpeedo : public TGFrame, public TGWidget {
 
 public:
-   enum EGlowColor { kNoglow, kGreen, kOrange, kRed };
+   enum EGlowColor { kNoglow,
+// clang++ <v20 (-Wshadow) complains about shadowing Rtypes.h global enum EColor. Let's silence warning:
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+#endif
+      kGreen, kOrange, kRed };
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic pop
+#endif
 
 protected:
    TImage          *fImage;               ///< image used as background
@@ -59,7 +68,7 @@ public:
    TGSpeedo(const TGWindow *p, Float_t smin, Float_t smax,
             const char *lbl1 = "", const char *lbl2 = "",
             const char *dsp1 = "", const char *dsp2 = "", int id = -1);
-   virtual ~TGSpeedo();
+   ~TGSpeedo() override;
 
    TGDimension          GetDefaultSize() const override;
    Bool_t               HandleButton(Event_t *event) override;

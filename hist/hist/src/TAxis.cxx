@@ -24,13 +24,13 @@
 #include "TMath.h"
 #include "THLimitsFinder.h"
 #include "strlcpy.h"
-#include "snprintf.h"
 
 #include <iostream>
+#include <cmath>
+#include <cstdio>
 #include <ctime>
 #include <cassert>
 
-ClassImp(TAxis);
 
 ////////////////////////////////////////////////////////////////////////////////
 /** \class TAxis
@@ -47,41 +47,36 @@ See examples of various axis representations drawn by class TGaxis.
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor.
 
-TAxis::TAxis(): TNamed(), TAttAxis()
+TAxis::TAxis()
 {
    fNbins   = 1;
    fXmin    = 0;
    fXmax    = 1;
    fFirst   = 0;
    fLast    = 0;
-   fParent  = nullptr;
-   fLabels  = nullptr;
-   fModLabs = nullptr;
    fBits2   = 0;
-   fTimeDisplay = 0;
+   fTimeDisplay = false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Axis constructor for axis with fix bin size
 
-TAxis::TAxis(Int_t nbins,Double_t xlow,Double_t xup): TNamed(), TAttAxis()
+TAxis::TAxis(Int_t nbins,Double_t xlow,Double_t xup)
 {
-   fParent  = nullptr;
-   fLabels  = nullptr;
-   fModLabs = nullptr;
    Set(nbins,xlow,xup);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Axis constructor for variable bin size
 
-TAxis::TAxis(Int_t nbins,const Double_t *xbins): TNamed(), TAttAxis()
+TAxis::TAxis(Int_t nbins,const Double_t *xbins)
 {
-   fParent  = nullptr;
-   fLabels  = nullptr;
-   fModLabs = nullptr;
    Set(nbins,xbins);
 }
+
+TAxis::TAxis(std::vector<double> const &bins):
+  TAxis(bins.size()-1, bins.data())
+{}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Destructor.
@@ -280,15 +275,20 @@ Int_t TAxis::DistancetoPrimitive(Int_t, Int_t)
 
 void TAxis::ExecuteEvent(Int_t event, Int_t px, Int_t py)
 {
-   if (!gPad) return;
-   gPad->ExecuteEventAxis(event,px,py,this);
+   if (gPad)
+      gPad->ExecuteEventAxis(event, px, py, this);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Find bin number corresponding to abscissa x. NOTE: this method does not work with alphanumeric bins !!!
+/// Find bin number corresponding to abscissa `x`. NOTE: this method does not work with alphanumeric bins !!!
 ///
-/// If x is underflow or overflow, attempt to extend the axis if TAxis::kCanExtend is true.
-/// Otherwise, return 0 or fNbins+1.
+/// If `x` is underflow or overflow, attempt to extend the axis if TAxis::kCanExtend is true.
+/// Otherwise, return `0` or `fNbins+1`.
+///
+/// @note The underflow bin (`0`) is for any `x` strictly smaller than `fXmin`,
+/// whereas the overflow bin (`nbins+1`) is for any `x` greater or equal than `fXmax`,
+/// as well as for `NaN`. The first regular bin (`1`) is for any `x`
+/// greater or equal than `fXmin` and strictly smaller than `fXmin + binwidth`, and so on.
 
 Int_t TAxis::FindBin(Double_t x)
 {
@@ -299,19 +299,21 @@ Int_t TAxis::FindBin(Double_t x)
    if (IsAlphanumeric() && gDebug) Info("FindBin","Numeric query on alphanumeric axis - Sorting the bins or extending the axes / rebinning can alter the correspondence between the label and the bin interval.");
    if (x < fXmin) {              //*-* underflow
       bin = 0;
-      if (fParent == 0) return bin;
+      if (fParent == nullptr) return bin;
       if (!CanExtend() || IsAlphanumeric() ) return bin;
       ((TH1*)fParent)->ExtendAxis(x,this);
       return FindFixBin(x);
    } else  if ( !(x < fXmax)) {     //*-* overflow  (note the way to catch NaN)
       bin = fNbins+1;
-      if (fParent == 0) return bin;
+      if (fParent == nullptr) return bin;
       if (!CanExtend() || IsAlphanumeric() ) return bin;
       ((TH1*)fParent)->ExtendAxis(x,this);
       return FindFixBin(x);
    } else {
       if (!fXbins.fN) {        //*-* fix bins
-         bin = 1 + int (fNbins*(x-fXmin)/(fXmax-fXmin) );
+         const double width = (fXmax-fXmin)/fNbins;
+         const int approxBin = (x-fXmin) / width; // Might be one unit too small/large due to limited precision of subtraction
+         bin = 1 + approxBin - (x < fXmin + width*approxBin) + (fXmin + width*(approxBin+1) <= x);
       } else {                  //*-* variable bin sizes
          //for (bin =1; x >= fXbins.fArray[bin]; bin++);
          bin = 1 + TMath::BinarySearch(fXbins.fN,fXbins.fArray,x);
@@ -411,23 +413,25 @@ Int_t TAxis::FindFixBin(const char *label) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Find bin number corresponding to abscissa x
+/// Find bin number corresponding to abscissa `x`
 ///
-/// Identical to TAxis::FindBin except that if x is an underflow/overflow
+/// Identical to TAxis::FindBin except that if `x` is an underflow/overflow
 /// no attempt is made to extend the axis.
+/// @see TAxis::FindBin
 
 Int_t TAxis::FindFixBin(Double_t x) const
 {
    Int_t bin;
    if (x < fXmin) {              //*-* underflow
       bin = 0;
-   } else  if ( !(x < fXmax)) {     //*-* overflow  (note the way to catch NaN
+   } else  if ( !(x < fXmax)) {     //*-* overflow  (note the way to catch NaN)
       bin = fNbins+1;
    } else {
       if (!fXbins.fN) {        //*-* fix bins
-         bin = 1 + int (fNbins*(x-fXmin)/(fXmax-fXmin) );
+         const double width = (fXmax-fXmin)/fNbins;
+         const int approxBin = (x-fXmin) / width; // Might be one unit too small/large due to limited precision of subtraction
+         bin = 1 + approxBin - (x < fXmin + width*approxBin) + (fXmin + width*(approxBin+1) <= x);
       } else {                  //*-* variable bin sizes
-//         for (bin =1; x >= fXbins.fArray[bin]; bin++);
          bin = 1 + TMath::BinarySearch(fXbins.fN,fXbins.fArray,x);
       }
    }
@@ -441,10 +445,17 @@ const char *TAxis::GetBinLabel(Int_t bin) const
 {
    if (!fLabels) return "";
    if (bin <= 0 || bin > fNbins) return "";
+   // Try to find the bin, assuming they are ordered
+   if (auto obj = (TObjString *)fLabels->At(bin - 1)) {
+      const auto binid = (Int_t)obj->GetUniqueID();
+      if (binid == bin) {
+         return obj->GetName();
+      }
+   }
+   // The shortcut did not bring results. We cannot but search linearly
    TIter next(fLabels);
-   TObjString *obj;
-   while ((obj=(TObjString*)next())) {
-      Int_t binid = (Int_t)obj->GetUniqueID();
+   while (auto obj=(TObjString*)next()) {
+      const auto binid = (Int_t)obj->GetUniqueID();
       if (binid == bin) return obj->GetName();
    }
    return "";
@@ -453,7 +464,7 @@ const char *TAxis::GetBinLabel(Int_t bin) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Return first bin on the axis
 /// i.e. 1 if no range defined
-/// NOTE: in some cases a zero is returned (see TAxis::SetRange)
+/// \note in some cases a zero is returned (see TAxis::SetRange)
 
 Int_t TAxis::GetFirst() const
 {
@@ -464,7 +475,7 @@ Int_t TAxis::GetFirst() const
 ////////////////////////////////////////////////////////////////////////////////
 /// Return last bin on the axis
 /// i.e. fNbins if no range defined
-/// NOTE: in some cases a zero is returned (see TAxis::SetRange)
+/// \note in some cases a zero is returned (see TAxis::SetRange)
 
 Int_t TAxis::GetLast() const
 {
@@ -480,7 +491,7 @@ Double_t TAxis::GetBinCenter(Int_t bin) const
    Double_t binwidth;
    if (!fXbins.fN || bin<1 || bin>fNbins) {
       binwidth = (fXmax - fXmin) / Double_t(fNbins);
-      return fXmin + (bin-1) * binwidth + 0.5*binwidth;
+      return fXmin + (bin - 0.5) * binwidth;
    } else {
       binwidth = fXbins.fArray[bin] - fXbins.fArray[bin-1];
       return fXbins.fArray[bin-1] + 0.5*binwidth;
@@ -536,13 +547,14 @@ Double_t TAxis::GetBinUpEdge(Int_t bin) const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return bin width
+///
+/// If `bin > fNbins` (overflow bin) or `bin < 1` (underflow bin), the returned bin width is `(fXmax - fXmin) / fNbins`.
 
 Double_t TAxis::GetBinWidth(Int_t bin) const
 {
    if (fNbins <= 0) return 0;
-   if (fXbins.fN <= 0)  return (fXmax - fXmin) / Double_t(fNbins);
-   if (bin >fNbins) bin = fNbins;
-   if (bin <1 ) bin = 1;
+   if (fXbins.fN <= 0 || bin >fNbins || bin <1)
+      return (fXmax - fXmin) / Double_t(fNbins);
    return fXbins.fArray[bin] - fXbins.fArray[bin-1];
 }
 
@@ -609,13 +621,34 @@ const char *TAxis::GetTimeFormatOnly() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Return the time offset in GMT.
+
+UInt_t TAxis::GetTimeOffset() {
+
+  Int_t idF = fTimeFormat.Index("%F")+2;
+  if (idF<2) {
+    Warning("GetGMTimeOffset","Time format is not set!");
+    return 0;
+  }
+  TString stime=fTimeFormat(idF,19);
+  if (stime.Length() != 19) {
+    Warning("GetGMTimeOffset","Bad time format!");
+    return 0;
+  }
+
+  TDatime datime(stime.Data());
+  return datime.Convert(kTRUE);  // Convert to unix gmt time
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Return the ticks option (see SetTicks)
 
 const char *TAxis::GetTicks() const
 {
    if (TestBit(kTickPlus) && TestBit(kTickMinus)) return "+-";
    if (TestBit(kTickMinus)) return "-";
-   return "+";
+   if (TestBit(kTickPlus)) return "+";
+   return "";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -688,77 +721,84 @@ void TAxis::ImportAttributes(const TAxis *axis)
 
 void TAxis::SaveAttributes(std::ostream &out, const char *name, const char *subname)
 {
-   char quote = '"';
-   if (strlen(GetTitle())) {
-      TString t(GetTitle());
-      t.ReplaceAll("\\","\\\\");
-      out<<"   "<<name<<subname<<"->SetTitle("<<quote<<t.Data()<<quote<<");"<<std::endl;
-   }
+   auto prefix = TString::Format("   %s%s->", name, subname);
+
+   if (strlen(GetTitle()))
+      out << prefix << "SetTitle(\"" << TString(GetTitle()).ReplaceSpecialCppChars() << "\");\n";
    if (fTimeDisplay) {
-      out<<"   "<<name<<subname<<"->SetTimeDisplay(1);"<<std::endl;
-      out<<"   "<<name<<subname<<"->SetTimeFormat("<<quote<<GetTimeFormat()<<quote<<");"<<std::endl;
+      out << prefix << "SetTimeDisplay(1);\n";
+      out << prefix << "SetTimeFormat(\"" << GetTimeFormat() << "\");\n";
    }
    if (fLabels) {
       TIter next(fLabels);
-      TObjString *obj;
-      while ((obj=(TObjString*)next())) {
-         out<<"   "<<name<<subname<<"->SetBinLabel("<<obj->GetUniqueID()<<","<<quote<<obj->GetName()<<quote<<");"<<std::endl;
+      while (auto obj = static_cast<TObjString *>(next())) {
+         out << prefix << "SetBinLabel(" << obj->GetUniqueID() << ", \""
+             << TString(obj->GetName()).ReplaceSpecialCppChars() << "\");\n";
       }
    }
 
-   if (fFirst || fLast) {
-      out<<"   "<<name<<subname<<"->SetRange("<<fFirst<<","<<fLast<<");"<<std::endl;
-   }
+   if (fFirst || fLast)
+      out << prefix << "SetRange(" << fFirst << ", " << fLast << ");\n";
 
-   if (TestBit(kLabelsHori)) {
-      out<<"   "<<name<<subname<<"->SetBit(TAxis::kLabelsHori);"<<std::endl;
-   }
+   if (TestBit(kLabelsHori))
+      out << prefix << "SetBit(TAxis::kLabelsHori);\n";
 
-   if (TestBit(kLabelsVert)) {
-      out<<"   "<<name<<subname<<"->SetBit(TAxis::kLabelsVert);"<<std::endl;
-   }
+   if (TestBit(kLabelsVert))
+      out << prefix << "SetBit(TAxis::kLabelsVert);\n";
 
-   if (TestBit(kLabelsDown)) {
-      out<<"   "<<name<<subname<<"->SetBit(TAxis::kLabelsDown);"<<std::endl;
-   }
+   if (TestBit(kLabelsDown))
+      out << prefix << "SetBit(TAxis::kLabelsDown);\n";
 
-   if (TestBit(kLabelsUp)) {
-      out<<"   "<<name<<subname<<"->SetBit(TAxis::kLabelsUp);"<<std::endl;
-   }
+   if (TestBit(kLabelsUp))
+      out << prefix << "SetBit(TAxis::kLabelsUp);\n";
 
-   if (TestBit(kCenterLabels)) {
-      out<<"   "<<name<<subname<<"->CenterLabels(true);"<<std::endl;
-   }
+   if (TestBit(kCenterLabels))
+      out << prefix << "CenterLabels(true);\n";
 
-   if (TestBit(kCenterTitle)) {
-      out<<"   "<<name<<subname<<"->CenterTitle(true);"<<std::endl;
-   }
+   if (TestBit(kCenterTitle))
+      out << prefix << "CenterTitle(true);\n";
 
-   if (TestBit(kRotateTitle)) {
-      out<<"   "<<name<<subname<<"->RotateTitle(true);"<<std::endl;
-   }
+   if (TestBit(kRotateTitle))
+      out << prefix << "RotateTitle(true);\n";
 
-   if (TestBit(kDecimals)) {
-      out<<"   "<<name<<subname<<"->SetDecimals();"<<std::endl;
-   }
+   if (TestBit(kDecimals))
+      out << prefix << "SetDecimals();\n";
 
-   if (TestBit(kMoreLogLabels)) {
-      out<<"   "<<name<<subname<<"->SetMoreLogLabels();"<<std::endl;
-   }
+   if (TestBit(kMoreLogLabels))
+      out << prefix << "SetMoreLogLabels();\n";
 
-   if (TestBit(kNoExponent)) {
-      out<<"   "<<name<<subname<<"->SetNoExponent();"<<std::endl;
-   }
+   if (TestBit(kNoExponent))
+      out << prefix << "SetNoExponent();\n";
 
-   TAttAxis::SaveAttributes(out,name,subname);
+   if (fModLabs) {
+      TIter next(fModLabs);
+      while (auto ml = static_cast<TAxisModLab *>(next())) {
+         if (ml->GetLabNum() == 0)
+            out << prefix << "ChangeLabelByValue(" << ml->GetLabValue();
+         else
+            out << prefix << "ChangeLabel(" << ml->GetLabNum();
+         out << ", " << ml->GetAngle() << ", " << ml->GetSize() << ", " << ml->GetAlign() << ", "
+             << TColor::SavePrimitiveColor(ml->GetColor()) << ", " << ml->GetFont() << ", \""
+             << TString(ml->GetText()).ReplaceSpecialCppChars() << "\");\n";
+      }
+   }
+   TAttAxis::SaveAttributes(out, name, subname);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Initialize axis with fix bins
+///
+/// An error is printed if xup or xlow are infinite/nan
+/// (due to resulting undefined fixed bin width)
+///
+/// Set xup <= xlow to force the axis range and number of bins to be automatically
+/// deduced after buffer is full or BufferEmpty is called
 
 void TAxis::Set(Int_t nbins, Double_t xlow, Double_t xup)
 {
    fNbins   = nbins;
+   if (!std::isfinite(xlow) || !std::isfinite(xup))
+      Error("TAxis::Set", "Axis limits need to be finite numbers");
    fXmin    = xlow;
    fXmax    = xup;
    if (!fParent) SetDefaults();
@@ -767,17 +807,24 @@ void TAxis::Set(Int_t nbins, Double_t xlow, Double_t xup)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Initialize axis with variable bins
+///
+/// An error is printed if bin edges are not in strictly increasing order
+/// or if any of them is infinite or nan
 
 void TAxis::Set(Int_t nbins, const Float_t *xbins)
 {
    Int_t bin;
    fNbins  = nbins;
    fXbins.Set(fNbins+1);
-   for (bin=0; bin<= fNbins; bin++)
+   for (bin = 0; bin <= fNbins; bin++) {
+      if (!std::isfinite(xbins[bin])) {
+         Error("TAxis::Set", "Bin edges need to be finite numbers. Use a large number instead.");
+      }
       fXbins.fArray[bin] = xbins[bin];
+   }
    for (bin=1; bin<= fNbins; bin++)
-      if (fXbins.fArray[bin] < fXbins.fArray[bin-1])
-         Error("TAxis::Set", "bins must be in increasing order");
+      if (fXbins.fArray[bin] <= fXbins.fArray[bin - 1])
+         Error("TAxis::Set", "bin edges must be in increasing order");
    fXmin      = fXbins.fArray[0];
    fXmax      = fXbins.fArray[fNbins];
    if (!fParent) SetDefaults();
@@ -794,8 +841,8 @@ void TAxis::Set(Int_t nbins, const Double_t *xbins)
    for (bin=0; bin<= fNbins; bin++)
       fXbins.fArray[bin] = xbins[bin];
    for (bin=1; bin<= fNbins; bin++)
-      if (fXbins.fArray[bin] < fXbins.fArray[bin-1])
-         Error("TAxis::Set", "bins must be in increasing order");
+      if (fXbins.fArray[bin] <= fXbins.fArray[bin - 1])
+         Error("TAxis::Set", "bin edges must be in increasing order");
    fXmin      = fXbins.fArray[0];
    fXmax      = fXbins.fArray[fNbins];
    if (!fParent) SetDefaults();
@@ -837,7 +884,7 @@ void TAxis::SetDefaults()
    strlcpy(name,GetName(),2);
    name[1] = 0;
    TAttAxis::ResetAttAxis(name);
-   fTimeDisplay = 0;
+   fTimeDisplay = false;
    SetTimeFormat();
 }
 
@@ -882,6 +929,27 @@ void TAxis::SetBinLabel(Int_t bin, const char *label)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Search for axis modifier by index or value
+
+TAxisModLab *TAxis::FindModLab(Int_t num, Double_t v, Double_t eps) const
+{
+   if (!fModLabs)
+      return nullptr;
+
+   TIter next(fModLabs);
+   while (auto ml = (TAxisModLab*)next()) {
+      if (ml->GetLabNum() != num)
+         continue;
+
+      if ((num != 0) || (TMath::Abs(v - ml->GetLabValue()) <= eps))
+         return ml;
+   }
+
+   return nullptr;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 /// Define new text attributes for the label number "labNum". It allows to do a
 /// fine tuning of the labels. All the attributes can be changed, even the
 /// label text itself.
@@ -903,36 +971,80 @@ void TAxis::SetBinLabel(Int_t bin, const char *label)
 ///  - To retrieve the number of axis labels use TAxis::GetNlabels.
 
 void TAxis::ChangeLabel(Int_t labNum, Double_t labAngle, Double_t labSize,
-                               Int_t labAlign, Int_t labColor, Int_t labFont,
-                               TString labText)
+                        Int_t labAlign, Int_t labColor, Int_t labFont,
+                        const TString &labText)
 {
-   if (!fModLabs) fModLabs = new TList();
-
    // Reset the list of modified labels.
    if (labNum == 0) {
-      delete fModLabs;
-      fModLabs  = 0;
+      SafeDelete(fModLabs);
       return;
    }
 
-   TAxisModLab *ml = new TAxisModLab();
-   ml->SetLabNum(labNum);
+   if (!fModLabs) fModLabs = new TList();
+
+   TAxisModLab *ml = FindModLab(labNum);
+   if (!ml) {
+      ml = new TAxisModLab();
+      ml->SetLabNum(labNum);
+      fModLabs->Add(ml);
+   }
+
    ml->SetAngle(labAngle);
    ml->SetSize(labSize);
    ml->SetAlign(labAlign);
    ml->SetColor(labColor);
    ml->SetFont(labFont);
    ml->SetText(labText);
-
-   fModLabs->Add((TObject*)ml);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Define new text attributes for the label value "labValue". It allows to do a
+/// fine tuning of the labels. All the attributes can be changed, even the
+/// label text itself.
+///
+/// \param[in] labValue  Axis value to be changed
+/// \param[in] labAngle  New angle value
+/// \param[in] labSize   New size (0 erase the label)
+/// \param[in] labAlign  New alignment value
+/// \param[in] labColor  New label color
+/// \param[in] labFont   New label font
+/// \param[in] labText   New label text
+///
+///  #### Notes:
+///
+///  - If an attribute should not be changed just give the value "-1".
+///  - If labnum=0 the list of modified labels is reset.
+///  - To erase a label set labSize to 0.
+///  - If labText is not specified or is an empty string, the text label is not changed.
+///  - To retrieve the number of axis labels use TAxis::GetNlabels.
+
+void TAxis::ChangeLabelByValue(Double_t labValue, Double_t labAngle, Double_t labSize,
+                             Int_t labAlign, Int_t labColor, Int_t labFont,
+                             const TString &labText)
+{
+   if (!fModLabs) fModLabs = new TList();
+
+   TAxisModLab *ml = FindModLab(0, labValue, 0.);
+   if (!ml) {
+      ml = new TAxisModLab();
+      ml->SetLabValue(labValue);
+      fModLabs->Add(ml);
+   }
+
+   ml->SetAngle(labAngle);
+   ml->SetSize(labSize);
+   ml->SetAlign(labAlign);
+   ml->SetColor(labColor);
+   ml->SetFont(labFont);
+   ml->SetText(labText);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  Set the viewing range for the axis using bin numbers.
 ///
 ///  \param first First bin of the range.
 ///  \param last  Last bin of the range.
+///
 ///  To set a range using the axis coordinates, use TAxis::SetRangeUser.
 ///
 ///  If `first == last == 0` or if `first > last` or if the range specified does
@@ -945,9 +1057,13 @@ void TAxis::ChangeLabel(Int_t labNum, Double_t labAngle, Double_t labSize,
 ///  intersection range is accepted. For instance, if `first == -2` and `last == fNbins`,
 ///  the accepted range will be `[0, fNbins]` (`fFirst = 0` and `fLast = fNbins`).
 ///
+///  If `last > fNbins`, the overflow bin is included in the range and will be displayed during drawing.
+///  If `first < 1`, the underflow bin is included in the range and will be displayed during drawing.
+///
 ///  \note For historical reasons, SetRange(0,0) resets the range even though bin 0 is
 ///       technically reserved for the underflow; in order to set the range of the axis
 ///       so that it only includes the underflow, use `SetRange(-1,0)`.
+///  \note This function will also restrict the fitting range
 
 void TAxis::SetRange(Int_t first, Int_t last)
 {
@@ -960,20 +1076,23 @@ void TAxis::SetRange(Int_t first, Int_t last)
    ) {
       fFirst = 1;
       fLast = fNbins;
-      SetBit(kAxisRange, 0);
+      SetBit(kAxisRange, false);
    } else {
       fFirst = std::max(first, 0);
       fLast = std::min(last, nCells);
-      SetBit(kAxisRange, 1);
+      SetBit(kAxisRange, true);
    }
-
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
-///  Set the viewing range for the axis from ufirst to ulast (in user coordinates,
+///  Set the viewing range for the axis from `ufirst` to `ulast` (in user coordinates,
 ///  that is, the "natural" axis coordinates).
 ///  To set a range using the axis bin numbers, use TAxis::SetRange.
+///
+///  If `ulast > fXmax`, the overflow bin is included in the range and will be displayed during drawing.
+///  If `ufirst < fXmin`, the underflow bin is included in the range and will be displayed during drawing.
+///
+///  \note This function will also restrict the fitting range
 
 void TAxis::SetRangeUser(Double_t ufirst, Double_t ulast)
 {
@@ -1000,6 +1119,7 @@ void TAxis::SetRangeUser(Double_t ufirst, Double_t ulast)
 ///  option = "+"  ticks drawn on the "positive side" (default)
 ///  option = "-"  ticks drawn on the "negative side"
 ///  option = "+-" ticks drawn on both sides
+///  option = ""   ticks will be drawn as whatever is defined as default. No bit is set internally.
 
 void TAxis::SetTicks(Option_t *option)
 {
@@ -1125,7 +1245,7 @@ void TAxis::Streamer(TBuffer &R__b)
          Float_t xmin,xmax;
          R__b >> xmin; fXmin = xmin;
          R__b >> xmax; fXmax = xmax;
-         Float_t *xbins = 0;
+         Float_t *xbins = nullptr;
          Int_t n = R__b.ReadArray(xbins);
          fXbins.Set(n);
          for (Int_t i=0;i<n;i++) fXbins.fArray[i] = xbins[i];
@@ -1142,7 +1262,7 @@ void TAxis::Streamer(TBuffer &R__b)
          if (fFirst < 0 || fFirst > fNbins) fFirst = 0;
          if (fLast  < 0 || fLast  > fNbins) fLast  = 0;
          if (fLast  < fFirst) { fFirst = 0; fLast = 0;}
-         if (fFirst ==0 && fLast == 0) SetBit(kAxisRange,0);
+         if (fFirst ==0 && fLast == 0) SetBit(kAxisRange,false);
       }
       if (R__v > 3) {
          R__b >> fTimeDisplay;
@@ -1171,7 +1291,7 @@ void TAxis::UnZoom()
 
    //unzoom object owning this axis
    SetRange(0,0);
-   TH1 *hobj1 = (TH1*)GetParent();
+   TH1 *hobj1 = dynamic_cast<TH1 *>(GetParent());
    if (!strstr(GetName(),"xaxis")) {
       if (!hobj1) return;
       if (hobj1->GetDimension() == 2) {
@@ -1186,7 +1306,7 @@ void TAxis::UnZoom()
          hobj1->SetMinimum(fXmin);
          hobj1->SetMaximum(fXmax);
       } else {
-         if (fXmin==hobj1->GetMinimum() && fXmax==hobj1->GetMaximum()) {
+         if (fXmin == hobj1->GetMinimumStored() && fXmax == hobj1->GetMaximumStored()) {
             hobj1->SetMinimum(fXmin);
             hobj1->SetMaximum(fXmax);
          } else {

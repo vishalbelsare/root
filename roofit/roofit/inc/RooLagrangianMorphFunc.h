@@ -63,7 +63,6 @@
 #include "TMatrixD.h"
 
 class RooWorkspace;
-class RooParamHistFunc;
 class RooProduct;
 class RooRealVar;
 class TPair;
@@ -84,8 +83,8 @@ public:
    typedef std::map<const std::string, FlagSet> FlagMap;
 
    struct Config {
-
       std::string observableName;
+      RooRealVar *observable = nullptr;
       std::string fileName;
       ParamMap paramCards;
       FlagMap flagValues;
@@ -97,11 +96,10 @@ public:
       std::vector<RooArgList *> vertices;
       std::vector<std::vector<const char *>> nonInterfering;
       bool allowNegativeYields = true;
+      bool normalize = false;
    };
 
    RooLagrangianMorphFunc();
-   RooLagrangianMorphFunc(const char *name, const char *title, const char *filename, const char *observableName,
-                          const RooArgSet &couplings, const RooArgSet &inputs);
    RooLagrangianMorphFunc(const char *name, const char *title, const Config &config);
    RooLagrangianMorphFunc(const RooLagrangianMorphFunc &other, const char *newName);
 
@@ -119,8 +117,6 @@ public:
                                  const char *rangeName = nullptr) const override;
    double analyticalIntegralWN(Int_t code, const RooArgSet *normSet, const char *rangeName = nullptr) const override;
    void printMetaArgs(std::ostream &os) const override;
-   RooAbsArg::CacheMode canNodeBeCached() const override;
-   void setCacheAndTrackHints(RooArgSet &) override;
 
    void insert(RooWorkspace *ws);
 
@@ -180,8 +176,6 @@ private:
    void disableInterference(const std::vector<const char *> &nonInterfering);
    void disableInterferences(const std::vector<std::vector<const char *>> &nonInterfering);
 
-   void addFolders(const RooArgList &folders);
-
    bool hasCache() const;
    RooLagrangianMorphFunc::CacheElem *getCache() const;
    void updateSampleWeights();
@@ -189,9 +183,6 @@ private:
    RooRealVar *setupObservable(const char *obsname, TClass *mode, TObject *inputExample);
 
 public:
-   /// length of floating point digits precision supported by implementation.
-   static constexpr double implementedPrecision = RooFit::SuperFloatPrecision::digits10;
-
    void writeMatrixToFile(const TMatrixD &matrix, const char *fname);
    void writeMatrixToStream(const TMatrixD &matrix, std::ostream &stream);
    TMatrixD readMatrixFromFile(const char *fname);
@@ -207,10 +198,10 @@ public:
    std::map<std::string, std::string>
    createWeightStrings(const ParamMap &inputs, const std::vector<RooArgList *> &vertices, RooArgList &couplings,
                        const FlagMap &flagValues, const RooArgList &flags,
-                       const std::vector<RooArgList *> &nonInterfering);
+                       const std::vector<std::vector<std::string>> &nonInterfering);
    RooArgSet createWeights(const ParamMap &inputs, const std::vector<RooArgList *> &vertices, RooArgList &couplings,
                            const FlagMap &inputFlags, const RooArgList &flags,
-                           const std::vector<RooArgList *> &nonInterfering);
+                           const std::vector<std::vector<std::string>> &nonInterfering);
    RooArgSet createWeights(const ParamMap &inputs, const std::vector<RooArgList *> &vertices, RooArgList &couplings);
 
    bool updateCoefficients();
@@ -246,7 +237,7 @@ public:
    static std::unique_ptr<RooRatio> makeRatio(const char *name, const char *title, RooArgList &nr, RooArgList &dr);
 
 private:
-   mutable RooObjCacheManager _cacheMgr; //! The cache manager
+   mutable RooObjCacheManager _cacheMgr; ///<! The cache manager
    double _scale = 1.0;
    std::map<std::string, int> _sampleMap;
    RooListProxy _physics;
@@ -256,9 +247,9 @@ private:
    RooListProxy _flags;
    Config _config;
    std::vector<std::vector<RooListProxy *>> _diagrams;
-   std::vector<RooListProxy *> _nonInterfering;
+   std::vector<std::vector<std::string>> _nonInterfering;
 
-   ClassDefOverride(RooLagrangianMorphFunc, 1)
+   ClassDefOverride(RooLagrangianMorphFunc, 2)
 };
 
 #endif

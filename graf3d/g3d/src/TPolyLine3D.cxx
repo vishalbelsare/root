@@ -17,13 +17,12 @@
 #include "TVirtualViewer3D.h"
 #include "TBuffer3D.h"
 #include "TBuffer3DTypes.h"
-#include "TGeometry.h"
+#include "TGeometryTransformer.h"
 #include "TMath.h"
 
 #include <cassert>
 #include <iostream>
 
-ClassImp(TPolyLine3D);
 
 /** \class TPolyLine3D
 \ingroup g3d
@@ -75,7 +74,7 @@ Begin_Macro(source)
    TView *view = TView::CreateView(1);
    view->SetRange(0,0,0,2,2,2);
    const Int_t n = 500;
-   r = new TRandom();
+   auto r = new TRandom();
    Double_t x, y, z;
    TPolyLine3D *l = new TPolyLine3D(n);
    for (Int_t i=0;i<n;i++) {
@@ -504,14 +503,14 @@ void TPolyLine3D::Paint(Option_t * /* option */ )
       }
 
       // Transform points
-      if (gGeometry && !buffer.fLocalFrame) {
+      if (ROOT::Internal::currentTGeometryTransformer && !buffer.fLocalFrame) {
          Double_t dlocal[3];
          Double_t dmaster[3];
          for (UInt_t j=0; j<buffer.NbPnts(); j++) {
             dlocal[0] = buffer.fPnts[3*j];
             dlocal[1] = buffer.fPnts[3*j+1];
             dlocal[2] = buffer.fPnts[3*j+2];
-            gGeometry->Local2Master(&dlocal[0],&dmaster[0]);
+            ROOT::Internal::currentTGeometryTransformer(&dlocal[0], &dmaster[0]);
             buffer.fPnts[3*j]   = dmaster[0];
             buffer.fPnts[3*j+1] = dmaster[1];
             buffer.fPnts[3*j+2] = dmaster[2];
@@ -555,25 +554,24 @@ void TPolyLine3D::Print(Option_t *option) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Save primitive as a C++ statement(s) on output stream.
 
-void TPolyLine3D::SavePrimitive(std::ostream &out, Option_t * /*= ""*/)
+void TPolyLine3D::SavePrimitive(std::ostream &out, Option_t *option)
 {
-   char quote = '"';
-   out<<"   "<<std::endl;
-   if (gROOT->ClassSaved(TPolyLine3D::Class())) {
-      out<<"   ";
-   } else {
-      out<<"   TPolyLine3D *";
+   TString arrarg;
+   if (Size() > 0) {
+      std::vector<Double_t> arr(Size() * 3);
+      for (Int_t i = 0; i < Size() * 3; i++)
+         arr[i] = fP[i];
+      arrarg = SavePrimitiveVector(out, "pline3D", Size() * 3, arr.data(), kTRUE);
+      arrarg.Append(".data(), ");
    }
-   Int_t size=Size();
-   out<<"pline3D = new TPolyLine3D("<<fN<<","<<quote<<fOption<<quote<<");"<<std::endl;
 
-   SaveLineAttributes(out,"pline3D",1,1,1);
+   SavePrimitiveConstructor(
+      out, Class(), "pline3D",
+      TString::Format("%d, %s\"%s\"", Size(), arrarg.Data(), TString(fOption).ReplaceSpecialCppChars().Data()),
+      arrarg.IsNull());
 
-   if (size > 0) {
-      for (Int_t i=0;i<size;i++)
-         out<<"   pline3D->SetPoint("<<i<<","<<fP[3*i]<<","<<fP[3*i+1]<<","<<fP[3*i+2]<<");"<<std::endl;
-   }
-   out<<"   pline3D->Draw();"<<std::endl;
+   SaveLineAttributes(out, "pline3D", 1, 1, 1);
+   SavePrimitiveDraw(out, "pline3D", option);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

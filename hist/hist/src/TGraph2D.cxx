@@ -24,8 +24,8 @@
 #include "TPluginManager.h"
 #include "TSystem.h"
 #include "strtok.h"
-#include "snprintf.h"
 
+#include <cstdio>
 #include <cstdlib>
 #include <cassert>
 #include <iostream>
@@ -35,7 +35,6 @@
 #include "Fit/DataRange.h"
 #include "Math/MinimizerOptions.h"
 
-ClassImp(TGraph2D);
 
 
 /** \class TGraph2D
@@ -57,12 +56,12 @@ Graphics object made of three arrays X, Y and Z with the same number of points e
 This class has different constructors:
 - With an array's dimension and three arrays x, y, and z:
 ~~~ {.cpp}
-     TGraph2D *g = new TGraph2D(n, x, y, z);
+     auto g = new TGraph2D(n, x, y, z);
 ~~~
    x, y, z arrays can be doubles, floats, or ints.
 - With an array's dimension only:
 ~~~ {.cpp}
-     TGraph2D *g = new TGraph2D(n);
+     auto g = new TGraph2D(n);
 ~~~
    The internal arrays are then filled with `SetPoint()`. The following line
    fills the internal arrays at the position `i` with the values
@@ -72,12 +71,12 @@ This class has different constructors:
 ~~~
 - Without parameters:
 ~~~ {.cpp}
-     TGraph2D *g = new TGraph2D();
+     auto g = new TGraph2D();
 ~~~
    again `SetPoint()` must be used to fill the internal arrays.
 -  From a file:
 ~~~ {.cpp}
-     TGraph2D *g = new TGraph2D("graph.dat");
+     auto g = new TGraph2D("graph.dat");
 ~~~
    Arrays are read from the ASCII file "graph.dat" according to a specifies
    format. The default format is `%%lg %%lg %%lg`
@@ -108,6 +107,11 @@ Specific drawing options can be used to paint a TGraph2D:
 | "LINE"   | Draw a 3D polyline. |
 | "CONT5"  | Draw a contour plot using Delaunay triangles.|
 
+The Delaunay triangulation algorithm assumes that each (x, y) coordinate corresponds to a unique z value,
+meaning duplicate (x, y) points are not allowed. Consequently, when using drawing options that rely on this
+algorithm (e.g., TRI, SURF, etc.), a warning may appear instructing you to remove duplicates
+(see RemoveDuplicates()).
+
 A TGraph2D can be also drawn with any options valid to draw a 2D histogram
 (like `COL`, `SURF`, `LEGO`, `CONT` etc..).
 
@@ -134,7 +138,7 @@ the GetXaxis GetYaxis and GetZaxis methods. They access the histogram axis creat
 at drawing time only. Therefore they should called after the TGraph2D is drawn:
 
 ~~~ {.cpp}
-     TGraph2D *g = new TGraph2D();
+     auto g = new TGraph2D();
 
      [...]
 
@@ -151,12 +155,12 @@ at drawing time only. Therefore they should called after the TGraph2D is drawn:
 
 Begin_Macro(source)
 {
-   TCanvas *c = new TCanvas("c","Graph2D example",0,0,600,400);
+   auto c = new TCanvas("c","Graph2D example",0,0,600,400);
    Double_t x, y, z, P = 6.;
    Int_t np = 200;
-   TGraph2D *dt = new TGraph2D();
+   auto dt = new TGraph2D();
    dt->SetTitle("Graph title; X axis title; Y axis title; Z axis title");
-   TRandom *r = new TRandom();
+   auto r = new TRandom();
    for (Int_t N=0; N<np; N++) {
       x = 2*P*(r->Rndm(N))-P;
       y = 2*P*(r->Rndm(N))-P;
@@ -165,7 +169,6 @@ Begin_Macro(source)
    }
    gStyle->SetPalette(1);
    dt->Draw("surf1");
-   return c;
 }
 End_Macro
 
@@ -175,7 +178,7 @@ End_Macro
 2D graphs can be fitted as shown by the following example:
 
 Begin_Macro(source)
-../../../tutorials/fit/graph2dfit.C
+../../../tutorials/math/fit/graph2dfit.C
 End_Macro
 
 \anchor G2D023
@@ -185,7 +188,7 @@ Example showing the PCOL option.
 
 Begin_Macro(source)
 {
-   TCanvas *c1 = new TCanvas("c1","Graph2D example",0,0,600,400);
+   auto c = new TCanvas("c","Graph2D example",0,0,600,400);
    Double_t P = 5.;
    Int_t npx  = 20 ;
    Int_t npy  = 20 ;
@@ -195,7 +198,7 @@ Begin_Macro(source)
    Int_t k = 0;
    Double_t dx = (2*P)/npx;
    Double_t dy = (2*P)/npy;
-   TGraph2D *dt = new TGraph2D(npx*npy);
+   auto dt = new TGraph2D(npx*npy);
    dt->SetNpy(41);
    dt->SetNpx(40);
    for (Int_t i=0; i<npx; i++) {
@@ -211,7 +214,6 @@ Begin_Macro(source)
    gStyle->SetPalette(1);
    dt->SetMarkerStyle(20);
    dt->Draw("pcol");
-   return c1;
 }
 End_Macro
 
@@ -238,24 +240,23 @@ gives a nice practical view of Delaunay triangulation and Voronoi diagram.
 /// Graph2D default constructor
 
 TGraph2D::TGraph2D()
-   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(0)
+   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(0)
 {
    fSize      = 0;
    fMargin    = 0.;
    fNpx       = 40;
    fNpy       = 40;
-   fDirectory = 0;
-   fHistogram = 0;
+   fDirectory = nullptr;
+   fHistogram = nullptr;
    fDelaunay = nullptr;
    fMaximum   = -1111;
    fMinimum   = -1111;
-   fX         = 0;
-   fY         = 0;
-   fZ         = 0;
+   fX         = nullptr;
+   fY         = nullptr;
+   fZ         = nullptr;
    fZout      = 0;
    fMaxIter   = 100000;
-   fPainter   = 0;
+   fPainter   = nullptr;
    fFunctions = new TList;
    fUserHisto = kFALSE;
 }
@@ -265,8 +266,7 @@ TGraph2D::TGraph2D()
 /// Graph2D constructor with three vectors of ints as input.
 
 TGraph2D::TGraph2D(Int_t n, Int_t *x, Int_t *y, Int_t *z)
-   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(n)
+   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(n)
 {
    Build(n);
 
@@ -283,8 +283,7 @@ TGraph2D::TGraph2D(Int_t n, Int_t *x, Int_t *y, Int_t *z)
 /// Graph2D constructor with three vectors of floats as input.
 
 TGraph2D::TGraph2D(Int_t n, Float_t *x, Float_t *y, Float_t *z)
-   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(n)
+   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(n)
 {
    Build(n);
 
@@ -301,8 +300,7 @@ TGraph2D::TGraph2D(Int_t n, Float_t *x, Float_t *y, Float_t *z)
 /// Graph2D constructor with three vectors of doubles as input.
 
 TGraph2D::TGraph2D(Int_t n, Double_t *x, Double_t *y, Double_t *z)
-   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(n)
+   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(n)
 {
    Build(n);
 
@@ -321,8 +319,7 @@ TGraph2D::TGraph2D(Int_t n, Double_t *x, Double_t *y, Double_t *z)
 /// Empty bins, recognized when both content and errors are zero, are excluded.
 
 TGraph2D::TGraph2D(TH2 *h2)
-   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(0)
+   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(0)
 {
    Build(h2->GetNbinsX()*h2->GetNbinsY());
 
@@ -331,15 +328,12 @@ TGraph2D::TGraph2D(TH2 *h2)
    // need to call later because sets title in ref histogram
    SetTitle(h2->GetTitle());
 
-
-
    TAxis *xaxis = h2->GetXaxis();
    TAxis *yaxis = h2->GetYaxis();
    Int_t xfirst = xaxis->GetFirst();
    Int_t xlast  = xaxis->GetLast();
    Int_t yfirst = yaxis->GetFirst();
    Int_t ylast  = yaxis->GetLast();
-
 
    Double_t x, y, z;
    Int_t k = 0;
@@ -369,8 +363,7 @@ TGraph2D::TGraph2D(TH2 *h2)
 
 TGraph2D::TGraph2D(const char *name, const char *title,
                    Int_t n, Double_t *x, Double_t *y, Double_t *z)
-   : TNamed(name, title), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(n)
+   : TNamed(name, title), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(n)
 {
    Build(n);
 
@@ -388,8 +381,7 @@ TGraph2D::TGraph2D(const char *name, const char *title,
 /// calls to SetPoint
 
 TGraph2D::TGraph2D(Int_t n)
-   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(n)
+   : TNamed("Graph2D", "Graph2D"), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(n)
 {
    Build(n);
    for (Int_t i = 0; i < fNpoints; i++) {
@@ -410,8 +402,7 @@ TGraph2D::TGraph2D(Int_t n)
 /// Note in that case, the instantiation is about 2 times slower.
 
 TGraph2D::TGraph2D(const char *filename, const char *format, Option_t *option)
-   : TNamed("Graph2D", filename), TAttLine(1, 1, 1), TAttFill(0, 1001),
-     TAttMarker(), fNpoints(0)
+   : TNamed("Graph2D", filename), TAttLine(1, 1, 1), TAttFill(0, 1001), fNpoints(0)
 {
    Double_t x, y, z;
    TString fname = filename;
@@ -473,7 +464,7 @@ TGraph2D::TGraph2D(const char *filename, const char *format, Option_t *option)
 
       // Initializing loop variables
       Bool_t isLineToBeSkipped = kFALSE ; //empty and ill-formed lines
-      char * token = NULL ;
+      char * token = nullptr ;
       TString token_str = "" ;
       Int_t token_idx = 0 ;
       Double_t * value = new Double_t [3] ;  //x,y,z buffers
@@ -482,12 +473,12 @@ TGraph2D::TGraph2D(const char *filename, const char *format, Option_t *option)
       // Looping
       char *rest;
       while (std::getline(infile, line, '\n')) {
-         if (line != "") {
+         if (!line.empty()) {
             if (line[line.size() - 1] == char(13)) {  // removing DOS CR character
                line.erase(line.end() - 1, line.end()) ;
             }
             token = R__STRTOK_R(const_cast<char*>(line.c_str()), option, &rest);
-            while (token != NULL && value_idx < 3) {
+            while (token != nullptr && value_idx < 3) {
                if (isTokenToBeSaved[token_idx]) {
                   token_str = TString(token) ;
                   token_str.ReplaceAll("\t", "") ;
@@ -499,7 +490,7 @@ TGraph2D::TGraph2D(const char *filename, const char *format, Option_t *option)
                      value_idx++ ;
                   }
                }
-               token = R__STRTOK_R(NULL, option, &rest); // next token
+               token = R__STRTOK_R(nullptr, option, &rest); // next token
                token_idx++ ;
             }
             if (!isLineToBeSkipped && value_idx == 3) {
@@ -511,7 +502,7 @@ TGraph2D::TGraph2D(const char *filename, const char *format, Option_t *option)
             }
          }
          isLineToBeSkipped = kFALSE ;
-         token = NULL ;
+         token = nullptr ;
          token_idx = 0 ;
          value_idx = 0 ;
       }
@@ -531,8 +522,8 @@ TGraph2D::TGraph2D(const char *filename, const char *format, Option_t *option)
 
 TGraph2D::TGraph2D(const TGraph2D &g)
 : TNamed(g), TAttLine(g), TAttFill(g), TAttMarker(g),
-   fX(0), fY(0), fZ(0),
-   fHistogram(0), fDirectory(0), fPainter(0)
+   fX(nullptr), fY(nullptr), fZ(nullptr),
+   fHistogram(nullptr), fDirectory(nullptr), fPainter(nullptr)
 {
    fFunctions = new TList();   // do not copy the functions
 
@@ -540,15 +531,13 @@ TGraph2D::TGraph2D(const TGraph2D &g)
    (*this) = g;
 
    // append TGraph2D to gdirectory
-   if (TH1::AddDirectoryStatus()) {
+   if (ROOT::Experimental::ObjectAutoRegistrationEnabled() && TH1::AddDirectoryStatus()) {
       fDirectory = gDirectory;
       if (fDirectory) {
          // append without replacing existing objects
          fDirectory->Append(this);
       }
    }
-
-
 }
 
 
@@ -583,9 +572,9 @@ TGraph2D& TGraph2D::operator=(const TGraph2D &g)
    fNpy = g.fNpy;
    fMaxIter = g.fMaxIter;
    fSize = fNpoints; // force size to be the same of npoints
-   fX         = (fSize > 0) ? new Double_t[fSize] : 0;
-   fY         = (fSize > 0) ? new Double_t[fSize] : 0;
-   fZ         = (fSize > 0) ? new Double_t[fSize] : 0;
+   fX         = (fSize > 0) ? new Double_t[fSize] : nullptr;
+   fY         = (fSize > 0) ? new Double_t[fSize] : nullptr;
+   fZ         = (fSize > 0) ? new Double_t[fSize] : nullptr;
    fMinimum = g.fMinimum;
    fMaximum = g.fMaximum;
    fMargin = g.fMargin;
@@ -593,8 +582,6 @@ TGraph2D& TGraph2D::operator=(const TGraph2D &g)
    fUserHisto = g.fUserHisto;
    if (g.fHistogram)
       fHistogram = (fUserHisto ) ? g.fHistogram : new TH2D(*g.fHistogram);
-
-
 
    // copy the points
    for (Int_t n = 0; n < fSize; n++) {
@@ -611,7 +598,7 @@ TGraph2D& TGraph2D::operator=(const TGraph2D &g)
 
 void TGraph2D::Build(Int_t n)
 {
-   if (n <= 0) {
+   if (n < 0) {
       Error("TGraph2D", "Invalid number of points (%d)", n);
       return;
    }
@@ -620,21 +607,27 @@ void TGraph2D::Build(Int_t n)
    fMargin    = 0.;
    fNpx       = 40;
    fNpy       = 40;
-   fDirectory = 0;
-   fHistogram = 0;
-   fDelaunay = nullptr;
+   fDirectory = nullptr;
+   fHistogram = nullptr;
+   fDelaunay  = nullptr;
    fMaximum   = -1111;
    fMinimum   = -1111;
-   fX         = new Double_t[fSize];
-   fY         = new Double_t[fSize];
-   fZ         = new Double_t[fSize];
+   if (n>0) {
+      fX = new Double_t[fSize];
+      fY = new Double_t[fSize];
+      fZ = new Double_t[fSize];
+   } else {
+      fX = nullptr;
+      fY = nullptr;
+      fZ = nullptr;
+   }
    fZout      = 0;
    fMaxIter   = 100000;
    fFunctions = new TList;
-   fPainter   = 0;
+   fPainter   = nullptr;
    fUserHisto = kFALSE;
 
-   if (TH1::AddDirectoryStatus()) {
+   if (ROOT::Experimental::ObjectAutoRegistrationEnabled() && TH1::AddDirectoryStatus()) {
       fDirectory = gDirectory;
       if (fDirectory) {
          fDirectory->Append(this, kTRUE);
@@ -642,6 +635,38 @@ void TGraph2D::Build(Int_t n)
    }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Performs the operation: `z = z + c1*f(x,y,z)`
+/// Errors are not recalculated.
+///
+/// \param f may be a 2-D function TF2 or 3-d function TF3
+/// \param c1 a scaling factor, 1 by default
+
+void TGraph2D::Add(TF2 *f, Double_t c1)
+{
+   //if (fHistogram) SetBit(kResetHisto);
+
+   for (Int_t i = 0; i < fNpoints; i++) {
+      fZ[i] += c1*f->Eval(fX[i], fY[i], fZ[i]);
+   }
+   if (gPad) gPad->Modified();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Apply function f to all the data points
+/// f may be a 2-D function TF2 or 3-d function TF3
+/// The Z values of the 2D graph are replaced by the new values computed
+/// using the function
+
+void TGraph2D::Apply(TF2 *f)
+{
+   //if (fHistogram) SetBit(kResetHisto);
+
+   for (Int_t i = 0; i < fNpoints; i++) {
+      fZ[i] = f->Eval(fX[i], fY[i], fZ[i]);
+   }
+   if (gPad) gPad->Modified();
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Browse
@@ -659,11 +684,11 @@ void TGraph2D::Browse(TBrowser *)
 void TGraph2D::Clear(Option_t * /*option = "" */)
 {
    if (fX) delete [] fX;
-   fX = 0;
+   fX = nullptr;
    if (fY) delete [] fY;
-   fY = 0;
+   fY = nullptr;
    if (fZ) delete [] fZ;
-   fZ = 0;
+   fZ = nullptr;
    fSize = fNpoints = 0;
    if (fHistogram && !fUserHisto) {
       delete fHistogram;
@@ -674,26 +699,23 @@ void TGraph2D::Clear(Option_t * /*option = "" */)
       fFunctions->SetBit(kInvalidObject);
       fFunctions->Delete();
       delete fFunctions;
-      fFunctions = 0;
+      fFunctions = nullptr;
    }
    if (fDirectory) {
       fDirectory->Remove(this);
-      fDirectory = 0;
+      fDirectory = nullptr;
    }
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
-/// Perform the automatic addition of the graph to the given directory
+/// Registration of the graph to the given directory.
 ///
-/// Note this function is called in place when the semantic requires
-/// this object to be added to a directory (I.e. when being read from
-/// a TKey or being Cloned)
+/// This callback is used to register a TGraph2D to the current directory when a TKey
+/// is read or an object is being cloned using TDirectory::CloneObject().
 
 void TGraph2D::DirectoryAutoAdd(TDirectory *dir)
 {
-   Bool_t addStatus = TH1::AddDirectoryStatus();
-   if (addStatus) {
+   if (ROOT::Experimental::ObjectAutoRegistrationEnabled() && TH1::AddDirectoryStatus()) {
       SetDirectory(dir);
       if (dir) {
          ResetBit(kCanDelete);
@@ -768,8 +790,7 @@ void TGraph2D::ExecuteEvent(Int_t event, Int_t px, Int_t py)
 
 TObject *TGraph2D::FindObject(const char *name) const
 {
-   if (fFunctions) return fFunctions->FindObject(name);
-   return 0;
+   return fFunctions ? fFunctions->FindObject(name) : nullptr;
 }
 
 
@@ -778,15 +799,22 @@ TObject *TGraph2D::FindObject(const char *name) const
 
 TObject *TGraph2D::FindObject(const TObject *obj) const
 {
-   if (fFunctions) return fFunctions->FindObject(obj);
-   return 0;
+   return fFunctions ? fFunctions->FindObject(obj) : nullptr;
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
-/// Fits this graph with function with name fname
-/// Predefined functions such as gaus, expo and poln are automatically
-/// created by ROOT.
+/// Fit this graph with the global function named `fname`.
+///
+/// This will retrieve the function with name `fname` from ROOT's global list of functions, and use it to
+/// fit the data in the TGraph.
+/// TF1 or TF2 functions that have been created in the same ROOT session can be accessed using `fname`.
+/// Predefined functions such as gaus, expo and poln are automatically created by ROOT.
+///
+/// Note that using a global function is not thread safe. In this case, use the overload
+/// TGraph2D::Fit(TF2 *, Option_t *, Option_t *) with a locally created function.
+///
+/// For more details about fitting a TGraph, see TGraph::Fit().
+///
 /// fname can also be a formula, accepted by the linear fitter (linear parts divided
 /// by "++" sign), for example "x++sin(y)" for fitting "[0]*x+[1]*sin(y)"
 
@@ -822,7 +850,7 @@ TFitResultPtr TGraph2D::Fit(TF2 *f2, Option_t *option, Option_t *)
    // internal graph2D fitting methods
    Foption_t fitOption;
    Option_t *goption = "";
-   ROOT::Fit::FitOptionsMake(ROOT::Fit::kGraph, option, fitOption);
+   ROOT::Fit::FitOptionsMake(ROOT::Fit::EFitObjectType::kGraph, option, fitOption);
 
    // create range and minimizer options with default values
    ROOT::Fit::DataRange range(2);
@@ -863,7 +891,7 @@ void TGraph2D::FitPanel()
 TAxis *TGraph2D::GetXaxis() const
 {
    TH1 *h = ((TGraph2D*)this)->GetHistogram("empty");
-   if (!h) return 0;
+   if (!h) return nullptr;
    return h->GetXaxis();
 }
 
@@ -874,7 +902,7 @@ TAxis *TGraph2D::GetXaxis() const
 TAxis *TGraph2D::GetYaxis() const
 {
    TH1 *h = ((TGraph2D*)this)->GetHistogram("empty");
-   if (!h) return 0;
+   if (!h) return nullptr;
    return h->GetYaxis();
 }
 
@@ -885,7 +913,7 @@ TAxis *TGraph2D::GetYaxis() const
 TAxis *TGraph2D::GetZaxis() const
 {
    TH1 *h = ((TGraph2D*)this)->GetHistogram("empty");
-   if (!h) return 0;
+   if (!h) return nullptr;
    return h->GetZaxis();
 }
 
@@ -899,7 +927,7 @@ TList *TGraph2D::GetContourList(Double_t contour)
 {
    if (fNpoints <= 0) {
       Error("GetContourList", "Empty TGraph2D");
-      return 0;
+      return nullptr;
    }
 
    if (!fHistogram) GetHistogram("empty");
@@ -962,6 +990,17 @@ void TGraph2D::CreateInterpolator(Bool_t oldInterp)
       ResetBit(kOldInterpolation);
       if (!hl->FindObject("TGraphDelaunay2D")) hl->Add(fDelaunay);
    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Return pointer to function with name.
+///
+/// Functions such as TGraph2D::Fit store the fitted function in the list of
+/// functions of this graph.
+
+TF2 *TGraph2D::GetFunction(const char *name) const
+{
+   return dynamic_cast<TF2*>(FindObject(name));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1059,6 +1098,7 @@ TH2D *TGraph2D::GetHistogram(Option_t *option)
          CreateInterpolator(oldInterp);
       }
       fHistogram->SetBit(TH1::kNoStats);
+      fHistogram->Sumw2(kFALSE);
    } else {
       hxmin = fHistogram->GetXaxis()->GetXmin();
       hymin = fHistogram->GetYaxis()->GetXmin();
@@ -1067,8 +1107,8 @@ TH2D *TGraph2D::GetHistogram(Option_t *option)
    }
 
    // Option "empty" is selected. An empty histogram is returned.
+   Double_t hzmax, hzmin;
    if (empty) {
-      Double_t hzmax, hzmin;
       if (fMinimum != -1111) {
          hzmin = fMinimum;
       } else {
@@ -1113,6 +1153,10 @@ TH2D *TGraph2D::GetHistogram(Option_t *option)
       }
    }
 
+   hzmin = GetZminE();
+   hzmax = GetZmaxE();
+   if (hzmin < fHistogram->GetMinimum()) fHistogram->SetMinimum(hzmin);
+   if (hzmax > fHistogram->GetMaximum()) fHistogram->SetMaximum(hzmax);
 
    if (fMinimum != -1111) fHistogram->SetMinimum(fMinimum);
    if (fMaximum != -1111) fHistogram->SetMaximum(fMaximum);
@@ -1304,7 +1348,7 @@ TH1 *TGraph2D::Project(Option_t *option) const
 {
    if (fNpoints <= 0) {
       Error("Project", "Empty TGraph2D");
-      return 0;
+      return nullptr;
    }
 
    TString opt = option;
@@ -1317,8 +1361,8 @@ TH1 *TGraph2D::Project(Option_t *option) const
    if (opt.Contains("yx")) pcase = 4;
 
    // Create the projection histogram
-   TH1D *h1 = 0;
-   TH2D *h2 = 0;
+   TH1D *h1 = nullptr;
+   TH2D *h2 = nullptr;
    Int_t nch = strlen(GetName()) + opt.Length() + 2;
    char *name = new char[nch];
    snprintf(name, nch, "%s_%s", GetName(), option);
@@ -1354,7 +1398,7 @@ TH1 *TGraph2D::Project(Option_t *option) const
    delete [] title;
    TH1 *h = h1;
    if (h2) h = h2;
-   if (h == 0) return 0;
+   if (h == nullptr) return nullptr;
 
    // Fill the projected histogram
    Double_t entries = 0;
@@ -1385,32 +1429,63 @@ TH1 *TGraph2D::Project(Option_t *option) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Deletes duplicated points.
+///
+/// The Delaunay triangulation algorithm assumes that each (x, y) coordinate corresponds to a unique z value,
+/// meaning duplicate (x, y) points are not allowed. Consequently, when using drawing options that rely on this
+/// algorithm (e.g., TRI, SURF, etc.), a warning may appear instructing you to remove duplicates.
+/// This function provides a way to handle such duplicates.
+///
+/// Example:
+/// ~~~ {.cpp}
+/// g->RemoveDuplicates();
+/// g->Draw("TRI1");
+/// ~~~
+
+Int_t TGraph2D::RemoveDuplicates()
+{
+   for (int i = 0; i < fNpoints; i++) {
+      double x = fX[i];
+      double y = fY[i];
+      for (int j = i + 1; j < fNpoints; j++) {
+         if (x == fX[j] && y == fY[j]) {
+            RemovePoint(j);
+            j--;
+         }
+      }
+   }
+
+   return fNpoints;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Recursively remove object from the list of functions
+
+void TGraph2D::RecursiveRemove(TObject *obj)
+{
+   if (fFunctions) {
+      if (!fFunctions->TestBit(kInvalidObject))
+         fFunctions->RecursiveRemove(obj);
+   }
+   if (fHistogram == obj)
+      fHistogram = nullptr;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
 /// Deletes point number ipoint
 
 Int_t TGraph2D::RemovePoint(Int_t ipoint)
 {
    if (ipoint < 0) return -1;
    if (ipoint >= fNpoints) return -1;
-
-   fNpoints--;
-   Double_t *newX = new Double_t[fNpoints];
-   Double_t *newY = new Double_t[fNpoints];
-   Double_t *newZ = new Double_t[fNpoints];
-   Int_t j = -1;
-   for (Int_t i = 0; i < fNpoints + 1; i++) {
-      if (i == ipoint) continue;
-      j++;
-      newX[j] = fX[i];
-      newY[j] = fY[i];
-      newZ[j] = fZ[i];
+   for (Int_t i = ipoint; i < fNpoints - 1; i++) {
+      fX[i] = fX[i+1];
+      fY[i] = fY[i+1];
+      fZ[i] = fZ[i+1];
    }
-   delete [] fX;
-   delete [] fY;
-   delete [] fZ;
-   fX = newX;
-   fY = newY;
-   fZ = newZ;
-   fSize = fNpoints;
+   fNpoints--;
    if (fHistogram) {
       delete fHistogram;
       fHistogram = nullptr;
@@ -1423,50 +1498,35 @@ Int_t TGraph2D::RemovePoint(Int_t ipoint)
 ////////////////////////////////////////////////////////////////////////////////
 /// Saves primitive as a C++ statement(s) on output stream out
 
-void TGraph2D::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
+void TGraph2D::SavePrimitive(std::ostream &out, Option_t *option)
 {
-   char quote = '"';
-   out << "   " << std::endl;
-   if (gROOT->ClassSaved(TGraph2D::Class())) {
-      out << "   ";
-   } else {
-      out << "   TGraph2D *";
-   }
+   TString arrx = SavePrimitiveVector(out, "graph2d_x", fNpoints, fX, kTRUE);
+   TString arry = SavePrimitiveVector(out, "graph2d_y", fNpoints, fY);
+   TString arrz = SavePrimitiveVector(out, "graph2d_z", fNpoints, fZ);
 
-   out << "graph2d = new TGraph2D(" << fNpoints << ");" << std::endl;
-   out << "   graph2d->SetName(" << quote << GetName() << quote << ");" << std::endl;
-   out << "   graph2d->SetTitle(" << quote << GetTitle()             << ";"
-                                           << GetXaxis()->GetTitle() << ";"
-                                           << GetYaxis()->GetTitle() << ";"
-                                           << GetZaxis()->GetTitle() << quote << ");" << std::endl;
+   SavePrimitiveConstructor(out, Class(), "graph2d",
+                            TString::Format("%d, %s.data(), %s.data(), %s.data()", fNpoints, arrx.Data(), arry.Data(), arrz.Data()), kFALSE);
 
-   if (fDirectory == 0) {
-      out << "   graph2d->SetDirectory(0);" << std::endl;
-   }
+   if (strcmp(GetName(), "Graph2D"))
+      out << "   graph2d->SetName(\"" << TString(GetName()).ReplaceSpecialCppChars() << "\");\n";
+
+   TString title = GetTitle();
+   if (fHistogram)
+      title = TString(fHistogram->GetTitle()) + ";" + fHistogram->GetXaxis()->GetTitle() + ";" +
+              fHistogram->GetYaxis()->GetTitle() + ";" + fHistogram->GetZaxis()->GetTitle();
+
+   out << "   graph2d->SetTitle(\"" << title.ReplaceSpecialCppChars() << "\");\n";
+
+   if (!fDirectory)
+      out << "   graph2d->SetDirectory(nullptr);\n";
 
    SaveFillAttributes(out, "graph2d", 0, 1001);
    SaveLineAttributes(out, "graph2d", 1, 1, 1);
    SaveMarkerAttributes(out, "graph2d", 1, 1, 1);
 
-   for (Int_t i = 0; i < fNpoints; i++) {
-      out << "   graph2d->SetPoint(" << i << "," << fX[i] << "," << fY[i] << "," << fZ[i] << ");" << std::endl;
-   }
+   TH1::SavePrimitiveFunctions(out, "graph2d", fFunctions);
 
-   // save list of functions
-   TIter next(fFunctions);
-   TObject *obj;
-   while ((obj = next())) {
-      obj->SavePrimitive(out, "nodraw");
-      out << "   graph2d->GetListOfFunctions()->Add(" << obj->GetName() << ");" << std::endl;
-      if (obj->InheritsFrom("TPaveStats")) {
-         out << "   ptstats->SetParent(graph2d->GetListOfFunctions());" << std::endl;
-      } else if (obj->InheritsFrom("TF1")) {
-         out << "   " << obj->GetName()  << "->SetParent(graph);\n";
-      }
-
-   }
-
-   out << "   graph2d->Draw(" << quote << option << quote << ");" << std::endl;
+   SavePrimitiveDraw(out, "graph2d", option);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

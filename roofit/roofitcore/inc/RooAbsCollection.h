@@ -16,19 +16,22 @@
 #ifndef ROO_ABS_COLLECTION
 #define ROO_ABS_COLLECTION
 
-#include "TObject.h"
-#include "TString.h"
-#include "RooAbsArg.h"
-#include "RooPrintable.h"
-#include "RooCmdArg.h"
-#include "RooLinkedListIter.h"
+#include <RooAbsArg.h>
+#include <RooCmdArg.h>
+#include <RooFit/UniqueId.h>
+#include <RooLinkedListIter.h>
+#include <RooPrintable.h>
 
 // The range casts are not used in this file, but if you want to work with
 // RooFit collections you also want to have static_range_cast and
 // dynamic_range_cast available without including RangeCast.h every time.
-#include "ROOT/RRangeCast.hxx"
+#include <ROOT/RRangeCast.hxx>
 
-#include "ROOT/RSpan.hxx"
+#include <ROOT/RSpan.hxx>
+
+#include <TClass.h>
+#include <TObject.h>
+#include <TString.h>
 
 #include <string>
 #include <unordered_map>
@@ -53,8 +56,6 @@ ROOT::RRangeCast<T, true, Range_t> dynamic_range_cast(Range_t &&coll)
 }
 
 
-class RooCmdArg;
-
 namespace RooFit {
 namespace Detail {
 struct HashAssistedFind;
@@ -70,7 +71,7 @@ public:
   // Constructors, assignment etc.
   RooAbsCollection();
   RooAbsCollection(const char *name);
-  virtual TObject* clone(const char* newname) const = 0 ;
+  virtual TObject* clone(const char* newname=nullptr) const = 0 ;
   virtual TObject* create(const char* newname) const = 0 ;
   TObject* Clone(const char* newname=nullptr) const override {
     return clone(newname?newname:GetName()) ;
@@ -89,6 +90,12 @@ public:
 
   // Move constructor
   RooAbsCollection(RooAbsCollection && other);
+
+  /// Returns a unique ID that is different for every instantiated
+  /// RooAbsCollection. This ID can be used to check whether two collections
+  /// are the same object, which is safer than memory address comparisons that
+  /// might result in false positives when memory is recycled.
+  RooFit::UniqueId<RooAbsCollection> const& uniqueId() const { return _uniqueId; }
 
   // Copy list and contents (and optionally 'deep' servers)
   RooAbsCollection *snapshot(bool deepCopy=true) const ;
@@ -110,10 +117,20 @@ public:
 
   // List content management
   virtual bool add(const RooAbsArg& var, bool silent=false) ;
+// The following function is not memory safe, because it takes ownership of var
+// without moving it. It is not publicly available in the memory safe
+// interfaces mode.
+#ifdef ROOFIT_MEMORY_SAFE_INTERFACES
+protected:
+#endif
   virtual bool addOwned(RooAbsArg& var, bool silent=false);
+#ifdef ROOFIT_MEMORY_SAFE_INTERFACES
+public:
+#endif
   bool addOwned(std::unique_ptr<RooAbsArg> var, bool silent=false);
   virtual RooAbsArg *addClone(const RooAbsArg& var, bool silent=false) ;
   virtual bool replace(const RooAbsArg& var1, const RooAbsArg& var2) ;
+  bool replace(RooAbsArg* var1, std::unique_ptr<RooAbsArg> var2) ;
   virtual bool remove(const RooAbsArg& var, bool silent=false, bool matchByNameOnly=false) ;
   virtual void removeAll() ;
 
@@ -134,6 +151,32 @@ public:
   bool add(const RooAbsCollection& list, bool silent=false) {
     return add(list._list.begin(), list._list.end(), silent);
   }
+   /**
+    * \brief Adds elements of a given RooAbsCollection to the container if they match the specified type.
+    *
+    * This function iterates through the elements of the provided RooAbsCollection and checks if each element
+    * matches the specified type. If any element doesn't match the type, it throws an exception.
+    *
+    * \tparam Arg_t The type to match for elements in the collection. Must inherit from RooAbsArg.
+    * \param list The RooAbsCollection containing elements to be added.
+    * \param silent Forwarded to the non-typed add function. If true,
+    *               suppresses error messages when adding elements, e.g. when
+    *               the collection is a RooArgSet and the element is already in
+    *               the set.
+    * \return Returns true if all elements could be added, else false.
+    *
+    * \throws std::invalid_argument if an element in the collection doesn't match the specified type.
+    */
+   template <class Arg_t>
+   bool addTyped(const RooAbsCollection &list, bool silent = false)
+   {
+      for (RooAbsArg *arg : list) {
+         if (!dynamic_cast<Arg_t *>(arg)) {
+            throwAddTypedException(Arg_t::Class(), arg);
+         }
+      }
+      return add(list, silent);
+   }
   virtual bool addOwned(const RooAbsCollection& list, bool silent=false);
   bool addOwned(RooAbsCollection&& list, bool silent=false);
   virtual void   addClone(const RooAbsCollection& list, bool silent=false);
@@ -173,6 +216,11 @@ public:
   /// Find object in the collection, Note: matching by object name, like the find() method
   TObject* FindObject(const TObject* obj) const override { auto arg = dynamic_cast<const RooAbsArg*>(obj); return (arg) ? find(*arg) : nullptr; }
 
+  /// Check if collection contains an argument with a specific name.
+  bool contains(const char* name) const {
+    return find(name);
+  }
+
   /// Check if collection contains an argument with the same name as var.
   /// To check for a specific instance, use containsInstance().
   bool contains(const RooAbsArg& var) const {
@@ -205,29 +253,6 @@ public:
   /// Check if this and other collection have common entries
   bool overlaps(const RooAbsCollection& otherColl) const {
     return overlaps(otherColl._list.begin(), otherColl._list.end());
-  }
-
-  /// TIterator-style iteration over contained elements.
-  /// \note These iterators are slow. Use begin() and end() or
-  /// range-based for loop instead.
-  inline TIterator* createIterator(bool dir = kIterForward) const
-  R__SUGGEST_ALTERNATIVE("begin(), end() and range-based for loops.") {
-    // Create and return an iterator over the elements in this collection
-    return new RooLinkedListIter(makeLegacyIterator(dir));
-  }
-
-  /// TIterator-style iteration over contained elements.
-  /// \note This iterator is slow. Use begin() and end() or range-based for loop instead.
-  RooLinkedListIter iterator(bool dir = kIterForward) const
-  R__SUGGEST_ALTERNATIVE("begin(), end() and range-based for loops.") {
-    return RooLinkedListIter(makeLegacyIterator(dir));
-  }
-
-  /// One-time forward iterator.
-  /// \note Use begin() and end() or range-based for loop instead.
-  RooFIter fwdIterator() const
-  R__SUGGEST_ALTERNATIVE("begin(), end() and range-based for loops.") {
-    return RooFIter(makeLegacyIterator());
   }
 
   const_iterator begin() const {
@@ -308,10 +333,10 @@ public:
   Int_t defaultPrintContents(Option_t* opt) const override ;
 
   // Latex printing methods
-  void printLatex(const RooCmdArg& arg1=RooCmdArg(), const RooCmdArg& arg2=RooCmdArg(),
-        const RooCmdArg& arg3=RooCmdArg(), const RooCmdArg& arg4=RooCmdArg(),
-        const RooCmdArg& arg5=RooCmdArg(), const RooCmdArg& arg6=RooCmdArg(),
-        const RooCmdArg& arg7=RooCmdArg(), const RooCmdArg& arg8=RooCmdArg()) const ;
+  void printLatex(const RooCmdArg& arg1={}, const RooCmdArg& arg2={},
+        const RooCmdArg& arg3={}, const RooCmdArg& arg4={},
+        const RooCmdArg& arg5={}, const RooCmdArg& arg6={},
+        const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) const ;
   void printLatex(std::ostream& ofs, Int_t ncol, const char* option="NEYU", Int_t sigDigit=1,
                   const RooLinkedList& siblingLists=RooLinkedList(), const RooCmdArg* formatCmd=nullptr) const ;
 
@@ -342,6 +367,8 @@ public:
 
   void useHashMapForFind(bool flag) const;
 
+  void removeConstantParameters();
+
   // For use in the RooArgList/Set(std::vector<RooAbsArgPtrOrDouble> const&) constructor.
   // Can be replaced with std::variant when C++17 is the minimum supported standard.
   struct RooAbsArgPtrOrDouble {
@@ -362,9 +389,6 @@ protected:
   bool _allRRV = true;   ///< All contents are RRV
 
   void deleteList() ;
-
-  // Support for snapshot method
-  bool addServerClonesToList(const RooAbsArg& var) ;
 
   inline TNamed* structureTag() { if (_structureTag==nullptr) makeStructureTag() ; return _structureTag ; }
   inline TNamed* typedStructureTag() { if (_typedStructureTag==nullptr) makeTypedStructureTag() ; return _typedStructureTag ; }
@@ -390,13 +414,18 @@ protected:
   }
 
 private:
-  std::unique_ptr<LegacyIterator_t> makeLegacyIterator (bool forward = true) const;
+
+  bool replaceImpl(const RooAbsArg& var1, const RooAbsArg& var2);
 
   using HashAssistedFind = RooFit::Detail::HashAssistedFind;
-  mutable std::unique_ptr<HashAssistedFind> _hashAssistedFind; ///<!
+  mutable HashAssistedFind *_hashAssistedFind = nullptr; ///<!
   std::size_t _sizeThresholdForMapSearch = 100; ///<!
 
   void insert(RooAbsArg*);
+
+  static void throwAddTypedException(TClass *klass, RooAbsArg *arg);
+
+  const RooFit::UniqueId<RooAbsCollection> _uniqueId; ///<!
 
   ClassDefOverride(RooAbsCollection,3) // Collection of RooAbsArg objects
 };

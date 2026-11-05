@@ -16,6 +16,7 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/BinaryFormat/Magic.h"
 #include "llvm/Support/DynamicLibrary.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 #include <fstream>
@@ -46,7 +47,7 @@ namespace cling {
     // Behaviour is to not add paths that don't exist...In an interpreted env
     // does this make sense? Path could pop into existance at any time.
     for (const char* Var : kSysLibraryEnv) {
-      if (const char* Env = ::getenv(Var)) {
+      if (const char* Env = std::getenv(Var)) {
         llvm::SmallVector<llvm::StringRef, 10> CurPaths;
         SplitPaths(Env, CurPaths, utils::kPruneNonExistant, platform::kEnvDelim);
         for (const auto& Path : CurPaths)
@@ -68,11 +69,11 @@ namespace cling {
   /// Example: substFront("@rpath/abc", "@rpath/", "/tmp") -> "/tmp/abc"
   static std::string substFront(llvm::StringRef original, llvm::StringRef pattern,
                                 llvm::StringRef replacement) {
-    if (!original.startswith_lower(pattern))
+    if (!original.starts_with_insensitive(pattern))
       return original.str();
     llvm::SmallString<512> result(replacement);
     result.append(original.drop_front(pattern.size()));
-    return result.str();
+    return result.str().str();
   }
 
   ///\returns substitution of all known linker variables in \c original
@@ -167,7 +168,7 @@ namespace cling {
         if (DEBUG > 7) {
           cling::errs() << " ... Found (in RPATH)!\n";
         }
-        return ThisPath.str();
+        return ThisPath.str().str();
       }
     }
     // m_SearchPaths
@@ -182,7 +183,7 @@ namespace cling {
         if (DEBUG > 7) {
           cling::errs() << " ... Found (in SearchPaths)!\n";
         }
-        return ThisPath.str();
+        return ThisPath.str().str();
       }
     }
     // RUNPATH
@@ -197,7 +198,7 @@ namespace cling {
         if (DEBUG > 7) {
           cling::errs() << " ... Found (in RUNPATH)!\n";
         }
-        return ThisPath.str();
+        return ThisPath.str().str();
       }
     }
 
@@ -306,7 +307,7 @@ namespace cling {
     // Subst all known linker variables ($origin, @rpath, etc.)
 #ifdef __APPLE__
     // On MacOS @rpath is preplaced by all paths in RPATH one by one.
-    if (libStem.startswith_lower("@rpath")) {
+    if (libStem.starts_with_insensitive("@rpath")) {
       for (auto& P : RPath) {
         std::string result = substFront(libStem, "@rpath", P);
         if (isSharedLibrary(result))
@@ -327,7 +328,7 @@ namespace cling {
       foundName = lookupLibMaybeAddExt(libStem, RPath, RunPath, libLoader);
       if (foundName.empty()) {
         llvm::StringRef libStemName = llvm::sys::path::filename(libStem);
-        if (!libStemName.startswith("lib")) {
+        if (!libStemName.starts_with("lib")) {
           // try with "lib" prefix:
           foundName = lookupLibMaybeAddExt(
              libStem.str().insert(libStem.size()-libStemName.size(), "lib"),
@@ -400,7 +401,7 @@ namespace cling {
     if (!isLibraryLoaded(canonicalLoadedLib))
       return;
 
-    DyLibHandle dyLibHandle = 0;
+    DyLibHandle dyLibHandle = nullptr;
     for (DyLibs::const_iterator I = m_DyLibs.begin(), E = m_DyLibs.end();
          I != E; ++I) {
       if (I->second == canonicalLoadedLib) {
@@ -443,10 +444,6 @@ namespace cling {
     }
   }
 
-  void DynamicLibraryManager::ExposeHiddenSharedLibrarySymbols(void* handle) {
-    llvm::sys::DynamicLibrary::addPermanentLibrary(const_cast<void*>(handle));
-  }
-
   bool DynamicLibraryManager::isSharedLibrary(llvm::StringRef libFullPath,
                                               bool* exists /*=0*/) {
     using namespace llvm;
@@ -484,6 +481,7 @@ namespace cling {
       (Magic == file_magic::macho_fixed_virtual_memory_shared_lib
        || Magic == file_magic::macho_dynamically_linked_shared_lib
        || Magic == file_magic::macho_dynamically_linked_shared_lib_stub
+       || Magic == file_magic::macho_bundle
        || Magic == file_magic::macho_universal_binary)
 #elif defined(LLVM_ON_UNIX)
 #ifdef __CYGWIN__

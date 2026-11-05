@@ -1,3 +1,5 @@
+/// \cond ROOFIT_INTERNAL
+
 /*****************************************************************************
  * Project: RooFit                                                           *
  * Package: RooFitCore                                                       *
@@ -19,7 +21,7 @@
 \class RooGrid
 \ingroup Roofitcore
 
-RooGrid is a utility class for RooMCIntegrator which
+Utility class for RooMCIntegrator which
 implements an adaptive multi-dimensional Monte Carlo numerical
 integration, following the VEGAS algorithm.
 **/
@@ -28,18 +30,11 @@ integration, following the VEGAS algorithm.
 #include "RooAbsFunc.h"
 #include "RooNumber.h"
 #include "RooRandom.h"
-#include "TMath.h"
 #include "RooMsgService.h"
-#include "TClass.h"
 
-#include <math.h>
-#include "Riostream.h"
+#include <cmath>
 #include <iomanip>
-
-using namespace std;
-
-ClassImp(RooGrid);
-
+#include <ostream>
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor with given function binding
@@ -49,7 +44,7 @@ RooGrid::RooGrid(const RooAbsFunc &function)
 {
   // check that the input function is valid
   if(!(_valid= function.isValid())) {
-    oocoutE(nullptr,InputArguments) << ClassName() << ": cannot initialize using an invalid function" << endl;
+    oocoutE(nullptr,InputArguments) << "RooGrid: cannot initialize using an invalid function" << std::endl;
     return;
   }
 
@@ -80,18 +75,18 @@ bool RooGrid::initialize(const RooAbsFunc &function)
   for(UInt_t index= 0; index < _dim; index++) {
     _xl[index]= function.getMinLimit(index);
     if(RooNumber::isInfinite(_xl[index])) {
-      oocoutE(nullptr,Integration) << ClassName() << ": lower limit of dimension " << index << " is infinite" << endl;
+      oocoutE(nullptr,Integration) << "RooGrid: lower limit of dimension " << index << " is infinite" << std::endl;
       return false;
     }
     _xu[index]= function.getMaxLimit(index);
     if(RooNumber::isInfinite(_xl[index])) {
-      oocoutE(nullptr,Integration) << ClassName() << ": upper limit of dimension " << index << " is infinite" << endl;
+      oocoutE(nullptr,Integration) << "RooGrid: upper limit of dimension " << index << " is infinite" << std::endl;
       return false;
     }
     double dx= _xu[index] - _xl[index];
     if(dx <= 0) {
-      oocoutE(nullptr,Integration) << ClassName() << ": bad range for dimension " << index << ": [" << _xl[index]
-                   << "," << _xu[index] << "]" << endl;
+      oocoutE(nullptr,Integration) << "RooGrid: bad range for dimension " << index << ": [" << _xl[index]
+                   << "," << _xu[index] << "]" << std::endl;
       return false;
     }
     _delx[index]= dx;
@@ -119,7 +114,9 @@ void RooGrid::resize(UInt_t bins)
 
   // loop over grid dimensions
   for (UInt_t j = 0; j < _dim; j++) {
-    double xold,xnew(0),dw(0);
+    double xold;
+    double xnew(0);
+    double dw(0);
     Int_t i = 1;
     // loop over bins in this dimension and load _xin[] with new bin edges
 
@@ -157,7 +154,7 @@ void RooGrid::resetValues()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Generate a random vector in the specified box and and store its
+/// Generate a random vector in the specified box and store its
 /// coordinates in the x[] array provided, the corresponding bin
 /// indices in the bin[] array, and the volume of this bin in vol.
 /// The box is specified by the array box[] of box integer indices
@@ -186,9 +183,10 @@ void RooGrid::generatePoint(const UInt_t box[], double x[], UInt_t bin[], double
     // store the bin in which this point lies along the j-th
     // coordinate axis and calculate its width and position y
     // in normalized bin coordinates.
-    Int_t k= (Int_t)z;
+    Int_t k= static_cast<Int_t>(z);
     bin[j] = k;
-    double y, bin_width;
+    double y;
+    double bin_width;
     if(k == 0) {
       bin_width= coord(1,j);
       y= z * bin_width;
@@ -242,49 +240,21 @@ bool RooGrid::nextBox(UInt_t box[]) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Print info about this object to the specified stream.
 
-void RooGrid::printMultiline(ostream& os, Int_t /*contents*/, bool verbose, TString indent) const
+void RooGrid::print(std::ostream& os, bool verbose, std::string const& indent) const
 {
-  os << ClassName() << ": volume = " << getVolume() << endl;
+  os << "RooGrid: volume = " << getVolume() << std::endl;
   os << indent << "  Has " << getDimension() << " dimension(s) each subdivided into "
-     << getNBins() << " bin(s) and sampled with " << _boxes << " box(es)" << endl;
-  for(UInt_t index= 0; index < getDimension(); index++) {
+     << getNBins() << " bin(s) and sampled with " << _boxes << " box(es)" << std::endl;
+  for(std::size_t index= 0; index < getDimension(); index++) {
     os << indent << "  (" << index << ") ["
-       << setw(10) << _xl[index] << "," << setw(10) << _xu[index] << "]" << endl;
+       << std::setw(10) << _xl[index] << "," << std::setw(10) << _xu[index] << "]" << std::endl;
     if(!verbose) continue;
-    for(UInt_t bin= 0; bin < _bins; bin++) {
+    for(std::size_t bin= 0; bin < _bins; bin++) {
       os << indent << "    bin-" << bin << " : x = " << coord(bin,index) << " , y = "
-    << value(bin,index) << endl;
+    << value(bin,index) << std::endl;
     }
   }
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Print name of grid object
-
-void RooGrid::printName(ostream& os) const
-{
-  os << GetName() ;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Print title of grid object
-
-void RooGrid::printTitle(ostream& os) const
-{
-  os << GetTitle() ;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Print class name of grid object
-
-void RooGrid::printClassName(ostream& os) const
-{
-  os << ClassName() ;
-}
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -334,7 +304,7 @@ void RooGrid::refine(double alpha)
       if (value(i,j) > 0) {
    oldg = grid_tot_j/value(i,j);
    /* damped change */
-   _weight[i] = TMath::Power(((oldg-1.0)/oldg/log(oldg)), alpha);
+   _weight[i] = std::pow(((oldg-1.0)/oldg/log(oldg)), alpha);
       }
       tot_weight += _weight[i];
     }
@@ -345,9 +315,8 @@ void RooGrid::refine(double alpha)
     double xnew = 0;
     double dw = 0;
 
-    UInt_t k;
     i = 1;
-    for (k = 0; k < _bins; k++) {
+    for (UInt_t k = 0; k < _bins; k++) {
       dw += _weight[k];
       xold = xnew;
       xnew = coord(k+1,j);
@@ -358,10 +327,12 @@ void RooGrid::refine(double alpha)
       }
     }
 
-    for (k = 1 ; k < _bins ; k++) {
+    for (UInt_t k = 1 ; k < _bins ; k++) {
       coord( k, j) = newCoord(k);
     }
 
     coord(_bins, j) = 1;
   }
 }
+
+/// \endcond

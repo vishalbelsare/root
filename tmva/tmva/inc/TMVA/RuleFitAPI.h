@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : RuleFitAPI                                                            *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Interface to Friedman's RuleFit method                                    *
@@ -190,7 +190,7 @@ namespace TMVA {
       ERFProgram           fRFProgram;   ///< what to run
       TString              fModelType;   ///< model type string
 
-      mutable MsgLogger    fLogger;      ///< message logger
+      mutable MsgLogger    fLogger;      ///<! message logger
 
       ClassDef(RuleFitAPI,0);        // Friedman's RuleFit method
 

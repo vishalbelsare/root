@@ -36,11 +36,11 @@ namespace ROOT {
 
          @ingroup CppFunctions
       */
-      class WrappedTF1 : public ROOT::Math::IParamGradFunction, public ROOT::Math::IGradientOneDim {
+      class WrappedTF1 : public ROOT::Math::IParamGradFunction, public ROOT::Math::IGradientFunctionOneDim {
 
       public:
 
-         typedef  ROOT::Math::IGradientOneDim     IGrad;
+         typedef  ROOT::Math::IGradientFunctionOneDim     IGrad;
          typedef  ROOT::Math::IParamGradFunction  BaseGradFunc;
          typedef  ROOT::Math::IParamGradFunction::BaseFunc BaseFunc;
 
@@ -157,7 +157,7 @@ namespace ROOT {
          bool fLinear;                 // flag for linear functions
          bool fPolynomial;             // flag for polynomial functions
          TF1 *fFunc;                   // pointer to ROOT function
-         mutable double fX[1];         //! cached vector for x value (needed for TF1::EvalPar signature)
+         mutable double fX[1];         ///<! cached vector for x value (needed for TF1::EvalPar signature)
          //std::vector<double> fParams;  //  cached vector with parameter values
 
       };

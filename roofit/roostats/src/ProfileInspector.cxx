@@ -29,12 +29,12 @@ Utility class to plot conditional MLE of nuisance parameters vs. Parameters of I
 #include "RooArgSet.h"
 #include "RooAbsPdf.h"
 #include "RooCurve.h"
+#include "RooMsgService.h"
 #include "TAxis.h"
 
-ClassImp(RooStats::ProfileInspector);
 
 using namespace RooStats;
-using namespace std;
+using std::string, std::map;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,33 +72,33 @@ TList* ProfileInspector::GetListOfProfilePlots( RooAbsData& data, RooStats::Mode
 
 
   if(!poi_set){
-    cout << "no parameters of interest" << endl;
-    return 0;
+    oocoutE(nullptr,InputArguments) << "no parameters of interest" << std::endl;
+    return nullptr;
   }
 
-  if(poi_set->getSize()!=1){
-    cout << "only one parameter of interest is supported currently" << endl;
-    return 0;
+  if(poi_set->size()!=1){
+    oocoutE(nullptr,InputArguments) << "only one parameter of interest is supported currently" << std::endl;
+    return nullptr;
   }
-  RooRealVar* poi = (RooRealVar*) poi_set->first();
+  RooRealVar* poi = static_cast<RooRealVar*>(poi_set->first());
 
 
   if(!nuis_params){
-    cout << "no nuisance parameters" << endl;
-    return 0;
+    oocoutE(nullptr,InputArguments) << "no nuisance parameters" << std::endl;
+    return nullptr;
   }
 
   if(!pdf){
-    cout << "pdf not set" << endl;
-    return 0;
+    oocoutE(nullptr,InputArguments) << "pdf not set" << std::endl;
+    return nullptr;
   }
 
-  RooAbsReal* nll = pdf->createNLL(data);
-  RooAbsReal* profile = nll->createProfile(*poi);
+  std::unique_ptr<RooAbsReal> nll{pdf->createNLL(data)};
+  std::unique_ptr<RooAbsReal> profile{nll->createProfile(*poi)};
 
   TList * list = new TList;
   Int_t curve_N=100;
-  double* curve_x=0;
+  double* curve_x=nullptr;
 //   if(curve){
 //     curve_N=curve->GetN();
 //     curve_x=curve->GetX();
@@ -140,8 +140,5 @@ TList* ProfileInspector::GetListOfProfilePlots( RooAbsData& data, RooStats::Mode
 
   delete [] curve_x;
 
-
-  delete nll;
-  delete profile;
   return list;
 }

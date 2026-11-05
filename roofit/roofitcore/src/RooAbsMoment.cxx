@@ -18,43 +18,10 @@
 \file RooAbsMoment.cxx
 \class RooAbsMoment
 \ingroup Roofitcore
-
-RooAbsMoment represents the first, second, or third order derivative
-of any RooAbsReal as calculated (numerically) by the MathCore Richardson
-derivator class.
 **/
 
-#include "Riostream.h"
-#include <math.h>
-
-#include "RooAbsMoment.h"
-#include "RooAbsReal.h"
-#include "RooAbsPdf.h"
-#include "RooErrorHandler.h"
-#include "RooArgSet.h"
-#include "RooMsgService.h"
-#include "RooRealVar.h"
-#include "RooFunctor.h"
-#include "RooFormulaVar.h"
-#include "RooGlobalFunc.h"
-#include "RooConstVar.h"
-#include "RooRealIntegral.h"
-#include <string>
-using namespace std ;
-
-
-ClassImp(RooAbsMoment);
-;
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
-
-RooAbsMoment::RooAbsMoment() : _order(1), _takeRoot(false)
-{
-}
-
-
+#include <RooAbsMoment.h>
+#include <RooRealVar.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -82,15 +49,3 @@ RooAbsMoment::RooAbsMoment(const RooAbsMoment& other, const char* name) :
   _mean("!mean","!mean",this,false,false)
 {
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooAbsMoment::~RooAbsMoment()
-{
-}
-
-
-

@@ -19,8 +19,6 @@
 #include "RooAbsReal.h"
 #include "RooRealProxy.h"
 #include "RooSetProxy.h"
-#include "RooAICRegistry.h"
-#include "RooTrace.h"
 #include "RooDataHist.h"
 
 #include <list>
@@ -38,7 +36,7 @@ public:
   RooHistFunc(const char *name, const char *title, const RooArgList& pdfObs, const RooArgList& histObs,
              std::unique_ptr<RooDataHist> dhist, int intOrder=0);
   RooHistFunc(const RooHistFunc& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new RooHistFunc(*this,newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooHistFunc(*this,newname); }
   ~RooHistFunc() override ;
 
   /// Return RooDataHist that is represented.
@@ -50,6 +48,10 @@ public:
   const RooDataHist& dataHist() const {
     return *_dataHist ;
   }
+
+  /// Replaces underlying RooDataHist with a clone, which is now owned, and returns the clone.
+  /// If the underlying RooDataHist is already owned, then that is returned instead of being cloned.
+  RooDataHist* cloneAndOwnDataHist(const char* newname="");
 
   /// Get total bin volume spanned by this hist function.
   /// In 1-d, this is e.g. the range spanned on the x-axis.
@@ -69,6 +71,8 @@ public:
 
   Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName=nullptr) const override ;
   double analyticalIntegral(Int_t code, const char* rangeName=nullptr) const override ;
+
+  bool forceAnalyticalInt(const RooAbsArg& dep) const override;
 
   /// Set use of special boundary conditions for c.d.f.s
   void setCdfBoundaries(bool flag) {
@@ -91,7 +95,9 @@ public:
 
 
   Int_t getBin() const;
-  std::vector<Int_t> getBins(RooFit::Detail::DataMap const& dataMap) const;
+  std::vector<Int_t> getBins(RooFit::EvalContext & ctx) const;
+
+  RooArgSet const &variables() const { return _depList; }
 
 protected:
 
@@ -99,7 +105,7 @@ protected:
   bool areIdentical(const RooDataHist& dh1, const RooDataHist& dh2) ;
 
   double evaluate() const override;
-  void computeBatch(cudaStream_t*, double* output, size_t size, RooFit::Detail::DataMap const&) const override;
+  void doEval(RooFit::EvalContext &) const override;
   friend class RooAbsCachedReal ;
 
   void ioStreamerPass2() override ;
@@ -108,11 +114,16 @@ protected:
   RooSetProxy _depList;                        ///< List of observables mapped onto histogram observables
   RooDataHist* _dataHist = nullptr;            ///< Unowned pointer to underlying histogram
   std::unique_ptr<RooDataHist> _ownedDataHist; ///<! Owned pointer to underlying histogram
-  mutable RooAICRegistry _codeReg;             ///<! Auxiliary class keeping tracking of analytical integration code
   Int_t _intOrder = 0;                         ///< Interpolation order
   bool _cdfBoundaries = false;                 ///< Use boundary conditions for CDFs.
   mutable double _totVolume = 0.0;             ///<! Total volume of space (product of ranges of observables)
   bool _unitNorm = false;                      ///<! Assume contents is unit normalized (for use as pdf cache)
+
+private:
+  inline void initializeOwnedDataHist(std::unique_ptr<RooDataHist> &&dataHist)
+  {
+     _ownedDataHist = std::move(dataHist);
+  }
 
   ClassDefOverride(RooHistFunc,2) // Histogram based function
 };

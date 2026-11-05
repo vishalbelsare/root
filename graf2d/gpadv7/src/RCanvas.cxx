@@ -15,21 +15,22 @@
 #include <mutex>
 #include <thread>
 #include <chrono>
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 
 #include "TList.h"
 #include "TROOT.h"
+#include "TString.h"
 
 namespace {
 
-static std::mutex &GetHeldCanvasesMutex()
+std::mutex &GetHeldCanvasesMutex()
 {
    static std::mutex sMutex;
    return sMutex;
 }
 
-static std::vector<std::shared_ptr<ROOT::Experimental::RCanvas>> &GetHeldCanvases()
+std::vector<std::shared_ptr<ROOT::Experimental::RCanvas>> &GetHeldCanvases()
 {
    static std::vector<std::shared_ptr<ROOT::Experimental::RCanvas>> sCanvases;
    return sCanvases;
@@ -76,6 +77,8 @@ bool ROOT::Experimental::RCanvas::IsModified() const
 
 void ROOT::Experimental::RCanvas::Update(bool async, CanvasCallback_t callback)
 {
+   fUpdated = true;
+
    if (fPainter)
       fPainter->CanvasUpdated(fModified, async, callback);
 }
@@ -101,7 +104,7 @@ std::shared_ptr<ROOT::Experimental::RCanvas> ROOT::Experimental::RCanvas::Create
 /// Possible values:
 ///
 ///  - `cef` Chromium Embeded Framework, local display, local communication
-///  - `qt5` Qt5 WebEngine (when running via rootqt5), local display, local communication
+///  - `qt6` Qt6 WebEngine (when running via qt6web), local display, local communication
 ///  - `browser` default system web-browser, communication via random http port from range 8800 - 9800
 ///  - `<prog>` any program name which will be started instead of default browser, like firefox or /usr/bin/opera
 ///     one could also specify $url in program name, which will be replaced with canvas URL
@@ -113,8 +116,9 @@ void ROOT::Experimental::RCanvas::Show(const std::string &where)
 {
    fShown = true;
 
-   // workaround - in jupyter do not create any painters yet
-   if (gROOT->GetWebDisplay() == "jupyter") return;
+   // Do not display canvas in batch mode
+   if (gROOT->IsWebDisplayBatch())
+      return;
 
    if (fPainter) {
       bool isany = (fPainter->NumDisplays() > 0);
@@ -148,6 +152,28 @@ std::string ROOT::Experimental::RCanvas::GetWindowAddr() const
    return "";
 }
 
+//////////////////////////////////////////////////////////////////////////
+/// Returns window URL which can be used for connection
+/// See \ref ROOT::RWebWindow::GetUrl docu for more details
+
+std::string ROOT::Experimental::RCanvas::GetWindowUrl(bool remote)
+{
+   if (fPainter)
+      return fPainter->GetWindowUrl(remote);
+
+   return "";
+}
+
+//////////////////////////////////////////////////////////////////////////
+/// Returns window handle for the canvas
+
+std::shared_ptr<ROOT::RWebWindow> ROOT::Experimental::RCanvas::GetWindow()
+{
+   if (fPainter)
+      return fPainter->GetWindow();
+
+   return nullptr;
+}
 
 //////////////////////////////////////////////////////////////////////////
 /// Hide all canvas displays
@@ -155,7 +181,7 @@ std::string ROOT::Experimental::RCanvas::GetWindowAddr() const
 void ROOT::Experimental::RCanvas::Hide()
 {
    if (fPainter)
-      delete fPainter.release();
+      fPainter = nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -174,6 +200,18 @@ bool ROOT::Experimental::RCanvas::SaveAs(const std::string &filename)
    int height = GetHeight();
 
    return fPainter->ProduceBatchOutput(filename, width > 1 ? width : 800, height > 1 ? height : 600);
+}
+
+//////////////////////////////////////////////////////////////////////////
+/// Return unique identifier for the canvas
+/// Used in iPython display
+
+std::string ROOT::Experimental::RCanvas::GetUID() const
+{
+   const void *ptr = this;
+   auto hash = TString::Hash(&ptr, sizeof(void*));
+   TString fmt = TString::Format("rcanv_%x", hash);
+   return fmt.Data();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -203,6 +241,15 @@ void ROOT::Experimental::RCanvas::Remove()
       if (held[indx].get() == this)
          held.erase(held.begin() + indx);
    }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+/// Set handle which will be cleared when connection is closed
+
+void ROOT::Experimental::RCanvas::ClearOnClose(const std::shared_ptr<void> &handle)
+{
+   if (fPainter)
+      fPainter->SetClearOnClose(handle);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -322,3 +369,4 @@ std::unique_ptr<ROOT::Experimental::RDrawableReply> ROOT::Experimental::RChangeA
 
    return nullptr; // no need for any reply
 }
+

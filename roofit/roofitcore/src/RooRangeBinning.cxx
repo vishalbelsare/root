@@ -19,22 +19,19 @@
 \class RooRangeBinning
 \ingroup Roofitcore
 
-RooRangeBinning is binning/range definition that only defines a range
+Binning/range definition that only defines a range
 but no binning. It it used to store named ranges created by
-the RooRealVar::setRange() method
+the RooRealVar::setRange() method.
 **/
 
 #include "RooNumber.h"
 #include "RooMsgService.h"
-#include "Riostream.h"
 
 #include "RooRangeBinning.h"
 
-using namespace std;
+#include <ostream>
 
-ClassImp(RooRangeBinning);
-;
-
+using std::endl;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,24 +68,13 @@ RooRangeBinning::RooRangeBinning(const RooRangeBinning& other, const char* name)
   _range[1] = other._range[1] ;
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooRangeBinning::~RooRangeBinning()
-{
-}
-
-
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Change limits of the binning to [xlo,xhi]
 
 void RooRangeBinning::setRange(double xlo, double xhi)
 {
   if (xlo>xhi) {
-    oocoutE(nullptr,InputArguments) << "RooRangeBinning::setRange: ERROR low bound > high bound" << endl ;
+    oocoutE(nullptr,InputArguments) << "RooRangeBinning::setRange: ERROR low bound > high bound" << std::endl ;
     return ;
   }
 

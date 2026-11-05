@@ -65,7 +65,7 @@ int compareResult(double v1, double v2, std::string s = "", double tol = 0.01) {
 
 double chi2FromFit(const TF1 * func )  {
    // return last chi2 obtained from Fit method function
-   R__ASSERT(TVirtualFitter::GetFitter() != 0 );
+   R__ASSERT(TVirtualFitter::GetFitter() != nullptr );
    return (TVirtualFitter::GetFitter()->Chisquare(func->GetNpar(), func->GetParameters() ) );
 }
 
@@ -797,8 +797,8 @@ int testUnBin1DFit() {
       std::cout << "Unbinned Likelihood Fit using FUMILI Failed " << std::endl;
       iret |= 1;
    }
-
-   iret |= compareResult(fitter.Result().MinFcnValue(), lref,"1D unbin FUMILI fit");
+   // Fumili multiply FCN by 2
+   iret |= compareResult(fitter.Result().MinFcnValue(), 2. * lref,"1D unbin FUMILI fit");
 
 
    return iret;

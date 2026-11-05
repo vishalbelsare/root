@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : RuleFitParams                                                         *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Implementation                                                            *
@@ -21,7 +21,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 /*! \class TMVA::RuleFitParams
@@ -153,7 +153,7 @@ void TMVA::RuleFitParams::Init()
    //
    // summarize weights
    //
-   fNEveEffPath = 0;;
+   fNEveEffPath = 0;
    for (UInt_t ie=fPathIdx1; ie<fPathIdx2+1; ie++) {
       fNEveEffPath += fRuleFit->GetTrainingEventWeight(ie);
    }
@@ -195,10 +195,10 @@ void TMVA::RuleFitParams::InitNtuple()
    fNTLinCoeff = (fNLinear>0 ? new Double_t[fNLinear] : 0);
 
    for (UInt_t i=0; i<fNRules; i++) {
-      fGDNtuple->Branch(Form("a%d",i+1),&fNTCoeff[i],Form("a%d/D",i+1));
+      fGDNtuple->Branch(TString::Format("a%d",i+1).Data(),&fNTCoeff[i],TString::Format("a%d/D",i+1).Data());
    }
    for (UInt_t i=0; i<fNLinear; i++) {
-      fGDNtuple->Branch(Form("b%d",i+1),&fNTLinCoeff[i],Form("b%d/D",i+1));
+      fGDNtuple->Branch(TString::Format("b%d",i+1).Data(),&fNTLinCoeff[i],TString::Format("b%d/D",i+1).Data());
    }
 }
 
@@ -1505,7 +1505,7 @@ void TMVA::RuleFitParams::CalcTstAverageResponse()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// calculate the average response - TODO : rewrite bad dependancy on EvaluateAverage() !
+/// calculate the average response - TODO : rewrite bad dependency on EvaluateAverage() !
 ///
 /// note that 0 offset is used
 

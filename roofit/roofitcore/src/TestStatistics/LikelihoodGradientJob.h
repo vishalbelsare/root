@@ -20,6 +20,7 @@
 #include "Minuit2/NumericalDerivator.h"
 #include "Minuit2/MnMatrix.h"
 
+#include <limits>
 #include <vector>
 
 namespace RooFit {
@@ -29,13 +30,11 @@ class LikelihoodGradientJob : public MultiProcess::Job, public LikelihoodGradien
 public:
    LikelihoodGradientJob(std::shared_ptr<RooAbsL> likelihood,
                          std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean, std::size_t N_dim,
-                         RooMinimizer *minimizer);
-   LikelihoodGradientJob *clone() const override;
-   LikelihoodGradientJob(const LikelihoodGradientJob &other);
+                         RooMinimizer *minimizer, SharedOffset offset);
 
    void fillGradient(double *grad) override;
-   void fillGradientWithPrevResult(double *grad, double *previous_grad, double *previous_g2,
-                                   double *previous_gstep) override;
+   void fillGradientWithPrevResult(double *grad, double *previous_grad, double *previous_g2, double *previous_gstep,
+                                   double fValAtX) override;
 
    void update_state() override;
 
@@ -45,10 +44,7 @@ public:
 private:
    void run_derivator(unsigned int i_component) const;
 
-   void synchronizeParameterSettings(ROOT::Math::IMultiGenFunction *function,
-                                     const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings) override;
-   // this overload must also be overridden here so that the one above doesn't trigger a overloaded-virtual warning:
-   void synchronizeParameterSettings(const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings) override;
+   void synchronizeParameterSettingsImpl(const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings) override;
 
    void synchronizeWithMinimizer(const ROOT::Math::MinimizerOptions &options) override;
    void setStrategy(int istrat);
@@ -70,7 +66,7 @@ private:
       ROOT::Minuit2::DerivatorElement grad;
    };
    void send_back_task_result_from_worker(std::size_t task) override;
-   bool receive_task_result_on_master(const zmq::message_t &message) override;
+   bool receive_task_result_on_master(const RooFit::MultiProcess::Message &message) override;
 
    void update_workers_state();
    void update_workers_state_isCalculating();
@@ -85,8 +81,13 @@ private:
    std::size_t N_tasks_ = 0;
    std::size_t N_tasks_at_workers_ = 0;
    std::vector<double> minuit_internal_x_;
+   /// Function value at minuit_internal_x_ as known by the master (NaN when unknown); broadcast
+   /// to workers so their NumericalDerivator setup can skip the central-point evaluation.
+   double fval_at_x_ = std::numeric_limits<double>::quiet_NaN();
 
    mutable bool isCalculating_ = false;
+
+   SharedOffset::OffsetVec offsets_previous_;
 };
 
 } // namespace TestStatistics

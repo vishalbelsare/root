@@ -19,23 +19,20 @@
 \class RooNumIntConfig
 \ingroup Roofitcore
 
-RooNumIntConfig holds the configuration parameters of the various
+Holds the configuration parameters of the various
 numeric integrators used by RooRealIntegral. RooRealIntegral and RooAbsPdf
 use this class in the (normalization) integral configuration interface
 **/
 
-#include "Riostream.h"
-
 #include "RooNumIntConfig.h"
 #include "RooArgSet.h"
-#include "RooAbsIntegrator.h"
 #include "RooNumIntFactory.h"
 #include "RooMsgService.h"
 
+#include <ostream>
 
-using namespace std;
+using std::endl, std::ostream;
 
-ClassImp(RooNumIntConfig)
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,7 +111,8 @@ RooNumIntConfig::RooNumIntConfig(const RooNumIntConfig& other) :
 {
   // Clone all configuration dat
   for(auto * set : static_range_cast<RooArgSet*>(other._configSets)) {
-    RooArgSet* setCopy = (RooArgSet*) set->snapshot() ;
+    RooArgSet* setCopy = new RooArgSet;
+    set->snapshot(*setCopy);
     setCopy->setName(set->GetName()) ;
    _configSets.Add(setCopy);
   }
@@ -146,7 +144,8 @@ RooNumIntConfig& RooNumIntConfig::operator=(const RooNumIntConfig& other)
 
   // Copy new integrator-specific data
   for(auto * set : static_range_cast<RooArgSet*>(other._configSets)) {
-    RooArgSet* setCopy = (RooArgSet*) set->snapshot() ;
+    RooArgSet* setCopy = new RooArgSet;
+    set->snapshot(*setCopy);
     setCopy->setName(set->GetName()) ;
    _configSets.Add(setCopy);
   }
@@ -161,34 +160,34 @@ RooNumIntConfig& RooNumIntConfig::operator=(const RooNumIntConfig& other)
 /// automatically determined from instance passed as 'proto'. The defaultConfig object is associated
 /// as the default configuration for the integrator.
 
-bool RooNumIntConfig::addConfigSection(const RooAbsIntegrator* proto, const RooArgSet& inDefaultConfig)
+bool RooNumIntConfig::addConfigSection(std::string const &name, const RooArgSet &inDefaultConfig, bool canIntegrate1D,
+                                       bool canIntegrate2D, bool canIntegrateND, bool canIntegrateOpenEnded)
 {
-  std::string name = proto->ClassName() ;
-
   // Register integrator for appropriate dimensionalities
-  if (proto->canIntegrate1D()) {
+  if (canIntegrate1D) {
     _method1D.defineType(name) ;
-    if (proto->canIntegrateOpenEnded()) {
+    if (canIntegrateOpenEnded) {
       _method1DOpen.defineType(name) ;
     }
   }
 
-  if (proto->canIntegrate2D()) {
+  if (canIntegrate2D) {
     _method2D.defineType(name) ;
-    if (proto->canIntegrateOpenEnded()) {
+    if (canIntegrateOpenEnded) {
       _method2DOpen.defineType(name) ;
     }
   }
 
-  if (proto->canIntegrateND()) {
+  if (canIntegrateND) {
     _methodND.defineType(name) ;
-    if (proto->canIntegrateOpenEnded()) {
+    if (canIntegrateOpenEnded) {
       _methodNDOpen.defineType(name) ;
     }
   }
 
   // Store default configuration parameters
-  RooArgSet* config = (RooArgSet*) inDefaultConfig.snapshot() ;
+  RooArgSet* config = new RooArgSet;
+  inDefaultConfig.snapshot(*config);
   config->setName(name.c_str());
   _configSets.Add(config) ;
 
@@ -212,9 +211,9 @@ RooArgSet& RooNumIntConfig::getConfigSection(const char* name)
 const RooArgSet& RooNumIntConfig::getConfigSection(const char* name) const
 {
   static RooArgSet dummy ;
-  RooArgSet* config = (RooArgSet*) _configSets.FindObject(name) ;
+  RooArgSet* config = static_cast<RooArgSet*>(_configSets.FindObject(name)) ;
   if (!config) {
-    oocoutE(nullptr,InputArguments) << "RooNumIntConfig::getConfigSection: ERROR: no configuration stored for integrator '" << name << "'" << endl ;
+    oocoutE(nullptr,InputArguments) << "RooNumIntConfig::getConfigSection: ERROR: no configuration stored for integrator '" << name << "'" << std::endl ;
     return dummy ;
   }
   return *config ;
@@ -223,12 +222,12 @@ const RooArgSet& RooNumIntConfig::getConfigSection(const char* name) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set absolute convergence criteria (convergence if abs(Err)<newEpsAbs)
+/// Set absolute convergence criteria (convergence if std::abs(Err)<newEpsAbs)
 
 void RooNumIntConfig::setEpsAbs(double newEpsAbs)
 {
   if (newEpsAbs<0) {
-    oocoutE(nullptr,InputArguments) << "RooNumIntConfig::setEpsAbs: ERROR: target absolute precision must be greater or equal than zero" << endl ;
+    oocoutE(nullptr,InputArguments) << "RooNumIntConfig::setEpsAbs: ERROR: target absolute precision must be greater or equal than zero" << std::endl ;
     return ;
   }
   _epsAbs = newEpsAbs ;
@@ -253,12 +252,12 @@ RooPrintable::StyleOption RooNumIntConfig::defaultPrintStyle(Option_t* opt) cons
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set relative convergence criteria (convergence if abs(Err)/abs(Int)<newEpsRel)
+/// Set relative convergence criteria (convergence if std::abs(Err)/abs(Int)<newEpsRel)
 
 void RooNumIntConfig::setEpsRel(double newEpsRel)
 {
   if (newEpsRel<0) {
-    oocoutE(nullptr,InputArguments) << "RooNumIntConfig::setEpsRel: ERROR: target absolute precision must be greater or equal than zero" << endl ;
+    oocoutE(nullptr,InputArguments) << "RooNumIntConfig::setEpsRel: ERROR: target absolute precision must be greater or equal than zero" << std::endl ;
     return ;
   }
   _epsRel = newEpsRel ;
@@ -271,53 +270,53 @@ void RooNumIntConfig::setEpsRel(double newEpsRel)
 
 void RooNumIntConfig::printMultiline(ostream &os, Int_t /*content*/, bool verbose, TString indent) const
 {
-  os << indent << "Requested precision: " << _epsAbs << " absolute, " << _epsRel << " relative" << endl << endl ;
+  os << indent << "Requested precision: " << _epsAbs << " absolute, " << _epsRel << " relative" << std::endl << std::endl ;
   if (_printEvalCounter) {
-    os << indent << "Printing of function evaluation counter for each integration enabled" << endl << endl ;
+    os << indent << "Printing of function evaluation counter for each integration enabled" << std::endl << std::endl ;
   }
 
   os << indent << "1-D integration method: " << _method1D.getCurrentLabel() ;
   if (_method1DOpen.getCurrentIndex()!=_method1D.getCurrentIndex()) {
-    os << " (" << _method1DOpen.getCurrentLabel() << " if open-ended)" << endl ;
+    os << " (" << _method1DOpen.getCurrentLabel() << " if open-ended)" << std::endl ;
   } else {
-    os << endl ;
+    os << std::endl ;
   }
   os << indent << "2-D integration method: " << _method2D.getCurrentLabel() ;
   if (_method2DOpen.getCurrentIndex()!=_method2D.getCurrentIndex()) {
-    os << " (" << _method2DOpen.getCurrentLabel() << " if open-ended)" << endl ;
+    os << " (" << _method2DOpen.getCurrentLabel() << " if open-ended)" << std::endl ;
   } else {
-    os << endl ;
+    os << std::endl ;
   }
   os << indent << "N-D integration method: " << _methodND.getCurrentLabel() ;
   if (_methodNDOpen.getCurrentIndex()!=_methodND.getCurrentIndex()) {
-    os << " (" << _methodNDOpen.getCurrentLabel() << " if open-ended)" << endl ;
+    os << " (" << _methodNDOpen.getCurrentLabel() << " if open-ended)" << std::endl ;
   } else {
-    os << endl ;
+    os << std::endl ;
   }
 
   if (verbose) {
 
-    os << endl << "Available integration methods:" << endl << endl ;
+    os << std::endl << "Available integration methods:" << std::endl << std::endl ;
     for(auto * configSet : static_range_cast<RooArgSet*>(_configSets)) {
 
-      os << indent << "*** " << configSet->GetName() << " ***" << endl ;
-      os << indent << "Capabilities: " ;
-      const RooAbsIntegrator* proto = RooNumIntFactory::instance().getProtoIntegrator(configSet->GetName()) ;
-      if (proto->canIntegrate1D()) os << "[1-D] " ;
-      if (proto->canIntegrate2D()) os << "[2-D] " ;
-      if (proto->canIntegrateND()) os << "[N-D] " ;
-      if (proto->canIntegrateOpenEnded()) os << "[OpenEnded] " ;
-      os << endl ;
+      auto const& info = *RooNumIntFactory::instance().getPluginInfo(configSet->GetName());
 
-      os << "Configuration: " << endl ;
+      os << indent << "*** " << configSet->GetName() << " ***" << std::endl ;
+      os << indent << "Capabilities: " ;
+      if (info.canIntegrate1D) os << "[1-D] " ;
+      if (info.canIntegrate2D) os << "[2-D] " ;
+      if (info.canIntegrateND) os << "[N-D] " ;
+      if (info.canIntegrateOpenEnded) os << "[OpenEnded] " ;
+      os << std::endl ;
+
+      os << "Configuration: " << std::endl ;
       configSet->printMultiline(os,kName|kValue) ;
       //configSet->writeToStream(os,false) ;
 
-      const char* depName = RooNumIntFactory::instance().getDepIntegratorName(configSet->GetName()) ;
-      if (strlen(depName)>0) {
-   os << indent << "(Depends on '" << depName << "')" << endl ;
+      if (!info.depName.empty()) {
+   os << indent << "(Depends on '" << info.depName << "')" << std::endl ;
       }
-      os << endl ;
+      os << std::endl ;
 
     }
   }

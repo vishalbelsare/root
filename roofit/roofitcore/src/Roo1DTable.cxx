@@ -19,8 +19,8 @@
 \class Roo1DTable
 \ingroup Roofitcore
 
-Roo1DTable implements a one-dimensional table. A table is the category
-equivalent of a plot. To create a table use the RooDataSet::table method.
+One-dimensional table. A table is the category
+equivalent of a plot. To create a table use the RooDataSet::table() method.
 **/
 
 #include "Roo1DTable.h"
@@ -33,10 +33,10 @@ equivalent of a plot. To create a table use the RooDataSet::table method.
 
 #include <iostream>
 #include <iomanip>
+#include <cmath>
 
-using namespace std;
+using std::ostream, std::setw, std::setfill;
 
-ClassImp(Roo1DTable);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,7 +52,7 @@ Roo1DTable::Roo1DTable(const char *name, const char *title, const RooAbsCategory
   Int_t nbin=0 ;
   TIterator* tIter = cat.typeIterator() ;
   RooCatType* type ;
-  while (((type = (RooCatType*)tIter->Next()))) {
+  while (((type = static_cast<RooCatType*>(tIter->Next())))) {
     _types.Add(new RooCatType(*type)) ;
     nbin++ ;
   }
@@ -75,7 +75,7 @@ Roo1DTable::Roo1DTable(const Roo1DTable& other) :
 
   int i;
   for (i=0 ; i<other._types.GetEntries() ; i++) {
-    _types.Add(new RooCatType(*(RooCatType*)other._types.At(i))) ;
+    _types.Add(new RooCatType(*static_cast<RooCatType*>(other._types.At(i)))) ;
   }
 
 }
@@ -107,9 +107,9 @@ void Roo1DTable::fill(RooAbsCategory& cat, double weight)
 
   //bool found(false) ;
   for (int i=0 ; i<_types.GetEntries() ; i++) {
-    RooCatType* entry = (RooCatType*) _types.At(i) ;
+    RooCatType* entry = static_cast<RooCatType*>(_types.At(i)) ;
     if (cat.getCurrentIndex()==entry->getVal()) {
-      _count[i] += weight ; ;
+      _count[i] += weight ;
       //found=true ;
       return;
     }
@@ -159,7 +159,7 @@ void Roo1DTable::printValue(ostream& os) const
 {
   os << "(" ;
   for (Int_t i=0 ; i<_types.GetEntries() ; i++) {
-    RooCatType* entry = (RooCatType*) _types.At(i) ;
+    RooCatType* entry = static_cast<RooCatType*>(_types.At(i)) ;
     if (_count[i]>0) {
       if (i>0) {
    os << "," ;
@@ -188,8 +188,8 @@ Int_t Roo1DTable::defaultPrintContents(Option_t* /*opt*/) const
 
 void Roo1DTable::printMultiline(ostream& os, Int_t /*contents*/, bool verbose, TString indent) const
 {
-  os << indent << endl ;
-  os << indent << "  Table " << GetName() << " : " << GetTitle() << endl ;
+  os << indent << std::endl ;
+  os << indent << "  Table " << GetName() << " : " << GetTitle() << std::endl ;
 
   // Determine maximum label and count width
   Int_t labelWidth(0) ;
@@ -197,7 +197,7 @@ void Roo1DTable::printMultiline(ostream& os, Int_t /*contents*/, bool verbose, T
 
   int i;
   for (i=0 ; i<_types.GetEntries() ; i++) {
-    RooCatType* entry = (RooCatType*) _types.At(i) ;
+    RooCatType* entry = static_cast<RooCatType*>(_types.At(i)) ;
 
     // Disable warning about a signed/unsigned mismatch by MSCV 6.0 by
     // using the lwidth temporary.
@@ -213,27 +213,27 @@ void Roo1DTable::printMultiline(ostream& os, Int_t /*contents*/, bool verbose, T
 
   // Header
   Int_t countWidth=((Int_t)log10(maxCount))+1 ;
-  os << indent << "  +-" << setw(labelWidth) << setfill('-') << "-" << "-+-" << setw(countWidth) << "-" << "-+" << endl ;
+  os << indent << "  +-" << setw(labelWidth) << setfill('-') << "-" << "-+-" << setw(countWidth) << "-" << "-+" << std::endl ;
   os << setfill(' ') ;
 
   // Contents
   for (i=0 ; i<_types.GetEntries() ; i++) {
-    RooCatType* entry = (RooCatType*) _types.At(i) ;
+    RooCatType* entry = static_cast<RooCatType*>(_types.At(i)) ;
     if (_count[i]>0 || verbose) {
-      os << "  | " << setw(labelWidth) << entry->GetName() << " | " << setw(countWidth) << _count[i] << " |" << endl ;
+      os << "  | " << setw(labelWidth) << entry->GetName() << " | " << setw(countWidth) << _count[i] << " |" << std::endl ;
     }
   }
 
   // Overflow field
   if (_nOverflow) {
-    os << indent << "  +-" << setw(labelWidth) << setfill('-') << "-" << "-+-" << setw(countWidth) << "-" << "-+" << endl ;
-    os << indent << "  | " << "Overflow" << " | " << setw(countWidth) << _nOverflow << " |" << endl ;
+    os << indent << "  +-" << setw(labelWidth) << setfill('-') << "-" << "-+-" << setw(countWidth) << "-" << "-+" << std::endl ;
+    os << indent << "  | " << "Overflow" << " | " << setw(countWidth) << _nOverflow << " |" << std::endl ;
   }
 
   // Footer
-  os << indent << "  +-" << setw(labelWidth) << setfill('-') << "-" << "-+-" << setw(countWidth) << "-" << "-+" << endl ;
+  os << indent << "  +-" << setw(labelWidth) << setfill('-') << "-" << "-+-" << setw(countWidth) << "-" << "-+" << std::endl ;
   os << setfill(' ') ;
-  os << indent << endl ;
+  os << indent << std::endl ;
 }
 
 
@@ -248,7 +248,7 @@ double Roo1DTable::get(const char* label, bool silent) const
   TObject* cat = _types.FindObject(label) ;
   if (!cat) {
     if (!silent) {
-      coutE(InputArguments) << "Roo1DTable::get: ERROR: no such entry: " << label << endl ;
+      coutE(InputArguments) << "Roo1DTable::get: ERROR: no such entry: " << label << std::endl ;
     }
     return 0 ;
   }
@@ -263,19 +263,19 @@ double Roo1DTable::get(const char* label, bool silent) const
 
 double Roo1DTable::get(const int index, bool silent) const
 {
-  const RooCatType* cat = 0;
+  const RooCatType* cat = nullptr;
   int i = 0;
   for (; i < _types.GetEntries(); ++i) {
      cat = static_cast<const RooCatType*>(_types[i]);
      if (cat->getVal() == index) {
         break;
      } else {
-        cat = 0;
+        cat = nullptr;
      }
   }
   if (!cat) {
     if (!silent) {
-      coutE(InputArguments) << "Roo1DTable::get: ERROR: no such entry: " << index << endl ;
+      coutE(InputArguments) << "Roo1DTable::get: ERROR: no such entry: " << index << std::endl ;
     }
     return 0 ;
   }
@@ -304,7 +304,7 @@ double Roo1DTable::getFrac(const char* label, bool silent) const
   if (_total) {
     return get(label,silent) / _total ;
   } else {
-    if (!silent) coutW(Contents) << "Roo1DTable::getFrac: WARNING table empty, returning 0" << endl ;
+    if (!silent) coutW(Contents) << "Roo1DTable::getFrac: WARNING table empty, returning 0" << std::endl ;
     return 0. ;
   }
 }
@@ -321,7 +321,7 @@ double Roo1DTable::getFrac(const int index, bool silent) const
   if (_total) {
     return get(index, silent) / _total ;
   } else {
-    if (!silent) coutW(Contents) << "Roo1DTable::getFrac: WARNING table empty, returning 0" << endl ;
+    if (!silent) coutW(Contents) << "Roo1DTable::getFrac: WARNING table empty, returning 0" << std::endl ;
     return 0. ;
   }
 }

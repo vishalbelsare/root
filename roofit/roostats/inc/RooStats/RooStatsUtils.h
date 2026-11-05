@@ -37,7 +37,7 @@ In addition the namespace contain a set of utility functions.
 
 namespace RooStats {
    struct RooStatsConfig {
-      bool useLikelihoodOffset{false}; ///< Offset the likelihood by passing RooFit::Offset to fitTo().
+      std::string useLikelihoodOffset = "none"; ///< Offset the likelihood by passing RooFit::Offset to fitTo().
       bool useEvalErrorWall{true};     ///< Use the error wall RooFit::EvalErrorWall to drive the fitter away from disallowed parameter values.
    };
 
@@ -57,7 +57,7 @@ namespace RooStats {
 
    /// Compute the Asimov Median significance for a Poisson process
    /// with s = expected number of signal events, b = expected number of background events
-   /// and optionally sigma_b = expected uncertainty of backgorund events
+   /// and optionally sigma_b = expected uncertainty of background events
    double AsimovSignificance(double s, double b, double sigma_b = 0.0 );
 
    inline void SetParameters(const RooArgSet* desiredVals, RooArgSet* paramsToChange){
@@ -65,25 +65,17 @@ namespace RooStats {
    }
 
    inline void RemoveConstantParameters(RooArgSet* set){
-      RooArgSet constSet;
-      for (auto const *myarg : static_range_cast<RooRealVar *>(*set)) {
-         if(myarg->isConstant()) constSet.add(*myarg);
-      }
-      set->remove(constSet);
+      set->removeConstantParameters();
    }
 
    inline void RemoveConstantParameters(RooArgList& set){
-      RooArgSet constSet;
-      for (auto const *myarg : static_range_cast<RooRealVar *>(set)) {
-         if(myarg->isConstant()) constSet.add(*myarg);
-      }
-      set.remove(constSet);
+      set.removeConstantParameters();
    }
 
    /// utility function to set all variable constant in a collection
    /// (from G. Petrucciani)
    inline bool SetAllConstant(const RooAbsCollection &coll, bool constant = true) {
-      bool changed = false; 
+      bool changed = false;
       for (auto *v : dynamic_range_cast<RooRealVar *>(coll)) {
          if (v && (v->isConstant() != constant)) {
             changed = true;
@@ -106,9 +98,10 @@ namespace RooStats {
       }
       else {
          // exclude constants variables
-         for (auto *var : static_range_cast<RooRealVar *>(set))
+         for (auto *var : static_range_cast<RooRealVar *>(set)) {
             if (!var->isConstant() )
                var->randomize();
+         }
       }
 
    }
@@ -130,16 +123,35 @@ namespace RooStats {
    /// useful function to print in one line the content of a set with their values
    void PrintListContent(const RooArgList & l, std::ostream & os = std::cout);
 
-   /// function to set a global flag in RooStats to use NLL offset when performing nll computations
-   /// Note that not all ROoStats tools implement this capabilities
-   void UseNLLOffset(bool on);
+   /// Use an offset in NLL calculations.
+   /// \deprecated Use SetNLLOffsetMode().
+   inline void UseNLLOffset(bool on) {
+      GetGlobalRooStatsConfig().useLikelihoodOffset = on ? "initial" : "none";
+   }
 
-   /// function returning if the flag to check if the flag to use  NLLOffset is set
-   bool IsNLLOffset();
+   /// Function returning if the flag to check if the flag to use  NLLOffset is
+   /// set.
+   /// \deprecated Use NLLOffsetMode().
+   inline bool IsNLLOffset() {
+      return GetGlobalRooStatsConfig().useLikelihoodOffset == "initial";
+   }
+
+   /// Function to set a global flag in RooStats to use NLL offset when
+   /// performing nll computations.
+   /// \note Not all RooStats tools implement this capabilities.
+   inline void SetNLLOffsetMode(std::string const& mode) {
+      GetGlobalRooStatsConfig().useLikelihoodOffset = mode;
+   }
+
+   /// Test what offsetting mode RooStats should use by default.
+   inline std::string const &NLLOffsetMode() {
+      return GetGlobalRooStatsConfig().useLikelihoodOffset;
+   }
+
 
    /// function that clones a workspace, copying all needed components and discarding all others
-   RooWorkspace* MakeCleanWorkspace(RooWorkspace *oldWS, const char *newName, bool copySnapshots,
-                                    const char *mcname, const char *newmcname);
+   RooWorkspace* MakeReducedWorkspace(RooWorkspace *oldWS, const char *newName, bool copySnapshots,
+                                    const char *mcname, const char *newmcname, bool copyData=true);
 
 }
 

@@ -45,11 +45,7 @@ class TSeqCollection;
 
 R__EXTERN TVirtualMutex *gInterpreterMutex;
 
-#if defined (_REENTRANT) || defined (WIN32)
 # define R__LOCKGUARD_CLING(mutex)  ::ROOT::Internal::InterpreterMutexRegistrationRAII _R__UNIQUE_(R__guard)(mutex); { }
-#else
-# define R__LOCKGUARD_CLING(mutex)  (void)(mutex); { }
-#endif
 
 namespace ROOT {
 namespace Internal {
@@ -161,7 +157,7 @@ public:
    virtual Int_t    GenerateDictionary(const char *classes, const char *includes = nullptr, const char *options = nullptr) = 0;
    virtual char    *GetPrompt() = 0;
    virtual const char *GetSharedLibs() = 0;
-   virtual const char *GetClassSharedLibs(const char *cls) = 0;
+   virtual const char *GetClassSharedLibs(const char *cls, bool skipCore = true) = 0;
    virtual const char *GetSharedLibDeps(const char *lib, bool tryDyld = false) = 0;
    virtual const char *GetIncludePath() = 0;
    virtual const char *GetSTLIncludePath() const { return ""; }
@@ -171,6 +167,7 @@ public:
    virtual void     InspectMembers(TMemberInspector&, const void* obj, const TClass* cl, Bool_t isTransient) = 0;
    virtual Bool_t   IsLoaded(const char *filename) const = 0;
    virtual Bool_t   IsLibraryLoaded(const char *libname) const = 0;
+   virtual bool     IsValid() const = 0;
    virtual Bool_t   HasPCMForLibrary(const char *libname) const = 0;
    virtual Int_t    Load(const char *filenam, Bool_t system = kFALSE) = 0;
    virtual void     LoadMacro(const char *filename, EErrorCode *error = nullptr) = 0;
@@ -197,6 +194,7 @@ public:
    virtual void     AddAvailableIndentifiers(TSeqCollection&) = 0;
    virtual void     RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict) = 0;
    virtual void     UnRegisterTClassUpdate(const TClass *oldcl) = 0;
+   virtual void     RegisterAutoLoadedLibrary(const char *libname) = 0;
    virtual Int_t    SetClassSharedLibs(const char *cls, const char *libs) = 0;
    virtual void     SetGetline(const char*(*getlineFunc)(const char* prompt),
                                void (*histaddFunc)(const char* line)) = 0;
@@ -212,14 +210,20 @@ public:
    virtual void     UpdateListOfGlobals() = 0;
    virtual void     UpdateListOfGlobalFunctions() = 0;
    virtual void     UpdateListOfTypes() = 0;
-   virtual void     SetClassInfo(TClass *cl, Bool_t reload = kFALSE) = 0;
+   virtual void     SetClassInfo(TClass *cl,
+                                 Bool_t reload = kFALSE,
+                                 Bool_t silent = kFALSE,
+                                 ClassInfo_t *classInfo = nullptr) = 0;
 
    enum ECheckClassInfo {
       kUnknown = 0, // backward compatible with false
       kKnown = 1,
       kWithClassDefInline = 2
    };
-   virtual ECheckClassInfo CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamespaceOnly = kFALSE) = 0;
+   virtual ECheckClassInfo CheckClassInfo(const char *name,
+                                          Bool_t autoload,
+                                          Bool_t isClassOrNamespaceOnly = kFALSE,
+                                          ClassInfo_t **classInfo = nullptr) = 0;
 
    virtual Bool_t   CheckClassTemplate(const char *name) = 0;
    virtual Longptr_t Calc(const char *line, EErrorCode* error = nullptr) = 0;
@@ -432,6 +436,7 @@ public:
    virtual void  *ClassInfo_New(ClassInfo_t * /* info */, void * /* arena */) const {return nullptr;}
    virtual Long_t ClassInfo_Property(ClassInfo_t * /* info */) const {return 0;}
    virtual int    ClassInfo_Size(ClassInfo_t * /* info */) const {return 0;}
+   virtual size_t ClassInfo_AlignOf(ClassInfo_t * /* info */) const {return 0;}
    virtual Longptr_t ClassInfo_Tagnum(ClassInfo_t * /* info */) const {return 0;}
    virtual const char *ClassInfo_FileName(ClassInfo_t * /* info */) const {return nullptr;}
    virtual const char *ClassInfo_FullName(ClassInfo_t * /* info */) const {return nullptr;}
@@ -521,6 +526,7 @@ public:
    virtual const char *MethodArgInfo_Name(MethodArgInfo_t * /* marginfo */) const {return nullptr;}
    virtual const char *MethodArgInfo_TypeName(MethodArgInfo_t * /* marginfo */) const {return nullptr;}
    virtual std::string MethodArgInfo_TypeNormalizedName(MethodArgInfo_t * /* marginfo */) const = 0;
+   virtual TypeInfo_t *MethodArgInfo_TypeInfo(MethodArgInfo_t * /* marginfo */) const {return nullptr;}
 
 
    // TypeInfo interface
@@ -535,6 +541,7 @@ public:
    virtual int    TypeInfo_RefType(TypeInfo_t * /* tinfo */) const {return 0;}
    virtual int    TypeInfo_Size(TypeInfo_t * /* tinfo */) const {return 0;}
    virtual const char *TypeInfo_TrueName(TypeInfo_t * /* tinfo */) const {return nullptr;}
+   virtual void  *TypeInfo_QualTypePtr(TypeInfo_t * /* tinfo */) const {return nullptr;}
 
 
    // TypedefInfo interface
@@ -551,6 +558,15 @@ public:
    virtual const char *TypedefInfo_Name(TypedefInfo_t * /* tinfo */) const {return nullptr;}
    virtual const char *TypedefInfo_Title(TypedefInfo_t * /* tinfo */) const {return nullptr;}
 
+   // QualType Opaque Ptr interface
+   virtual Bool_t IsSameType(const void * /* QualTypePtr1 */, const void * /* QualTypePtr2 */) const {return 0;}
+   virtual Bool_t IsIntegerType(const void * /* QualTypePtr */) const {return 0;}
+   virtual Bool_t IsSignedIntegerType(const void * /* QualTypePtr */) const {return 0;}
+   virtual Bool_t IsUnsignedIntegerType(const void * /* QualTypePtr */) const {return 0;}
+   virtual Bool_t IsFloatingType(const void * /* QualTypePtr */) const {return 0;}
+   virtual Bool_t IsPointerType(const void * /* QualTypePtr */) const {return 0;}
+   virtual Bool_t IsVoidPointerType(const void * /* QualTypePtr */) const {return 0;}
+
    static TInterpreter *Instance();
 
    ClassDefOverride(TInterpreter,0)  //ABC defining interface to generic interpreter
@@ -560,10 +576,8 @@ public:
 typedef TInterpreter *CreateInterpreter_t(void* shlibHandle, const char* argv[]);
 typedef void *DestroyInterpreter_t(TInterpreter*);
 
-#ifndef __CINT__
 #define gInterpreter (TInterpreter::Instance())
 R__EXTERN TInterpreter* gCling;
-#endif
 
 inline ROOT::Internal::InterpreterMutexRegistrationRAII::InterpreterMutexRegistrationRAII(TVirtualMutex* mutex):
    fLockGuard(mutex)

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : GeneticAlgorithm                                                      *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Base definition for genetic algorithm                                     *
@@ -19,7 +19,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_GeneticAlgorithm
@@ -98,7 +98,7 @@ namespace TMVA {
       GeneticPopulation fPopulation;      // contains and controls the "individual"
       Double_t fBestFitness;
 
-      mutable MsgLogger* fLogger;         // message logger
+      mutable MsgLogger* fLogger;         ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
 
       ClassDef(GeneticAlgorithm, 0);  // Genetic algorithm controller

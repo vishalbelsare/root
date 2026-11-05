@@ -1,6 +1,5 @@
 // Author: Sergey Linev <S.Linev@gsi.de>
 // Date: 2019-10-14
-// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2020, Rene Brun and Fons Rademakers.               *
@@ -29,16 +28,16 @@
 #include <algorithm>
 #include <regex>
 
-using namespace ROOT::Experimental;
+using namespace ROOT;
 using namespace std::string_literals;
 
-ROOT::Experimental::RLogChannel &ROOT::Experimental::BrowserLog() {
-   static RLogChannel sLog("ROOT.Browser");
+ROOT::RLogChannel &ROOT::BrowserLog()
+{
+   static ROOT::RLogChannel sLog("ROOT.Browser");
    return sLog;
 }
 
 namespace ROOT {
-namespace Experimental {
 
 class RBrowserDataCleanup : public TObject {
 
@@ -52,11 +51,11 @@ public:
       fData.RemoveFromCache(obj);
    }
 };
-}
-}
+
+} // namespace ROOT
 
 
-/** \class ROOT::Experimental::RBrowserData
+/** \class ROOT::RBrowserData
 \ingroup rbrowser
 \brief Way to browse (hopefully) everything in %ROOT
 */
@@ -214,7 +213,7 @@ bool RBrowserData::ProcessBrowserRequest(const RBrowserRequest &request, RBrowse
        (fLastSortReverse != request.reverse)) {
       fLastSortedItems.resize(fLastItems.size(), nullptr);
       int id = 0;
-      if (request.sort.empty()) {
+      if (request.sort.empty() || (request.sort == "none")) {
          // no sorting, just move all folders up
          for (auto &item : fLastItems)
             if (item->IsFolder())
@@ -268,11 +267,6 @@ bool RBrowserData::ProcessBrowserRequest(const RBrowserRequest &request, RBrowse
 
 std::string RBrowserData::ProcessRequest(const RBrowserRequest &request)
 {
-   if (request.lastcycle < 0)
-      gEnv->SetValue("WebGui.LastCycle", "no");
-   else if (request.lastcycle > 0)
-      gEnv->SetValue("WebGui.LastCycle", "yes");
-
    RBrowserReply reply;
 
    reply.path = request.path;

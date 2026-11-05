@@ -33,17 +33,17 @@
 
 // Routines used for processing HTML makeup for forms.
 
-#include <cstring>
-#include <cstdlib>
-#include <cstdarg>
-
 #include "TGHtml.h"
 #include "TGButton.h"
 #include "TGTextEntry.h"
 #include "TGListBox.h"
 #include "TGTextEdit.h"
 #include "TGComboBox.h"
-#include "snprintf.h"
+
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Unmap any input control that is currently mapped.
@@ -281,7 +281,7 @@ class TGHtmlLBEntry : public TGTextLBEntry {
 public:
    TGHtmlLBEntry(const TGWindow *p, TGString *s, TGString *val, int ID) :
       TGTextLBEntry(p, s, ID) { fVal = val; }
-   virtual ~TGHtmlLBEntry() { if (fVal) delete fVal; }
+   ~TGHtmlLBEntry() override { if (fVal) delete fVal; }
 
    const char *GetValue() const { return fVal ? fVal->GetString() : 0; }
 
@@ -473,7 +473,7 @@ int TGHtml::ControlSize(TGHtmlInput *pElem)
             for (int i=0;i<lb->GetNumberOfEntries();++i) {
                TGHtmlLBEntry *te = (TGHtmlLBEntry *)lb->GetEntry(i);
                if (te && te->GetText())
-                  width = TMath::Max(width, te->GetDefaultWidth());
+                  width = std::max(width, te->GetDefaultWidth());
             }
             height = lb->GetItemVsize() ? lb->GetItemVsize()+4 : 22;
             cb->Resize(width > 0 ? width+30 : 200,
@@ -488,7 +488,7 @@ int TGHtml::ControlSize(TGHtmlInput *pElem)
             for (int i=0;i<lb->GetNumberOfEntries();++i) {
                TGHtmlLBEntry *te = (TGHtmlLBEntry *)lb->GetEntry(i);
                if (te && te->GetText())
-                  width = TMath::Max(width, te->GetDefaultWidth());
+                  width = std::max(width, te->GetDefaultWidth());
             }
             height = lb->GetItemVsize() ? lb->GetItemVsize() : 22;
             lb->Resize(width > 0 ? width+30 : 200, height * size);

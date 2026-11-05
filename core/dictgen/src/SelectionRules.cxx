@@ -430,14 +430,11 @@ bool SelectionRules::GetDeclName(const clang::Decl* D, std::string& name, std::s
       return false;
 
    // the identifier is NULL for some special methods like constructors, destructors and operators
-   if (N->getIdentifier()) {
+   if (N->getIdentifier() || N->isCXXClassMember()) {
       name = N->getNameAsString();
+      llvm::raw_string_ostream stream(qual_name);
+      N->getNameForDiagnostic(stream,N->getASTContext().getPrintingPolicy(),true);
    }
-   else if (N->isCXXClassMember()) { // for constructors, destructors, operator=, etc. methods
-      name =  N->getNameAsString(); // we use this (unefficient) method to Get the name in that case
-   }
-   llvm::raw_string_ostream stream(qual_name);
-   N->getNameForDiagnostic(stream,N->getASTContext().getPrintingPolicy(),true);
    return true;
 }
 
@@ -1030,7 +1027,7 @@ const BaseSelectionRule *SelectionRules::IsLinkdefEnumSelected(const clang::Enum
    }
 }
 
-// In rootcint we could select and deselect methods independantly of the class/struct/union rules
+// In rootcint we could select and deselect methods independently of the class/struct/union rules
 // That's why we first have to check the explicit rules for the functions - to see if there
 // is rule corresponding to our method.
 // Which is more - if we have (and we can have) a pattern for the parent class, than a pattern for the

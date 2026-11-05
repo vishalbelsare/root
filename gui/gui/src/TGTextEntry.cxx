@@ -238,7 +238,6 @@ Bool_t TBlinkTimer::Notify()
 }
 
 
-ClassImp(TGTextEntry);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a text entry widget. It will adopt the TGTextBuffer object
@@ -538,8 +537,8 @@ Int_t TGTextEntry::GetCharacterIndex(Int_t xcoord)
    ix = down;
 
    // safety check...
-   ix = TMath::Max(ix, 0);
-   ix = TMath::Min(ix, len); // len-1
+   ix = std::max(ix, 0);
+   ix = std::min(ix, len); // len-1
 
    return ix;
 }
@@ -797,7 +796,7 @@ void TGTextEntry::Insert(const char *newText)
    }
 
    if (fInsertMode == kReplace) fText->RemoveText(cp,t.Length());
-   Int_t ncp = TMath::Min(cp+t.Length(), GetMaxLength());
+   Int_t ncp = std::min(cp+t.Length(), GetMaxLength());
    fText->AddText(cp, t.Data());
    Int_t dlen = fText->GetTextLength()-GetMaxLength();
    if (dlen>0) fText->RemoveText(GetMaxLength(),dlen); // truncate
@@ -1128,10 +1127,10 @@ void TGTextEntry::DoRedraw()
    if (fSelectionOn) {
       int xs, ws, ixs, iws;
 
-      xs  = TMath::Min(fStartX, fEndX);
-      ws  = TMath::Abs(fEndX - fStartX);
-      ixs = TMath::Min(fStartIX, fEndIX);
-      iws = TMath::Abs(fEndIX - fStartIX);
+      xs  = std::min(fStartX, fEndX);
+      ws  = std::abs(fEndX - fStartX);
+      ixs = std::min(fStartIX, fEndIX);
+      iws = std::abs(fEndIX - fStartIX);
 
       gVirtualX->FillRectangle(fId, fSelbackGC, xs, y, ws, h + 1);
 
@@ -1674,7 +1673,7 @@ void TGTextEntry::SetFocus()
 
 void TGTextEntry::InsertText(const char *text, Int_t pos)
 {
-   Int_t position = TMath::Min((Int_t)fText->GetTextLength(), pos);
+   Int_t position = std::min((Int_t)fText->GetTextLength(), pos);
    TString newText(GetText());
    newText.Insert(position, text);
    SetText(newText.Data());
@@ -1698,8 +1697,8 @@ void TGTextEntry::AppendText(const char *text)
 
 void TGTextEntry::RemoveText(Int_t start, Int_t end)
 {
-   Int_t pos = TMath::Min(start, end);
-   Int_t len = TMath::Abs(end-start);
+   Int_t pos = std::min(start, end);
+   Int_t len = std::abs(end-start);
    TString newText(GetText());
    newText.Remove(pos, len);
    SetText(newText.Data());
@@ -1826,17 +1825,15 @@ const TGGC &TGTextEntry::GetDefaultSelectedBackgroundGC()
 
 void TGTextEntry::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   char quote = '"';
-
    // font + GC
-   option = GetName()+5;         // unique digit id of the name
+   option = GetName() + 5; // unique digit id of the name
    TString parGC, parFont;
    // coverity[returned_null]
    // coverity[dereference]
-   parFont.Form("%s::GetDefaultFontStruct()",IsA()->GetName());
+   parFont.Form("%s::GetDefaultFontStruct()", IsA()->GetName());
    // coverity[returned_null]
    // coverity[dereference]
-   parGC.Form("%s::GetDefaultGC()()",IsA()->GetName());
+   parGC.Form("%s::GetDefaultGC()()", IsA()->GetName());
 
    if ((GetDefaultFontStruct() != fFontStruct) || (GetDefaultGC()() != fNormGC.GetGC())) {
       TGFont *ufont = gClient->GetResourcePool()->GetFontPool()->FindFont(fFontStruct);
@@ -1852,68 +1849,41 @@ void TGTextEntry::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
       }
    }
 
-   if (fBackground != GetWhitePixel()) SaveUserColor(out, option);
+   // store options and color if differ from defauls
+   TString extra_args = SaveCtorArgs(out, kSunkenFrame | kDoubleBorder, kTRUE);
 
-   out << "   TGTextEntry *";
-   out << GetName() << " = new TGTextEntry(" << fParent->GetName()
-       << ", new TGTextBuffer(" << GetBuffer()->GetBufferLength() << ")";
+   out << "   TGTextEntry *" << GetName() << " = new TGTextEntry(" << fParent->GetName() << ", new TGTextBuffer("
+       << GetBuffer()->GetBufferLength() << ")";
+   if (!extra_args.IsNull() || (fFontStruct != GetDefaultFontStruct()))
+      out << ", " << fWidgetId << ", " << parGC << ", " << parFont << extra_args;
+   else if (fNormGC() != GetDefaultGC()())
+      out << ", " << fWidgetId << ", " << parGC;
+   else if (fWidgetId != -1)
+      out << ", " << fWidgetId;
+   out << ");\n";
 
-   if (fBackground == GetWhitePixel()) {
-      if (GetOptions() == (kSunkenFrame | kDoubleBorder)) {
-         if (fFontStruct == GetDefaultFontStruct()) {
-            if (fNormGC() == GetDefaultGC()()) {
-               if (fWidgetId == -1) {
-                  out <<");" << std::endl;
-               } else {
-                  out << "," << fWidgetId << ");" << std::endl;
-               }
-            } else {
-               out << "," << fWidgetId << "," << parGC.Data() << ");" << std::endl;
-            }
-         } else {
-            out << "," << fWidgetId << "," << parGC.Data() << "," << parFont.Data()
-                <<");" << std::endl;
-         }
-      } else {
-         out << "," << fWidgetId << "," << parGC.Data() << "," << parFont.Data()
-             << "," << GetOptionString() << ");" << std::endl;
-      }
-   } else {
-      out << "," << fWidgetId << "," << parGC.Data() << "," << parFont.Data()
-          << "," << GetOptionString() << ",ucolor);" << std::endl;
-   }
    if (option && strstr(option, "keep_names"))
-      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");" << std::endl;
+      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");\n";
 
-   out << "   " << GetName() << "->SetMaxLength(" << GetMaxLength() << ");" << std::endl;
+   out << "   " << GetName() << "->SetMaxLength(" << GetMaxLength() << ");\n";
 
    out << "   " << GetName() << "->SetAlignment(";
 
    if (fAlignment == kTextLeft)
-      out << "kTextLeft);"    << std::endl;
+      out << "kTextLeft);\n";
+   else if (fAlignment == kTextRight)
+      out << "kTextRight);\n";
+   else /* if (fAlignment == kTextCenterX) */
+      out << "kTextCenterX);\n";
 
-   if (fAlignment == kTextRight)
-      out << "kTextRight);"   << std::endl;
+   out << "   " << GetName() << "->SetText(\"" << TString(GetText()).ReplaceSpecialCppChars() << "\");\n";
 
-   if (fAlignment == kTextCenterX)
-      out << "kTextCenterX);" << std::endl;
+   out << "   " << GetName() << "->Resize(" << GetWidth() << "," << GetName() << "->GetDefaultHeight());\n";
 
-   out << "   " << GetName() << "->SetText(" << quote << GetText() << quote
-       << ");" << std::endl;
+   if ((fDefWidth > 0) || (fDefHeight > 0))
+      out << "   " << GetName() << "->SetDefaultSize(" << fDefWidth << "," << fDefHeight << ");\n";
 
-   out << "   " << GetName() << "->Resize("<< GetWidth() << "," << GetName()
-       << "->GetDefaultHeight());" << std::endl;
-
-   if ((fDefWidth > 0) || (fDefHeight > 0)) {
-      out << "   " << GetName() << "->SetDefaultSize(";
-      out << fDefWidth << "," << fDefHeight << ");" << std::endl;
-   }
-
-   if (fTip) {
-      TString tiptext = fTip->GetText()->GetString();
-      tiptext.ReplaceAll("\n", "\\n");
-      out << "   ";
-      out << GetName() << "->SetToolTipText(" << quote
-          << tiptext << quote << ");"  << std::endl;
-   }
+   if (fTip)
+      out << "   " << GetName() << "->SetToolTipText(\""
+          << TString(fTip->GetText()->GetString()).ReplaceSpecialCppChars() << "\");\n";
 }

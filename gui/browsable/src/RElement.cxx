@@ -14,11 +14,14 @@
 
 #include "TBufferJSON.h"
 
-using namespace ROOT::Experimental::Browsable;
+#include <algorithm>
+
+using namespace ROOT::Browsable;
 using namespace std::string_literals;
 
-ROOT::Experimental::RLogChannel &ROOT::Experimental::BrowsableLog() {
-   static RLogChannel sLog("ROOT.Browsable");
+ROOT::RLogChannel &ROOT::BrowsableLog()
+{
+   static ROOT::RLogChannel sLog("ROOT.Browsable");
    return sLog;
 }
 
@@ -182,4 +185,22 @@ int RElement::ExtractItemIndex(std::string &name)
    int indx = std::stoi(name.substr(p1+3,p2-p1-3));
    name.resize(p1);
    return indx;
+}
+
+bool gRElementLastKeyCycle = false;
+
+/////////////////////////////////////////////////////////////////////
+/// Is only last cycle from the list of keys is shown
+
+bool RElement::IsLastKeyCycle()
+{
+   return gRElementLastKeyCycle;
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Set flag to show only last cycle from the list of keys
+
+void RElement::SetLastKeyCycle(bool on)
+{
+   gRElementLastKeyCycle = on;
 }

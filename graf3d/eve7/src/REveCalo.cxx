@@ -42,7 +42,7 @@ REveCaloViz::REveCaloViz(REveCaloData* data, const char* n, const char* t) :
    REveElement(),
    REveProjectable(),
 
-   fData(0),
+   fData(nullptr),
    fCellIdCacheOK(kFALSE),
 
    fEtaMin(-10),
@@ -64,7 +64,7 @@ REveCaloViz::REveCaloViz(REveCaloData* data, const char* n, const char* t) :
    fMaxValAbs(100),
 
    fValueIsColor(kFALSE),
-   fPalette(0)
+   fPalette(nullptr)
 {
    // Constructor.
 
@@ -379,7 +379,7 @@ Float_t REveCaloViz::GetValToHeight() const
 
 REveRGBAPalette* REveCaloViz::AssertPalette()
 {
-   if (fPalette == 0) {
+   if (fPalette == nullptr) {
       fPalette = new REveRGBAPalette;
       fPalette->SetDefaultColor((Color_t)4);
 
@@ -702,7 +702,7 @@ void REveCalo3D::BuildCellIdCache()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Fill bounding-box information of the base-class TAttBBox (virtual method).
+/// Fill the bounding box (virtual from REveElement).
 /// If member 'REveFrameBox* fFrame' is set, frame's corners are used as bbox.
 
 void REveCalo3D::ComputeBBox()
@@ -710,13 +710,10 @@ void REveCalo3D::ComputeBBox()
    BBoxInit();
 
    Float_t th = (fData) ? GetValToHeight() * fData->GetMaxVal(fPlotEt) : 0;
+   Float_t r = fBarrelRadius + th;
 
-   fBBox[0] = -fBarrelRadius - th;
-   fBBox[1] =  fBarrelRadius + th;
-   fBBox[2] =  fBBox[0];
-   fBBox[3] =  fBBox[1];
-   fBBox[4] =  fEndCapPosB - th;
-   fBBox[5] =  fEndCapPosF + th;
+   fBBoxMin.Set(-r, -r, fEndCapPosB - th);
+   fBBoxMax.Set(r, r, fEndCapPosF + th);
 }
 
 /** \class REveCalo2D
@@ -741,7 +738,7 @@ void REveCalo3D::NewTowerPicked(Int_t tower, Int_t slice, Int_t selectionId, boo
 /// Constructor.
 
 REveCalo2D::REveCalo2D(const char* n, const char* t):
-   REveCaloViz(0, n, t),
+   REveCaloViz(nullptr, n, t),
    REveProjected(),
    fOldProjectionType(REveProjection::kPT_Unknown),
    fMaxESumBin( 0),
@@ -824,7 +821,7 @@ void REveCalo2D::BuildCellIdCache()
       }
    }
    fCellLists.clear();
-   fCellLists.push_back(0);
+   fCellLists.push_back(nullptr);
 
    REveProjection::EPType_e pt = fManager->GetProjection()->GetType();
    REveCaloData::vCellId_t* clv; // ids per phi bin in r-phi projection else ids per eta bins in rho-z projection
@@ -840,14 +837,14 @@ void REveCalo2D::BuildCellIdCache()
       min = GetPhiMin() - fData->GetEps();
       max = GetPhiMax() + fData->GetEps();
       for (Int_t ibin = 1; ibin <= nBins; ++ibin) {
-         clv = 0;
+         clv = nullptr;
          if ( REveUtil::IsU1IntervalOverlappingByMinMax
               (min, max, axis->GetBinLowEdge(ibin), axis->GetBinUpEdge(ibin)))
          {
             clv = new REveCaloData::vCellId_t();
             fData->GetCellList(GetEta(), GetEtaRng(), axis->GetBinCenter(ibin), axis->GetBinWidth(ibin), *clv);
-            if (!clv->size()) {
-               delete clv; clv = 0;
+            if (clv->empty()) {
+               delete clv; clv = nullptr;
             }
          }
          fCellLists.push_back(clv);
@@ -858,15 +855,15 @@ void REveCalo2D::BuildCellIdCache()
       min = GetEtaMin() - fData->GetEps();
       max = GetEtaMax() + fData->GetEps();
       for (Int_t ibin = 1; ibin <= nBins; ++ibin) {
-         clv = 0;
+         clv = nullptr;
          Float_t low = axis->GetBinLowEdge(ibin);
          Float_t up = axis->GetBinUpEdge(ibin) ;
          if (low >= min && up <= max)
          {
             clv = new REveCaloData::vCellId_t();
             fData->GetCellList(axis->GetBinCenter(ibin), axis->GetBinWidth(ibin), fPhi, GetPhiRng(), *clv);
-            if (!clv->size()) {
-               delete clv; clv = 0;
+            if (clv->empty()) {
+               delete clv; clv = nullptr;
             }
          }
          fCellLists.push_back(clv);
@@ -923,7 +920,7 @@ void REveCalo2D::CellSelectionChangedInternal(REveCaloData::vCellId_t& inputCell
    UInt_t nBins = axis->GetNbins();
    outputCellLists.resize(nBins+1);
    for (UInt_t b = 0; b <= nBins; ++b)
-      outputCellLists[b] = 0;
+      outputCellLists[b] = nullptr;
 
    for(UInt_t bin = 1; bin <= nBins; ++bin)
    {
@@ -981,7 +978,7 @@ Float_t REveCalo2D::GetValToHeight() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Fill bounding-box information of the base-class TAttBBox (virtual method).
+/// Fill the bounding box (virtual from REveElement).
 /// If member 'REveFrameBox* fFrame' is set, frame's corners are used as bbox.
 
 void REveCalo2D::ComputeBBox()
@@ -1393,13 +1390,12 @@ void REveCalo2D::MakeRPhiCell(Float_t phiMin, Float_t phiMax,
    pnts[4] = r2*Cos(phiMax); pnts[5] = r2*Sin(phiMax);
    pnts[6] = r1*Cos(phiMax); pnts[7] = r1*Sin(phiMax);
 
-   Float_t x, y, z;
    for (Int_t i = 0; i < 4; ++i)
    {
       pntsOut[i*3]   = pnts[2*i];
       pntsOut[i*3+1] = pnts[2*i+1];
       pntsOut[i*3+2] = 0.f;
-      fManager->GetProjection()->ProjectPoint(x, y, z, fDepth);
+      fManager->GetProjection()->ProjectPoint(pntsOut[3*i], pntsOut[3*i+1], pntsOut[3*i + 2], fDepth);
    }
 }
 
@@ -1494,24 +1490,21 @@ void REveCaloLego::BuildCellIdCache()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Fill bounding-box information of the base-class TAttBBox (virtual method).
+/// Fill the bounding box (virtual from REveElement).
 /// If member 'REveFrameBox* fFrame' is set, frame's corners are used as bbox.
 
 void REveCaloLego::ComputeBBox()
 {
-
-   // fBBox = Float_t[6] X(min,max), Y(min,max), Z(min,max)
-
    BBoxZero();
 
    Float_t ex = 1.2; // 20% offset for axis labels
 
    Float_t a = 0.5*ex;
 
-   fBBox[0] = -a;
-   fBBox[1] =  a;
-   fBBox[2] = -a;
-   fBBox[3] =  a;
+   fBBoxMin.fX = -a;
+   fBBoxMax.fX = a;
+   fBBoxMin.fY = -a;
+   fBBoxMax.fY = a;
 
    // scaling is relative to shortest XY axis
    Double_t em, eM, pm, pM;
@@ -1520,19 +1513,18 @@ void REveCaloLego::ComputeBBox()
    Double_t r = (eM-em)/(pM-pm);
    if (r<1)
    {
-      fBBox[2] /= r;
-      fBBox[3] /= r;
+      fBBoxMin.fY /= r;
+      fBBoxMax.fY /= r;
    }
    else
    {
-      fBBox[0] *= r;
-      fBBox[1] *= r;
+      fBBoxMin.fX *= r;
+      fBBoxMax.fX *= r;
    }
 
-   fBBox[4] =  0;
+   fBBoxMin.fZ = 0;
    if (fScaleAbs && !fData->Empty())
-      fBBox[5] = GetMaxVal()*GetValToHeight();
+      fBBoxMax.fZ = GetMaxVal() * GetValToHeight();
    else
-      fBBox[5] = fMaxTowerH;
+      fBBoxMax.fZ = fMaxTowerH;
 }
-

@@ -21,32 +21,55 @@
 Class RooKeysPdf implements a one-dimensional kernel estimation p.d.f which model the distribution
 of an arbitrary input dataset as a superposition of Gaussian kernels, one for each data point,
 each contributing 1/N to the total integral of the pdf.
+It was inspired by Kyle Cranmer's KEYS package, see
+[the original web page](https://web.archive.org/web/20020705034344/https://www-wisconsin.cern.ch/~cranmer/keys.html).
+
+\note KEYS stands for Kernel Estimating Your Shapes, see
+[the KEYS write-up](https://web.archive.org/web/20010604031632/http://www-wisconsin.cern.ch/~cranmer/KEYS.pdf).
+
 If the 'adaptive mode' is enabled, the width of the Gaussian is adaptively calculated from the
 local density of events, i.e. narrow for regions with high event density to preserve details and
 wide for regions with low event density to promote smoothness. The details of the general algorithm
 are described in the following paper:
 
 Cranmer KS, Kernel Estimation in High-Energy Physics.
-            Computer Physics Communications 136:198-207,2001 - e-Print Archive: hep ex/0011057
+            Computer Physics Communications 136:198-207,2001 - e-Print Archive: hep-ex/0011057,
+            [doi:10.1016/S0010-4655(00)00243-5](https://doi.org/10.1016/S0010-4655(00)00243-5)
+
+The `rho` parameter (default 1) is an overall scale factor for the width of the
+kernels. Values larger than 1 make the kernels wider and give a smoother
+estimate, while values smaller than 1 make them narrower and keep more detail.
+The default corresponds to the usual normal-reference ("rule of thumb")
+bandwidth.
+
+Close to the edges of the observable range the estimate is biased: the kernels
+of events near an edge have no data on the other side to balance them, so the
+density "leaks" out of the range. The `mirror` parameter selects an optional
+boundary correction that reflects the data across an edge. Symmetric mirroring
+adds the reflected events, which is appropriate when the true density is flat at
+the boundary (the estimate keeps a non-zero value there, with zero slope). Asymmetric mirroring
+subtracts the reflected events, which is appropriate when the true density is
+expected to vanish at the boundary. See the RooKeysPdf::Mirror enum for the list
+of options.
+
+For a multi-dimensional version of this pdf, see RooNDKeysPdf.
 **/
 
-#include <limits>
-#include <algorithm>
-#include <cmath>
-#include <iostream>
 #include "TMath.h"
-#include "snprintf.h"
 #include "RooKeysPdf.h"
 #include "RooRealVar.h"
 #include "RooRandom.h"
 #include "RooDataSet.h"
-#include "RooTrace.h"
 
 #include "TError.h"
+#include "TMath.h"
 
-using namespace std;
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <iostream>
+#include <limits>
 
-ClassImp(RooKeysPdf);
 
 const double RooKeysPdf::_nSigma = std::sqrt(-2. *
     std::log(std::numeric_limits<double>::epsilon()));
@@ -54,84 +77,81 @@ const double RooKeysPdf::_nSigma = std::sqrt(-2. *
 ////////////////////////////////////////////////////////////////////////////////
 /// coverity[UNINIT_CTOR]
 
-  RooKeysPdf::RooKeysPdf() : _nEvents(0), _dataPts(0), _dataWgts(0), _weights(0), _sumWgt(0),
-              _mirrorLeft(false), _mirrorRight(false),
-              _asymLeft(false), _asymRight(false)
+RooKeysPdf::RooKeysPdf()
 {
-  TRACE_CREATE
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// cache stuff about x
+/// Construct a kernel estimation pdf of the observable `xpdf` from its
+/// distribution in `data`.
+///
+/// \param[in] name   Name of the pdf.
+/// \param[in] title  Title of the pdf, used for plotting.
+/// \param[in] xpdf   Observable the pdf is defined in. Its range sets the
+///                   boundaries used for the mirror correction and for the
+///                   internal binned lookup table.
+/// \param[in] data   Dataset whose distribution of `xpdf` is modelled. The width
+///                   of each kernel is adapted to the local event density.
+/// \param[in] mirror Optional boundary correction, see the Mirror enum.
+/// \param[in] rho    Overall scale factor for the kernel width (default 1);
+///                   larger values give a smoother estimate.
 
-RooKeysPdf::RooKeysPdf(const char *name, const char *title,
-                       RooAbsReal& x, RooDataSet& data,
-                       Mirror mirror, double rho) :
-  RooAbsPdf(name,title),
-  _x("x","observable",this,x),
-  _nEvents(0),
-  _dataPts(0),
-  _dataWgts(0),
-  _weights(0),
-  _mirrorLeft(mirror==MirrorLeft || mirror==MirrorBoth || mirror==MirrorLeftAsymRight),
-  _mirrorRight(mirror==MirrorRight || mirror==MirrorBoth || mirror==MirrorAsymLeftRight),
-  _asymLeft(mirror==MirrorAsymLeft || mirror==MirrorAsymLeftRight || mirror==MirrorAsymBoth),
-  _asymRight(mirror==MirrorAsymRight || mirror==MirrorLeftAsymRight || mirror==MirrorAsymBoth),
-  _rho(rho)
+RooKeysPdf::RooKeysPdf(const char *name, const char *title, RooAbsReal &xpdf, RooDataSet &data, Mirror mirror, double rho)
+   : RooKeysPdf(name, title, xpdf, static_cast<RooRealVar &>(xpdf), data, mirror, rho)
 {
-  snprintf(_varName, 128,"%s", x.GetName());
-  RooAbsRealLValue& real= (RooRealVar&)(_x.arg());
-  _lo = real.getMin();
-  _hi = real.getMax();
-  _binWidth = (_hi-_lo)/(_nPoints-1);
-
-  // form the lookup table
-  LoadDataSet(data);
-  TRACE_CREATE
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// cache stuff about x
+/// As above, but reading the input values from a dataset variable `xdata` that
+/// can be different from the observable `xpdf` the pdf depends on.
+///
+/// \param[in] name   Name of the pdf.
+/// \param[in] title  Title of the pdf, used for plotting.
+/// \param[in] xpdf   Observable the pdf is defined in.
+/// \param[in] xdata  Variable in `data` whose distribution is modelled. Its
+///                   range sets the boundaries used for the mirror correction
+///                   and for the internal binned lookup table.
+/// \param[in] data   Dataset holding the values of `xdata` to model.
+/// \param[in] mirror Optional boundary correction, see the Mirror enum.
+/// \param[in] rho    Overall scale factor for the kernel width (default 1);
+///                   larger values give a smoother estimate.
 
-RooKeysPdf::RooKeysPdf(const char *name, const char *title,
-                       RooAbsReal& xpdf, RooRealVar& xdata, RooDataSet& data,
-                       Mirror mirror, double rho) :
-  RooAbsPdf(name,title),
-  _x("x","Observable",this,xpdf),
-  _nEvents(0),
-  _dataPts(0),
-  _dataWgts(0),
-  _weights(0),
-  _mirrorLeft(mirror==MirrorLeft || mirror==MirrorBoth || mirror==MirrorLeftAsymRight),
-  _mirrorRight(mirror==MirrorRight || mirror==MirrorBoth || mirror==MirrorAsymLeftRight),
-  _asymLeft(mirror==MirrorAsymLeft || mirror==MirrorAsymLeftRight || mirror==MirrorAsymBoth),
-  _asymRight(mirror==MirrorAsymRight || mirror==MirrorLeftAsymRight || mirror==MirrorAsymBoth),
-  _rho(rho)
+RooKeysPdf::RooKeysPdf(const char *name, const char *title, RooAbsReal &xpdf, RooRealVar &xdata, RooDataSet &data,
+                       Mirror mirror, double rho)
+   : RooAbsPdf(name, title),
+     _x("x", "Observable", this, xpdf),
+     _mirrorLeft(mirror == MirrorLeft || mirror == MirrorBoth || mirror == MirrorLeftAsymRight),
+     _mirrorRight(mirror == MirrorRight || mirror == MirrorBoth || mirror == MirrorAsymLeftRight),
+     _asymLeft(mirror == MirrorAsymLeft || mirror == MirrorAsymLeftRight || mirror == MirrorAsymBoth),
+     _asymRight(mirror == MirrorAsymRight || mirror == MirrorLeftAsymRight || mirror == MirrorAsymBoth),
+     _lo(xdata.getMin()),
+     _hi(xdata.getMax()),
+     _binWidth((_hi - _lo) / (_nPoints - 1)),
+     _rho(rho)
 {
   snprintf(_varName, 128,"%s", xdata.GetName());
-  RooAbsRealLValue& real= (RooRealVar&)(xdata);
-  _lo = real.getMin();
-  _hi = real.getMax();
-  _binWidth = (_hi-_lo)/(_nPoints-1);
 
   // form the lookup table
   LoadDataSet(data);
-  TRACE_CREATE
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-RooKeysPdf::RooKeysPdf(const RooKeysPdf& other, const char* name):
-  RooAbsPdf(other,name), _x("x",this,other._x), _nEvents(other._nEvents),
-  _dataPts(0), _dataWgts(0), _weights(0), _sumWgt(0),
-  _mirrorLeft( other._mirrorLeft ), _mirrorRight( other._mirrorRight ),
-  _asymLeft(other._asymLeft), _asymRight(other._asymRight),
-  _rho( other._rho ) {
+RooKeysPdf::RooKeysPdf(const RooKeysPdf &other, const char *name)
+   : RooAbsPdf(other, name),
+     _x("x", this, other._x),
+     _nEvents(other._nEvents),
+     _mirrorLeft(other._mirrorLeft),
+     _mirrorRight(other._mirrorRight),
+     _asymLeft(other._asymLeft),
+     _asymRight(other._asymRight),
+     _lo(other._lo),
+     _hi(other._hi),
+     _binWidth(other._binWidth),
+     _rho(other._rho)
+{
   // cache stuff about x
   snprintf(_varName, 128, "%s", other._varName );
-  _lo = other._lo;
-  _hi = other._hi;
-  _binWidth = other._binWidth;
 
   // copy over data and weights... not necessary, commented out for speed
 //    _dataPts = new double[_nEvents];
@@ -145,7 +165,6 @@ RooKeysPdf::RooKeysPdf(const RooKeysPdf& other, const char* name):
   for (Int_t i= 0; i<_nPoints+1; i++)
     _lookupTable[i]= other._lookupTable[i];
 
-  TRACE_CREATE
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,7 +174,6 @@ RooKeysPdf::~RooKeysPdf() {
   delete[] _dataWgts;
   delete[] _weights;
 
-  TRACE_DESTROY
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -179,10 +197,12 @@ void RooKeysPdf::LoadDataSet( RooDataSet& data) {
 
   std::vector<Data> tmp;
   tmp.reserve((1 + _mirrorLeft + _mirrorRight) * data.numEntries());
-  double x0 = 0., x1 = 0., x2 = 0.;
+  double x0 = 0.;
+  double x1 = 0.;
+  double x2 = 0.;
   _sumWgt = 0.;
   // read the data set into tmp and accumulate some statistics
-  RooRealVar& real = (RooRealVar&)(data.get()->operator[](_varName));
+  RooRealVar& real = static_cast<RooRealVar&>(data.get()->operator[](_varName));
   for (Int_t i = 0; i < data.numEntries(); ++i) {
     data.get(i);
     const double x = real.getVal();
@@ -225,6 +245,16 @@ void RooKeysPdf::LoadDataSet( RooDataSet& data) {
   double sigmav=std::sqrt(x2/x0-meanv*meanv);
   double h=std::pow(double(4)/double(3),0.2)*std::pow(_sumWgt,-0.2)*_rho;
   double hmin=h*sigmav*std::sqrt(2.)/10;
+  // Dividing by 2*sqrt(3) = sqrt(12) turns a width into the standard deviation
+  // of a uniform distribution of that width. Per the original author, this goes
+  // back to inputs that were finely binned histograms rather than unbinned data:
+  // entries spread uniformly over a bin get aggregated into a single sample with
+  // no variance, so the bin width was taken as the spread of that sample.
+  //
+  // Beware that no bin width enters the expression below, so that rationale does
+  // not map onto the code as it stands: what remains is an extra factor of
+  // sqrt(12) with respect to hep-ex/0011057, kept for backwards compatibility.
+  // The same factor appears in RooNDKeysPdf::calculateBandWidth().
   double norm=h*std::sqrt(sigmav * _sumWgt)/(2.0*std::sqrt(3.0));
 
   _weights=new double[_nEvents];
@@ -305,13 +335,13 @@ double RooKeysPdf::evaluate() const {
   if (i<0) {
 //     cerr << "got point below lower bound:"
 //     << double(_x) << " < " << _lo
-//     << " -- performing linear extrapolation..." << endl;
+//     << " -- performing linear extrapolation..." << std::endl;
     i=0;
   }
   if (i>_nPoints-1) {
 //     cerr << "got point above upper bound:"
 //     << double(_x) << " > " << _hi
-//     << " -- performing linear extrapolation..." << endl;
+//     << " -- performing linear extrapolation..." << std::endl;
     i=_nPoints-1;
   }
   double dx = (double(_x)-(_lo+i*_binWidth))/_binWidth;

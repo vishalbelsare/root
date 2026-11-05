@@ -18,13 +18,13 @@ Here we also implement the analytic integral.
 #include "RooChiSquarePdf.h"
 #include "RooRealVar.h"
 #include "RooBatchCompute.h"
+#include "RooHelpers.h"
 
 #include "TMath.h"
 
+#include <array>
 #include <cmath>
-using namespace std;
 
-ClassImp(RooChiSquarePdf);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -40,6 +40,7 @@ RooChiSquarePdf::RooChiSquarePdf(const char* name, const char* title,
   _x("x", "Dependent", this, x),
   _ndof("ndof","ndof", this, ndof)
 {
+   RooHelpers::checkRangeOfParameters(this, {&x, &ndof}, 0.);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,17 +56,18 @@ RooChiSquarePdf::RooChiSquarePdf(const RooChiSquarePdf& other, const char* name)
 
 double RooChiSquarePdf::evaluate() const
 {
-  if(_x <= 0) return 0;
+   if (_x <= 0)
+      return 0;
 
-  return  pow(_x,(_ndof/2.)-1.) * exp(-_x/2.) / TMath::Gamma(_ndof/2.) / pow(2.,_ndof/2.);
+   return pow(_x, (_ndof / 2.) - 1.) * std::exp(-_x / 2.) / TMath::Gamma(_ndof / 2.) / std::pow(2., _ndof / 2.);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute multiple values of ChiSquare distribution.
-void RooChiSquarePdf::computeBatch(cudaStream_t* stream, double* output, size_t nEvents, RooFit::Detail::DataMap const& dataMap) const
+void RooChiSquarePdf::doEval(RooFit::EvalContext &ctx) const
 {
-  auto dispatch = stream ? RooBatchCompute::dispatchCUDA : RooBatchCompute::dispatchCPU;
-  dispatch->compute(stream, RooBatchCompute::ChiSquare, output, nEvents, {dataMap.at(_x)}, {_ndof});
+   std::array<double, 1> extraArgs{_ndof};
+   RooBatchCompute::compute(ctx.config(this), RooBatchCompute::ChiSquare, ctx.output(), {ctx.at(_x)}, extraArgs);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -3,8 +3,10 @@
 // with additions by Bram Wijngaarden <dwijngaa@hef.kun.nl>
 
 /** \class TFractionFitter
-Fits MC fractions to data histogram. A la HMCMLL, see R. Barlow and C. Beeston,
-Comp. Phys. Comm. 77 (1993) 219-228, and http://www.hep.man.ac.uk/~roger/hfrac.f
+Fits MC fractions to data histogram. À la [HMCMLL](https://cds.cern.ch/record/2296378/files/hbook.pdf),
+see R. Barlow and C. Beeston, Comp. Phys. Comm. 77 (1993) 219-228
+\see https://indico.in2p3.fr/event/2635/contributions/25070/
+\note An alternative interface is described in https://root.cern.ch/doc/master/rf709__BarlowBeeston_8C_source.html
 
 The virtue of this fit is that it takes into account both data and Monte Carlo
 statistical uncertainties. The way in which this is done is through a standard
@@ -21,11 +23,11 @@ An example application of this fit is given below. For a TH1* histogram
 
 ~~~{.cpp}
 {
-  TH1F *data;                              //data histogram
-  TH1F *mc0;                               // first MC histogram
-  TH1F *mc1;                               // second MC histogram
-  TH1F *mc2;                               // third MC histogram
-  ....                                     // retrieve histograms
+   TH1F *data;                              //data histogram
+   TH1F *mc0;                               // first MC histogram
+   TH1F *mc1;                               // second MC histogram
+   TH1F *mc2;                               // third MC histogram
+   ....                                     // retrieve histograms
    TObjArray *mc = new TObjArray(3);        // MC histograms are put in this array
    mc->Add(mc0);
    mc->Add(mc1);
@@ -42,6 +44,8 @@ An example application of this fit is given below. For a TH1* histogram
    }
 }
 ~~~
+
+\note A fully runing example can be found in tutorials/math/fit/fitFraction.C
 
 ## Assumptions
 A few assumptions need to be made for the fit procedure to be carried out:
@@ -82,7 +86,8 @@ The function
 is provided for direct access to the ROOT::Fit::Fitter object. This allows to
 set and fix parameter values, limits and set step sizes directly via
 
-    fitter->Config().ParSettings(parameter #).Set(const std::string &name, double value, double step, double lower, double upper);
+    fitter->Config().ParSettings(parameter #).Set(const std::string &name, double value, double step, double lower,
+double upper);
 
 ## Restricting the fit range
 The fit range can be restricted through
@@ -154,7 +159,6 @@ Any serious inconsistency results in an error.
 #include "Math/Functor.h"
 #include "TFractionFitter.h"
 
-ClassImp(TFractionFitter);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -165,12 +169,12 @@ fFitDone(kFALSE),
 fLowLimitX(0), fHighLimitX(0),
 fLowLimitY(0), fHighLimitY(0),
 fLowLimitZ(0), fHighLimitZ(0),
-fData(0), fIntegralData(0),
-fPlot(0)
+fData(nullptr), fIntegralData(0),
+fPlot(nullptr)
 {
-   fFractionFitter = 0;
-   fIntegralMCs   = 0;
-   fFractions     = 0;
+   fFractionFitter = nullptr;
+   fIntegralMCs   = nullptr;
+   fFractions     = nullptr;
 
    fNpfits        = 0;
    fNDF           = 0;
@@ -191,7 +195,7 @@ fPlot(0)
 ///            - option = ""   : default: print initial fraction values and result
 
 TFractionFitter::TFractionFitter(TH1* data, TObjArray  *MCs, Option_t *option) :
-fFitDone(kFALSE), fChisquare(0), fPlot(0)  {
+fFitDone(kFALSE), fChisquare(0), fPlot(nullptr)  {
    fData = data;
    // Default: include all of the histogram (but without under- and overflows)
    fLowLimitX = 1;
@@ -209,10 +213,10 @@ fFitDone(kFALSE), fChisquare(0), fPlot(0)  {
    for (par = 0; par < fNpar; ++par) {
       fMCs.Add(MCs->At(par));
       // Histogram containing template prediction
-      TString s = Form("Prediction for MC sample %i",par);
+      TString s = TString::Format("Prediction for MC sample %i",par);
       TH1* pred = (TH1*) ((TH1*)MCs->At(par))->Clone(s);
       // TFractionFitter manages these histograms
-      pred->SetDirectory(0);
+      pred->SetDirectory(nullptr);
       pred->SetTitle(s);
       fAji.Add(pred);
    }
@@ -554,7 +558,7 @@ TFitResultPtr TFractionFitter::Fit() {
 
    // remove any existing output histogram
    if (fPlot) {
-      delete fPlot; fPlot = 0;
+      delete fPlot; fPlot = nullptr;
    }
 
    // Make sure the correct likelihood computation is used
@@ -621,7 +625,7 @@ void TFractionFitter::GetResult(Int_t parm, Double_t& value, Double_t& error) co
 TH1* TFractionFitter::GetPlot() {
    if (! fFitDone) {
       Error("GetPlot","Fit not yet performed");
-      return 0;
+      return nullptr;
    }
    if (! fPlot) {
       Double_t f = 0;
@@ -695,7 +699,7 @@ void TFractionFitter::ComputeFCN(Double_t& f, const Double_t* xx, Int_t flag)
       TString ts = "Fraction fit to hist: "; ts += fData->GetName();
       fPlot = (TH1*) fData->Clone(ts.Data());
       // plot histogram is managed by TFractionFitter
-      fPlot->SetDirectory(0);
+      fPlot->SetDirectory(nullptr);
       fPlot->Reset();
    }
    // likelihood computation
@@ -963,7 +967,7 @@ TH1* TFractionFitter::GetMCPrediction(Int_t parm) const
    CheckParNo(parm);
    if ( !fFitDone ) {
       Error("GetMCPrediction","Fit not yet performed");
-      return 0;
+      return nullptr;
    }
    return (TH1*) fAji.At(parm);
 }

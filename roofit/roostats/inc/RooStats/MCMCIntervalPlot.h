@@ -17,11 +17,13 @@
 
 #include "RooPrintable.h"
 #include "RooArgSet.h"
-#include "TNamed.h"
-#include "TH1.h"
 #include "RooStats/MCMCInterval.h"
 #include "RooNDKeysPdf.h"
 #include "RooProduct.h"
+
+#include <TColor.h>
+#include <TH1.h>
+#include <TNamed.h>
 
 namespace RooStats {
 
@@ -35,9 +37,9 @@ namespace RooStats {
       ~MCMCIntervalPlot() override;
 
       void SetMCMCInterval(MCMCInterval& interval);
-      void SetLineColor(Color_t color) {fLineColor = color;}
+      void SetLineColor(TColorNumber color) {fLineColor = color.number();}
       void SetLineWidth(Int_t width) {fLineWidth = width;}
-      void SetShadeColor(Color_t color) {fShadeColor = color;}
+      void SetShadeColor(TColorNumber color) {fShadeColor = color.number();}
       void SetShowBurnIn(bool showBurnIn) { fShowBurnIn = showBurnIn; }
 
       void Draw(const Option_t* options = nullptr) override;
@@ -49,26 +51,25 @@ namespace RooStats {
       void DrawWeightHist(const Option_t* options = nullptr);
 
    private:
-
-      MCMCInterval *fInterval;
-      RooArgSet *fParameters;
-      TH1* fPosteriorHist;
-      RooNDKeysPdf* fPosteriorKeysPdf;
-      RooProduct* fPosteriorKeysProduct;
-      TH1* fNLLHist;
-      TH1* fWeightHist;
-      TH1* fPosteriorHistHistCopy;
-      TH1* fPosteriorHistTFCopy;
-      Int_t fDimension;
-      Color_t fLineColor;
-      Color_t fShadeColor;
-      Int_t fLineWidth;
-      bool fShowBurnIn;
-      TGraph* fWalk;
-      TGraph* fBurnIn;
-      TGraph* fFirst;
-      TGraph* fParamGraph;
-      TGraph* fNLLGraph;
+      MCMCInterval *fInterval = nullptr;
+      RooArgSet *fParameters = nullptr;
+      TH1 *fPosteriorHist = nullptr;
+      RooNDKeysPdf *fPosteriorKeysPdf = nullptr;
+      RooProduct *fPosteriorKeysProduct = nullptr;
+      TH1 *fNLLHist = nullptr;
+      TH1 *fWeightHist = nullptr;
+      TH1 *fPosteriorHistHistCopy = nullptr;
+      TH1 *fPosteriorHistTFCopy = nullptr;
+      Int_t fDimension = 0;
+      Color_t fLineColor = kBlack;
+      Color_t fShadeColor = kGray;
+      Int_t fLineWidth = 1;
+      bool fShowBurnIn = true;
+      TGraph *fWalk = nullptr;
+      TGraph *fBurnIn = nullptr;
+      TGraph *fFirst = nullptr;
+      TGraph *fParamGraph = nullptr;
+      TGraph *fNLLGraph = nullptr;
 
    protected:
       void DrawPosterior(const Option_t* options = nullptr);

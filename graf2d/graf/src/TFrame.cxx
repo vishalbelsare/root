@@ -13,7 +13,6 @@
 #include "TFrame.h"
 #include "TStyle.h"
 
-ClassImp(TFrame);
 
 /** \class TFrame
 \ingroup BasicGraphics
@@ -127,6 +126,7 @@ void TFrame::ExecuteEvent(Int_t event, Int_t px, Int_t py)
 
 void TFrame::Paint(Option_t *option)
 {
+   if (!gPad) return;
    const TPickerStackGuard stackGuard(this);
 
    if (!gPad->PadInHighlightMode() || (gPad->PadInHighlightMode() && this == gPad->GetSelected())) {

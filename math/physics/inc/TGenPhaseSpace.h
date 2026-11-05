@@ -1,24 +1,19 @@
 // @(#)root/physics:$Id$
 // Author: Rene Brun , Valerio Filippini  06/09/2000
 
-///////////////////////////////////////////////////////////////////////////////
-//                                                                           //
-//   Phase Space Generator, based on the GENBOD routine of CERNLIB           //
-//                                                                           //
-///////////////////////////////////////////////////////////////////////////////
-
 #ifndef ROOT_TGenPhaseSpace
 #define ROOT_TGenPhaseSpace
 
 #include "TLorentzVector.h"
 
+/// Phase Space Generator, based on the GENBOD routine of CERNLIB
 class TGenPhaseSpace : public TObject {
 private:
    Int_t        fNt;             // number of decay particles
    Double_t     fMass[18];       // masses of particles
    Double_t     fBeta[3];        // betas of decaying particle
    Double_t     fTeCmTm;         // total energy in the C.M. minus the total mass
-   Double_t     fWtMax;          // maximum weigth
+   Double_t     fWtMax;          // maximum weight
    TLorentzVector  fDecPro[18];  //kinematics of the generated particles
 
    Double_t PDK(Double_t a, Double_t b, Double_t c);

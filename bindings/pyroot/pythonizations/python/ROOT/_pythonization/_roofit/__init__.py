@@ -11,11 +11,7 @@
 # For the list of contributors see $ROOTSYS/README/CREDITS.                    #
 ################################################################################
 
-import sys
-import cppyy
-
 from .. import pythonization
-
 from ._rooabscollection import RooAbsCollection
 from ._rooabsdata import RooAbsData
 from ._rooabspdf import RooAbsPdf
@@ -24,40 +20,34 @@ from ._rooabsreallvalue import RooAbsRealLValue
 from ._rooarglist import RooArgList
 from ._rooargset import RooArgSet
 from ._roocategory import RooCategory
-from ._roochi2var import RooChi2Var
 from ._roodatahist import RooDataHist
 from ._roodataset import RooDataSet
-from ._roodecays import RooDecay, RooBDecay, RooBCPGenDecay, RooBCPEffDecay, RooBMixDecay
+from ._roodecays import RooBCPEffDecay, RooBCPGenDecay, RooBDecay, RooBMixDecay, RooDecay
 from ._roogenfitstudy import RooGenFitStudy
 from ._rooglobalfunc import (
     DataError,
     FitOptions,
     Format,
     Frame,
-    MultiArg,
-    YVar,
-    ZVar,
-    Slice,
     Import,
     Link,
-    LineColor,
-    FillColor,
-    MarkerColor,
-    LineStyle,
-    FillStyle,
-    MarkerStyle,
+    MultiArg,
+    Slice,
+    YVar,
+    ZVar,
+    bindFunction,
 )
 from ._roojsonfactorywstool import RooJSONFactoryWSTool
 from ._roomcstudy import RooMCStudy
 from ._roomsgservice import RooMsgService
-from ._roonllvar import RooNLLVar
+from ._rooplot import RooPlot
 from ._rooprodpdf import RooProdPdf
 from ._roorealvar import RooRealVar
 from ._roosimultaneous import RooSimultaneous
 from ._roosimwstool import RooSimWSTool
-from ._rooworkspace import RooWorkspace
+from ._roostats import SPlot
 from ._roovectordatastore import RooVectorDataStore
-
+from ._rooworkspace import RooWorkspace
 
 # list of python classes that are used to pythonize RooFit classes
 python_classes = [
@@ -73,7 +63,6 @@ python_classes = [
     RooBDecay,
     RooBMixDecay,
     RooCategory,
-    RooChi2Var,
     RooDataHist,
     RooDataSet,
     RooDecay,
@@ -81,13 +70,14 @@ python_classes = [
     RooJSONFactoryWSTool,
     RooMCStudy,
     RooMsgService,
-    RooNLLVar,
+    RooPlot,
     RooProdPdf,
     RooRealVar,
     RooSimultaneous,
     RooSimWSTool,
     RooWorkspace,
     RooVectorDataStore,
+    SPlot,
 ]
 
 # list of python functions that are used to pythonize RooGlobalFunc function in RooFit
@@ -102,12 +92,7 @@ python_roofit_functions = [
     Slice,
     Import,
     Link,
-    LineColor,
-    FillColor,
-    MarkerColor,
-    LineStyle,
-    FillStyle,
-    MarkerStyle,
+    bindFunction,
 ]
 
 # create a dictionary for convenient access to python classes
@@ -122,7 +107,16 @@ def get_defined_attributes(klass, consider_base_classes=False):
     any of its base classes (except for `object`).
     """
 
-    blacklist = ["__dict__", "__doc__", "__hash__", "__module__", "__weakref__"]
+    blacklist = [
+        "__dict__",
+        "__doc__",
+        "__hash__",
+        "__module__",
+        "__weakref__",
+        "__firstlineno__",
+        "__static_attributes__",
+        "__cpp_name__",
+    ]
 
     if not consider_base_classes:
         return sorted([attr for attr in klass.__dict__.keys() if attr not in blacklist])
@@ -148,12 +142,6 @@ def get_defined_attributes(klass, consider_base_classes=False):
     return sorted([attr for attr in dir(klass) if is_defined(attr)])
 
 
-def is_staticmethod_py2(klass, func_name):
-    """Check if the function with name `func_name` of a class is a static method in Python 2."""
-
-    return type(getattr(klass, func_name)).__name__ == "function"
-
-
 def is_classmethod(klass, func):
     if hasattr(func, "__self__"):
         return func.__self__ == klass
@@ -164,28 +152,14 @@ def rebind_attribute(to_class, from_class, func_name):
     """
     Bind the instance method `from_class.func_name` also to class `to_class`.
     """
-
-    import sys
-
     from_method = getattr(from_class, func_name)
 
     if is_classmethod(from_class, from_method):
         # the @classmethod case
         to_method = classmethod(from_method.__func__)
-    elif sys.version_info >= (3, 0):
+    else:
         # any other case in Python 3 is trivial
         to_method = from_method
-    elif isinstance(from_method, property):
-        # the @property case in Python 2
-        to_method = from_method
-    elif is_staticmethod_py2(from_class, func_name):
-        # the @staticmethod case in Python 2
-        to_method = staticmethod(from_method)
-    else:
-        # the instance method case in Python 2
-        import new
-
-        to_method = new.instancemethod(from_method.__func__, None, to_class)
 
     setattr(to_class, func_name, to_method)
 
@@ -205,7 +179,7 @@ def pythonize_roofit_class(klass, name):
     # klass: class to pythonize
     # name: string containing the name of the class
 
-    if not name in python_classes_dict:
+    if name not in python_classes_dict:
         return
 
     python_klass = python_classes_dict[name]
@@ -225,14 +199,10 @@ def pythonize_roofit_class(klass, name):
             func_new = getattr(python_klass, func_name)
 
             import inspect
-            import sys
-
-            if sys.version_info < (3, 0):
-                func_new = func_new.__func__
 
             if func_new.__doc__ is None:
                 func_new.__doc__ = func_orig.__doc__
-            elif not func_orig.__doc__ is None:
+            elif func_orig.__doc__ is not None:
                 python_docstring = func_new.__doc__
                 func_new.__doc__ = "Pythonization info\n"
                 func_new.__doc__ += "==============\n\n"
@@ -252,14 +222,9 @@ def pythonize_roofit_namespace(ns):
 
     for python_func in python_roofit_functions:
         func_name = python_func.__name__
-        func_name_orig = "_" + func_name
-
-        if sys.version_info <= (3, 0):
-            # In Python 2 the RooFit is treated like a class and the global
-            # functions in the namespace must be static methods.
-            python_func = staticmethod(python_func)
-
-        setattr(ns, func_name_orig, getattr(ns, func_name))
+        if hasattr(ns, func_name):
+            func_name_orig = "_" + func_name
+            setattr(ns, func_name_orig, getattr(ns, func_name))
         setattr(ns, func_name, python_func)
 
     return ns

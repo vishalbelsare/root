@@ -66,29 +66,8 @@ public:
    */
    ~BasicMinimizer () override;
 
-private:
-   // usually copying is non trivial, so we make this unaccessible
-
-   /**
-      Copy constructor
-   */
-   BasicMinimizer(const BasicMinimizer &) : Minimizer() {}
-
-   /**
-      Assignment operator
-   */
-   BasicMinimizer & operator = (const BasicMinimizer & rhs) {
-      if (this == &rhs) return *this;  // time saving self-test
-      return *this;
-   }
-
-public:
-
    /// set the function to minimize
    void SetFunction(const ROOT::Math::IMultiGenFunction & func) override;
-
-   /// set gradient the function to minimize
-   void SetFunction(const ROOT::Math::IMultiGradFunction & func) override;
 
    /// set free variable
    bool SetVariable(unsigned int ivar, const std::string & name, double val, double step) override;

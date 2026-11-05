@@ -11,7 +11,7 @@
 ################################################################################
 
 
-from ._utils import _kwargs_to_roocmdargs, _dict_to_std_map, cpp_signature
+from ._utils import _dict_to_flat_map, _kwargs_to_roocmdargs, cpp_signature
 
 
 class RooDataHist(object):
@@ -25,6 +25,8 @@ class RooDataHist(object):
     dh = ROOT.RooDataHist("dh", "dh", ROOT.RooArgList(x), Import=("SampleA", histo))
     \endcode
     """
+
+    __cpp_name__ = 'RooDataHist'
 
     @cpp_signature(
         [
@@ -40,16 +42,10 @@ class RooDataHist(object):
         # Redefinition of `RooDataHist` constructor for keyword arguments and converting python dict to std::map.
         if len(args) > 4 and isinstance(args[4], dict):
             args = list(args)
-            args[4] = _dict_to_std_map(args[4], {"std::string": ["RooDataHist*", "TH1*"]})
+            args[4] = _dict_to_flat_map(args[4], {"std::string": ["RooDataHist*", "TH1*"]})
 
         args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
         self._init(*args, **kwargs)
-
-    def plotOn(self, *args, **kwargs):
-        # Redefinition of `RooDataHist.plotOn` for keyword arguments.
-        # The keywords must correspond to the CmdArg of the `plotOn` function.
-        args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
-        return self._plotOn(*args, **kwargs)
 
     @property
     def shape(self):
@@ -108,7 +104,7 @@ class RooDataHist(object):
             elif isinstance(var, ROOT.RooAbsCategory):
                 out.append(True)
             else:
-                raise TypeError("Vaiables in RooDataHist should either be RooAbsReal or RooAbsCategory.")
+                raise TypeError("Variables in RooDataHist should either be RooAbsReal or RooAbsCategory.")
 
         return out
 
@@ -132,7 +128,7 @@ class RooDataHist(object):
     def from_numpy(hist_weights, variables, bins=None, ranges=None, weights_squared_sum=None, name=None, title=None):
         r"""Create a RooDataHist from numpy arrays.
 
-        Note: The argument stucture was inspired by numpy.histogramdd.
+        Note: The argument structure was inspired by numpy.histogramdd.
 
         Args:
             hist_weights (numpy.ndarray): The multidimensional histogram bin
@@ -167,8 +163,9 @@ class RooDataHist(object):
         Returns:
             RooDataHist
         """
-        import ROOT
         import numpy as np
+
+        import ROOT
 
         name = "" if name is None else name
         title = "" if title is None else title
@@ -208,14 +205,14 @@ class RooDataHist(object):
         if weights_squared_sum is None:
             if not np.allclose(hist_weights, hist_weights.round()):
                 raise ValueError(
-                    "Your input histogram has non-integer weights! You must also provide weights_squared_sum to privide the complete information to RooDataHist.from_numpy()."
+                    "Your input histogram has non-integer weights! You must also provide weights_squared_sum to provide the complete information to RooDataHist.from_numpy()."
                 )
         else:
             if len(datahist) != len(weights_squared_sum):
                 raise ValueError("Length of weights_squared_sum array doesn't match the size of the RooDataHist.")
 
         for i_bin in range(len(datahist)):
-            if not weights_squared_sum is None:
+            if weights_squared_sum is not None:
                 # some reverse-computation that can't be avoided with the current C++ RooDataHist interface
                 wgt_err = np.sqrt(weights_squared_sum[i_bin])
             else:
@@ -228,7 +225,7 @@ class RooDataHist(object):
     def to_numpy(self):
         r"""Converts the weights and bin edges of a RooDataHist to numpy arrays.
 
-        Note: The output stucture was inspired by numpy.histogramdd.
+        Note: The output structure was inspired by numpy.histogramdd.
 
         Returns:
             weight (numpy.ndarray): The weights for each histrogram bin.
@@ -236,7 +233,6 @@ class RooDataHist(object):
                               for each dimension. For dimensions of category
                               types, the list element is `None`.
         """
-        import ROOT
         import numpy as np
 
         bin_edges = []

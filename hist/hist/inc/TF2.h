@@ -36,28 +36,21 @@ protected:
 
 public:
    TF2();
-   TF2(const char *name, const char *formula, Double_t xmin=0, Double_t xmax=1, Double_t ymin=0, Double_t ymax=1, Option_t * opt = nullptr);
-#ifndef __CINT__
-   TF2(const char *name, Double_t (*fcn)(Double_t *, Double_t *), Double_t xmin=0, Double_t xmax=1, Double_t ymin=0, Double_t ymax=1, Int_t npar=0,Int_t ndim = 2);
-   TF2(const char *name, Double_t (*fcn)(const Double_t *, const Double_t *), Double_t xmin=0, Double_t xmax=1, Double_t ymin=0, Double_t ymax=1, Int_t npar=0, Int_t ndim = 2);
-#endif
+   TF2(const char *name, const char *formula, Double_t xmin = 0, Double_t xmax = 1, Double_t ymin = 0,
+       Double_t ymax = 1, EAddToList addToGlobList = EAddToList::kDefault, bool vectorize = false);
+   TF2(const char *name, const char *formula, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax,
+       Option_t *opt); // same as above but using a string for option
+   TF2(const char *name, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax, Int_t npar, Int_t ndim = 2, EAddToList addToGlobList = EAddToList::kDefault);
+   TF2(const char *name, Double_t (*fcn)(Double_t *, Double_t *), Double_t xmin=0, Double_t xmax=1, Double_t ymin=0, Double_t ymax=1, Int_t npar=0,Int_t ndim = 2, EAddToList addToGlobList = EAddToList::kDefault);
+   TF2(const char *name, Double_t (*fcn)(const Double_t *, const Double_t *), Double_t xmin=0, Double_t xmax=1, Double_t ymin=0, Double_t ymax=1, Int_t npar=0, Int_t ndim = 2, EAddToList addToGlobList = EAddToList::kDefault);
 
    // Constructor using a functor
-   TF2(const char *name, ROOT::Math::ParamFunctor f, Double_t xmin = 0, Double_t xmax = 1, Double_t ymin = 0, Double_t ymax = 1, Int_t npar = 0, Int_t ndim = 2);
+   TF2(const char *name, ROOT::Math::ParamFunctor f, Double_t xmin = 0, Double_t xmax = 1, Double_t ymin = 0, Double_t ymax = 1, Int_t npar = 0, Int_t ndim = 2, EAddToList addToGlobList = EAddToList::kDefault);
 
    /// Template constructors from a pointer to any C++ class of type PtrObj with a specific member function of type MemFn.
    template <class PtrObj, typename MemFn>
-   TF2(const char *name, const  PtrObj& p, MemFn memFn, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax, Int_t npar, Int_t ndim = 2) :
-      TF1(name,p,memFn,xmin,xmax,npar,ndim),
-   fYmin(ymin), fYmax(ymax), fNpy(30), fContour(0)
-   {
-      fNpx = 30;
-   }
-
-   /// Backward compatible ctor
-   template <class PtrObj, typename MemFn>
-   TF2(const char *name, const  PtrObj& p, MemFn memFn, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax, Int_t npar, const char * , const char *) :
-      TF1(name,p,memFn,xmin,xmax,npar,2),
+   TF2(const char *name, const  PtrObj& p, MemFn memFn, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax, Int_t npar, Int_t ndim = 2, EAddToList addToGlobList = EAddToList::kDefault) :
+      TF1(name,p,memFn,xmin,xmax,npar,ndim, addToGlobList),
    fYmin(ymin), fYmax(ymax), fNpy(30), fContour(0)
    {
       fNpx = 30;
@@ -65,22 +58,12 @@ public:
 
    /// Template constructors from any  C++ callable object,  defining  the operator() (double * , double *) and returning a double.
    template <typename Func>
-   TF2(const char *name, Func f, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax, Int_t npar,Int_t ndim = 2) :
-      TF1(name,f,xmin,xmax,npar,ndim),
+   TF2(const char *name, Func f, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax, Int_t npar,Int_t ndim = 2, EAddToList addToGlobList = EAddToList::kDefault) :
+      TF1(name,f,xmin,xmax,npar,ndim, addToGlobList),
    fYmin(ymin), fYmax(ymax), fNpy(30), fContour(0)
    {
       fNpx = 30;
    }
-
-   /// Backward compatible ctor
-   template <typename Func>
-   TF2(const char *name, Func f, Double_t xmin, Double_t xmax, Double_t ymin, Double_t ymax, Int_t npar,const char *) :
-      TF1(name,f,xmin,xmax,npar,2),
-   fYmin(ymin), fYmax(ymax), fNpy(30), fContour(0)
-   {
-      fNpx = 30;
-   }
-
 
    TF2(const TF2 &f2);
    TF2 &operator=(const TF2& rhs);
@@ -112,6 +95,7 @@ public:
    virtual Double_t GetMaximum(Double_t *x ) const;
    virtual Double_t GetYmin() const {return fYmin;}
    virtual Double_t GetYmax() const {return fYmax;}
+   static void InitStandardFunctions();
    using TF1::Integral;
    virtual Double_t Integral(Double_t ax, Double_t bx, Double_t ay, Double_t by, Double_t epsrel=1.e-6);
    Bool_t   IsInside(const Double_t *x) const override;
@@ -125,6 +109,7 @@ public:
    void     SetRange(Double_t xmin, Double_t xmax) override;
    void     SetRange(Double_t xmin, Double_t ymin, Double_t xmax, Double_t ymax) override; // *MENU*
    void     SetRange(Double_t xmin, Double_t ymin, Double_t zmin, Double_t xmax, Double_t ymax, Double_t zmax) override;
+   void     SetSavedPoint(Int_t point, Double_t value) override;
 
    //Moments
    virtual Double_t Moment2(Double_t nx, Double_t ax, Double_t bx, Double_t ny, Double_t ay, Double_t by, Double_t epsilon=0.000001);

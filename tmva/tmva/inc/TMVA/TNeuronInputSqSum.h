@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : TMVA::TNeuronInputSqSum                                               *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *       TNeuron input calculator -- calculates the square                        *
@@ -19,7 +19,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 
@@ -48,7 +48,7 @@ namespace TMVA {
       virtual ~TNeuronInputSqSum() {}
 
       // calculate the input value for the neuron
-      Double_t GetInput( const TNeuron* neuron ) const {
+      Double_t GetInput( const TNeuron* neuron ) const override {
          if (neuron->IsInputNeuron()) return 0;
          Double_t result = 0;
          for (Int_t i=0; i < neuron->NumPreLinks(); i++) {
@@ -59,9 +59,9 @@ namespace TMVA {
       }
 
       // name of the class
-      TString GetName() { return "Sum of weighted activations squared"; }
+      TString GetName() override { return "Sum of weighted activations squared"; }
 
-      ClassDef(TNeuronInputSqSum,0); // Calculates square of  weighted sum of neuron inputs
+      ClassDefOverride(TNeuronInputSqSum,0); // Calculates square of  weighted sum of neuron inputs
    };
 
 } // namespace TMVA

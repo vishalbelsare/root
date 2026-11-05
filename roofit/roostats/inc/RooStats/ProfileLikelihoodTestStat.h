@@ -32,50 +32,18 @@ namespace RooStats {
      enum LimitType {twoSided, oneSided, oneSidedDiscovery};
 
    public:
-     ProfileLikelihoodTestStat() {
-        // Proof constructor. Do not use.
-        fPdf = nullptr;
-        fNll = nullptr;
-        fCachedBestFitParams = nullptr;
-        fLastData = nullptr;
-        fLimitType = twoSided;
-        fSigned = false;
-        fDetailedOutputWithErrorsAndPulls = false;
-        fDetailedOutputEnabled = false;
-        fDetailedOutput = nullptr;
-        fLOffset = RooStats::IsNLLOffset() ;
-
-        fVarName = "Profile Likelihood Ratio";
-        fReuseNll = false;
-        fStrategy=::ROOT::Math::MinimizerOptions::DefaultStrategy();
-        fTolerance=TMath::Max(1.,::ROOT::Math::MinimizerOptions::DefaultTolerance());
-        fPrintLevel=::ROOT::Math::MinimizerOptions::DefaultPrintLevel();
-     }
-
-     ProfileLikelihoodTestStat(RooAbsPdf& pdf) {
-       fPdf = &pdf;
-       fNll = nullptr;
-       fCachedBestFitParams = nullptr;
-       fLastData = nullptr;
-       fLimitType = twoSided;
-       fSigned = false;
-       fDetailedOutputWithErrorsAndPulls = false;
-       fDetailedOutputEnabled = false;
-       fDetailedOutput = nullptr;
-       fLOffset = RooStats::IsNLLOffset() ;
-
-       fVarName = "Profile Likelihood Ratio";
-       fReuseNll = false;
-       fStrategy=::ROOT::Math::MinimizerOptions::DefaultStrategy();
-       // avoid default tolerance to be too small (1. is default in RooMinimizer)
-       fTolerance=TMath::Max(1.,::ROOT::Math::MinimizerOptions::DefaultTolerance());
-       fPrintLevel=::ROOT::Math::MinimizerOptions::DefaultPrintLevel();
-     }
+      ProfileLikelihoodTestStat(RooAbsPdf &pdf)
+         : fPdf(&pdf),
+           fStrategy(::ROOT::Math::MinimizerOptions::DefaultStrategy()),
+           fTolerance(std::max(1., ::ROOT::Math::MinimizerOptions::DefaultTolerance())),
+           fPrintLevel(::ROOT::Math::MinimizerOptions::DefaultPrintLevel()),
+           fLOffset(RooStats::NLLOffsetMode())
+      {
+         // avoid default tolerance to be too small (1. is default in RooMinimizer)
+      }
 
      ~ProfileLikelihoodTestStat() override {
-       if(fNll) delete fNll;
        if(fCachedBestFitParams) delete fCachedBestFitParams;
-       if(fDetailedOutput) delete fDetailedOutput;
      }
 
      void SetOneSided(bool flag=true) {fLimitType = (flag ? oneSided : twoSided);}
@@ -88,7 +56,8 @@ namespace RooStats {
      static void SetAlwaysReuseNLL(bool flag);
 
      void SetReuseNLL(bool flag) { fReuseNll = flag ; }
-     void SetLOffset(bool flag=true) { fLOffset = flag ; }
+     void SetLOffset(bool flag=true) { fLOffset = flag ? "initial" : "none"; }
+     void SetLOffset(std::string const &mode) { fLOffset = mode; }
 
      void SetMinimizer(const char* minimizer){ fMinimizer=minimizer;}
      void SetStrategy(Int_t strategy){fStrategy=strategy;}
@@ -106,7 +75,6 @@ namespace RooStats {
      virtual void EnableDetailedOutput( bool e=true, bool withErrorsAndPulls=false ) {
         fDetailedOutputEnabled = e;
         fDetailedOutputWithErrorsAndPulls = withErrorsAndPulls;
-        delete fDetailedOutput;
         fDetailedOutput = nullptr;
      }
      /// Returns detailed output. The value returned by this function is updated after each call to Evaluate().
@@ -116,7 +84,7 @@ namespace RooStats {
      ///  - for each fit and for each non-constant parameter, the value, error and pull of the parameter are stored
      ///
      const RooArgSet* GetDetailedOutput(void) const override {
-      return fDetailedOutput;
+      return fDetailedOutput.get();
      }
 
      /// set the conditional observables which will be used when creating the NLL
@@ -134,39 +102,36 @@ namespace RooStats {
 
   private:
 
-     RooFitResult* GetMinNLL();
+     std::unique_ptr<RooFitResult> GetMinNLL();
+     bool minimizationNeeded(RooArgSet allParams) const;
+     std::pair<double, int> minimizeNLL(std::string const &prefix);
 
-   private:
-
-      RooAbsPdf* fPdf;
-      RooAbsReal* fNll; //!
-      const RooArgSet* fCachedBestFitParams;
-      RooAbsData* fLastData;
-      //      double fLastMLE;
-      LimitType fLimitType;
-      bool fSigned;
+      RooAbsPdf* fPdf = nullptr;
+      std::unique_ptr<RooAbsReal> fNll; ///<!
+      const RooArgSet* fCachedBestFitParams = nullptr;
+      RooAbsData* fLastData = nullptr;
+      LimitType fLimitType = twoSided;
+      bool fSigned = false;
 
       /// this will store a snapshot of the unconditional nuisance
       /// parameter fit.
-      bool fDetailedOutputEnabled;
-      bool fDetailedOutputWithErrorsAndPulls;
-      RooArgSet* fDetailedOutput; ///<!
+      bool fDetailedOutputEnabled = false;
+      bool fDetailedOutputWithErrorsAndPulls = false;
+      std::unique_ptr<RooArgSet> fDetailedOutput; ///<!
       RooArgSet fConditionalObs;  ///< conditional observables
       RooArgSet fGlobalObs;       ///< global observables
 
-      TString fVarName;
+      TString fVarName = "Profile Likelihood Ratio";
 
       static bool fgAlwaysReuseNll ;
-      bool fReuseNll ;
+      bool fReuseNll = false;
       TString fMinimizer;
       Int_t fStrategy;
       double fTolerance;
       Int_t fPrintLevel;
-      bool fLOffset ;
+      std::string fLOffset;
 
-   protected:
-
-      ClassDefOverride(ProfileLikelihoodTestStat,10)   // implements the profile likelihood ratio as a test statistic to be used with several tools
+      ClassDefOverride(ProfileLikelihoodTestStat,0)   // implements the profile likelihood ratio as a test statistic to be used with several tools
    };
 }
 

@@ -19,10 +19,9 @@ public:
 
   RooJeffreysPrior() : _cacheMgr(this, 1, true, false) {}
   RooJeffreysPrior(const char *name, const char *title, RooAbsPdf& nominal, const RooArgList& paramSet, const RooArgList& obsSet) ;
-  ~RooJeffreysPrior() override ;
 
   RooJeffreysPrior(const RooJeffreysPrior& other, const char *name = nullptr);
-  TObject* clone(const char* newname) const override { return new RooJeffreysPrior(*this, newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooJeffreysPrior(*this, newname); }
 
   const RooArgList& lowList() const { return _obsSet ; }
   const RooArgList& paramList() const { return _paramSet ; }
@@ -38,7 +37,6 @@ protected:
 private:
   struct CacheElem : public RooAbsCacheElement {
   public:
-      ~CacheElem() override = default;
       // Payload
       std::unique_ptr<RooAbsPdf> _pdf;
       std::unique_ptr<RooArgSet> _pdfVariables;
@@ -49,7 +47,7 @@ private:
         return list;
       }
   };
-  mutable RooObjCacheManager _cacheMgr; //!
+  mutable RooObjCacheManager _cacheMgr; ///<!
 
   ClassDefOverride(RooJeffreysPrior,2) // Sum of RooAbsReal objects
 };

@@ -1,6 +1,5 @@
 /**
  \file ROOT/RDF/RMergeableValue.hxx
- \ingroup dataframe
  \author Vincenzo Eduardo Padulano
  \author Enrico Guiraud
  \date 2020-06
@@ -17,12 +16,14 @@
 #ifndef ROOT_RDF_RMERGEABLEVALUE
 #define ROOT_RDF_RMERGEABLEVALUE
 
+#include "ROOT/RDF/RCutFlowReport.hxx"
+
 #include <algorithm> // std::find, std::min, std::max
 #include <iterator>  // std::distance
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <vector>
+#include <cmath>
 
 #include "RtypesCore.h"
 #include "TError.h" // R__ASSERT
@@ -52,7 +53,6 @@ void MergeValues(RMergeableVariations<T> &OutputMergeable, const RMergeableVaria
 /**
 \class ROOT::Detail::RDF::RMergeableValueBase
 \brief Base class of RMergeableValue.
-\ingroup dataframe
 Base class of the mergeable RDataFrame results family of classes. Provides a
 non-templated custom type to allow passing a `std::unique_ptr` to the mergeable
 object along the call chain. This class is never used in the public API and has
@@ -138,6 +138,7 @@ currently available:
 - RMergeableMin
 - RMergeableStdDev
 - RMergeableSum
+- RMergeableReport
 */
 template <typename T>
 class RMergeableValue : public RMergeableValueBase {
@@ -186,7 +187,6 @@ public:
 
 /**
 \class ROOT::Detail::RDF::RMergeableCount
-\ingroup dataframe
 \brief Specialization of RMergeableValue for the
 [Count](classROOT_1_1RDF_1_1RInterface.html#a9678150c9c18cddd7b599690ba854734)
 action.
@@ -236,7 +236,6 @@ public:
 
 /**
 \class ROOT::Detail::RDF::RMergeableFill
-\ingroup dataframe
 \brief Specialization of RMergeableValue for histograms and statistics.
 
 This subclass is responsible for merging results coming from the following
@@ -245,6 +244,7 @@ actions:
 - [Histo{1D,2D,3D}]
   (classROOT_1_1RDF_1_1RInterface.html#a247ca3aeb7ce5b95015b7fae72983055)
 - [HistoND](classROOT_1_1RDF_1_1RInterface.html#a0c9956a0f48c26f8e4294e17376c7fea)
+- [HistoNSparseD](classROOT_1_1RDF_1_1RInterface.html)
 - [Profile{1D,2D}]
   (classROOT_1_1RDF_1_1RInterface.html#a8ef7dc16b0e9f7bc9cfbe2d9e5de0cef)
 - [Stats](classROOT_1_1RDF_1_1RInterface.html#abc68922c464e472f5f856e8981955af6)
@@ -347,7 +347,6 @@ public:
 
 /**
 \class ROOT::Detail::RDF::RMergeableMean
-\ingroup dataframe
 \brief Specialization of RMergeableValue for the
 [Mean](classROOT_1_1RDF_1_1RInterface.html#ade6b020284f2f4fe9d3b09246b5f376a)
 action.
@@ -443,7 +442,6 @@ public:
 
 /**
 \class ROOT::Detail::RDF::RMergeableStdDev
-\ingroup dataframe
 \brief Specialization of RMergeableValue for the
 [StdDev](classROOT_1_1RDF_1_1RInterface.html#a482c4e4f81fe1e421c016f89cd281572)
 action.
@@ -557,8 +555,63 @@ public:
 };
 
 /**
+\brief Specialization of RMergeableValue for the
+[Report](https://root.cern/doc/master/classROOT_1_1RDF_1_1RCutFlowReport.html)
+action.
+
+This subclass is responsible for merging results coming from Report actions. Other
+than the result itself, the vector of TCutInfos is stored in the object.
+*/
+class RMergeableReport final : public RMergeableValue<ROOT::RDF::RCutFlowReport> {
+
+   std::vector<ROOT::RDF::TCutInfo> fCutInfoVec;
+   void Merge(const RMergeableValue<ROOT::RDF::RCutFlowReport> &other) final
+   {
+      ROOT::RDF::RCutFlowReport report;
+      const auto &othercast = dynamic_cast<const RMergeableReport &>(other);
+
+      for (unsigned long i = 0; i < fCutInfoVec.size(); i++) {
+
+         auto accumulated_pass = this->fCutInfoVec[i].GetPass() + othercast.fCutInfoVec[i].GetPass();
+         auto accumulated_all = this->fCutInfoVec[i].GetAll() + othercast.fCutInfoVec[i].GetAll();
+
+         // Updating the RCutFlowReport cut by cut
+         // Adding a cut which has an appropriate name and accumulated pass and all.
+         // We only want to merge reports that have the same cuts (given by their cut names).
+         if (this->fCutInfoVec[i].GetName() == othercast.fCutInfoVec[i].GetName()) {
+            // Adding a cut which has an appropriate name and accumulated pass and all
+            report.AddCut({this->fCutInfoVec[i].GetName(), accumulated_pass, accumulated_all});
+         } else {
+            throw std::runtime_error("Cutflow report with different cut names cannot be merged.");
+         }
+      }
+      this->fValue = report;
+   }
+
+public:
+   /////////////////////////////////////////////////////////////////////////////
+   /// \brief Constructor that initializes data members.
+   /// \param[in] value The action result.
+   /// \param[in] cutinfovec The vector of TCutInfos.
+   RMergeableReport(ROOT::RDF::RCutFlowReport value, std::vector<ROOT::RDF::TCutInfo> cutinfovec)
+      : RMergeableValue<ROOT::RDF::RCutFlowReport>(value), fCutInfoVec{cutinfovec}
+   {
+   }
+
+   /**
+      Default constructor. Needed to allow serialization of ROOT objects. See
+      [TBufferFile::WriteObjectClass]
+      (classTBufferFile.html#a209078a4cb58373b627390790bf0c9c1)
+   */
+   RMergeableReport() = default;
+   RMergeableReport(const RMergeableReport &) = delete;
+   RMergeableReport &operator=(const RMergeableReport &) = delete;
+   RMergeableReport(RMergeableReport &&) = delete;
+   RMergeableReport &operator=(RMergeableReport &&) = delete;
+};
+
+/**
 \class ROOT::Detail::RDF::RMergeableVariationsBase
-\ingroup dataframe
 \brief A container for variation names and variation results.
 
 The class stores two vectors: one with the variation names, the other with
@@ -568,8 +621,8 @@ type-erased RMergeableValueBase objects.
 */
 class RMergeableVariationsBase : public RMergeableValueBase {
 protected:
-   std::vector<std::string> fKeys;
-   std::vector<std::unique_ptr<RMergeableValueBase>> fValues;
+   std::vector<std::string> fKeys{};
+   std::vector<std::unique_ptr<RMergeableValueBase>> fValues{};
 
 public:
    /**
@@ -591,6 +644,7 @@ public:
    {
    }
    RMergeableVariationsBase &operator=(RMergeableVariationsBase &&) = delete;
+   ~RMergeableVariationsBase() override = default;
 
    /////////////////////////////////////////////////////////////////////////////
    /// \brief Constructor that initializes data members.
@@ -615,7 +669,6 @@ public:
 
 /**
 \class ROOT::Detail::RDF::RMergeableVariations
-\ingroup dataframe
 \brief A container for variation names and variation results that knows how to
        merge with others of the same type.
 \tparam T Type of the action result.
@@ -660,6 +713,7 @@ public:
    RMergeableVariations &operator=(const RMergeableVariations &) = delete;
    RMergeableVariations(RMergeableVariations &&) = delete;
    RMergeableVariations &operator=(RMergeableVariations &&) = delete;
+   ~RMergeableVariations() final = default;
 
    /////////////////////////////////////////////////////////////////////////////
    /// \brief Constructor that initializes data members.

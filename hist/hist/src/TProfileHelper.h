@@ -108,6 +108,8 @@ Bool_t TProfileHelper::Add(T* p, const TH1 *h1,  const TH1 *h2, Double_t c1, Dou
 
    // create sumw2 per bin if not set
    if (p->fBinSumw2.fN == 0 && (p1->fBinSumw2.fN != 0 || p2->fBinSumw2.fN != 0)) p->Sumw2();
+   // create sumw2 also for the case where coefficients are not equal to 1
+   if (p->fSumw2.fN == 0 && (c1 != 1.0 || c2 != 1.0)) p->Sumw2();
 
    // Make the loop over the bins to calculate the Addition
    Double_t *cu1 = p1->GetW();    Double_t *cu2 = p2->GetW();
@@ -589,7 +591,7 @@ void TProfileHelper::LabelsDeflate(T* p, Option_t *ax)
    // do nothing in case it was the last bin
    if (nbins==axis->GetNbins()) return;
 
-   T *hold = (T*)p->IsA()->New();;
+   T *hold = (T*)p->IsA()->New();
    hold->SetDirectory(0);
    p->Copy(*hold);
 
@@ -633,7 +635,7 @@ void TProfileHelper::LabelsInflate(T* p, Option_t *ax)
    if (gDebug) Info("LabelsInflate","Inflate label for axis %s of profile %s",ax,p->GetName());
 
    Int_t iaxis = p->AxisChoice(ax);
-   TAxis *axis = 0;
+   TAxis *axis = nullptr;
    if (iaxis == 1) axis = p->GetXaxis();
    if (iaxis == 2) axis = p->GetYaxis();
    if (iaxis == 3) axis = p->GetZaxis();
@@ -641,7 +643,7 @@ void TProfileHelper::LabelsInflate(T* p, Option_t *ax)
    // TAxis *axis = p->GetXaxis();
    // if (ax[0] == 'y' || ax[0] == 'Y') axis = p->GetYaxis();
 
-   T *hold = (T*)p->IsA()->New();;
+   T *hold = (T*)p->IsA()->New();
    hold->SetDirectory(0);
    p->Copy(*hold);
 

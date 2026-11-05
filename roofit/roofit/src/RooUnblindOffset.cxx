@@ -32,16 +32,6 @@ of the unblind parameter
 #include "RooArgSet.h"
 #include "RooUnblindOffset.h"
 
-using namespace std;
-
-ClassImp(RooUnblindOffset);
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
-
-RooUnblindOffset::RooUnblindOffset()
-{
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor from a given RooAbsReal (to hold the blind value) and a set of blinding parameters
@@ -73,13 +63,6 @@ RooUnblindOffset::RooUnblindOffset(const RooUnblindOffset& other, const char* na
   RooAbsHiddenReal(other, name),
   _value("asym",this,other._value),
   _blindEngine(other._blindEngine)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooUnblindOffset::~RooUnblindOffset()
 {
 }
 

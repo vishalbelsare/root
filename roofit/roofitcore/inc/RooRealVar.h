@@ -33,9 +33,6 @@ class RooErrorVar ;
 class RooVectorDataStore ;
 class RooExpensiveObjectCache ;
 class RooRealVarSharedProperties;
-namespace RooBatchCompute{
-struct RunContext;
-}
 
 class RooRealVar : public RooAbsRealLValue {
 public:
@@ -48,17 +45,17 @@ public:
   RooRealVar(const char *name, const char *title, double value,
       double minValue, double maxValue, const char *unit= "") ;
   RooRealVar(const RooRealVar& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new RooRealVar(*this,newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooRealVar(*this,newname); }
   ~RooRealVar() override;
 
   // Parameter value and error accessors
   double getValV(const RooArgSet* nset=nullptr) const override ;
-  RooSpan<const double> getValues(RooBatchCompute::RunContext& inputData, const RooArgSet* = nullptr) const final;
 
   /// Returns how many times the value of this RooRealVar was reset.
   std::size_t valueResetCounter() const { return _valueResetCounter; }
   void setVal(double value) override;
   void setVal(double value, const char* rangeName) override;
+  static void enableSilentClipping(bool flag = true);
   inline double getError() const { return _error>=0?_error:0. ; }
   inline bool hasError(bool allowZero=true) const { return allowZero ? (_error>=0) : (_error>0) ; }
   inline void setError(double value) { _error= value ; }
@@ -74,10 +71,10 @@ public:
   RooErrorVar* errorVar() const ;
 
   // Set/get finite fit range limits
-  void setMin(const char* name, double value) ;
-  void setMax(const char* name, double value) ;
-  void setRange(const char* name, double min, double max) ;
-  void setRange(const char* name, RooAbsReal& min, RooAbsReal& max) ;
+  void setMin(const char* name, double value, bool shared=true) ;
+  void setMax(const char* name, double value, bool shared=true) ;
+  void setRange(const char* name, double min, double max, bool shared=true) ;
+  void setRange(const char* name, RooAbsReal& min, RooAbsReal& max, bool shared=true) ;
   inline void setMin(double value) { setMin(nullptr,value) ; }
   inline void setMax(double value) { setMax(nullptr,value) ; }
   /// Set the limits of the default range.
@@ -85,22 +82,23 @@ public:
   /// Set parameterised limits of the default range. See setRange(const char*, RooAbsReal&, RooAbsReal&).
   inline void setRange(RooAbsReal& min, RooAbsReal& max) { setRange(nullptr,min,max) ; }
 
-  void setBins(Int_t nBins, const char* name=nullptr);
-  void setBinning(const RooAbsBinning& binning, const char* name=nullptr) ;
+  void setBins(Int_t nBins, const char* name=nullptr, bool shared=true);
+  void setBinning(const RooAbsBinning& binning, const char* name=nullptr, bool shared=true) ;
 
   // RooAbsRealLValue implementation
   bool hasBinning(const char* name) const override ;
-  const RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false) const override ;
-  RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false) override ;
+  const RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false, bool shared=true) const override ;
+  RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false, bool shared=true) override ;
   std::list<std::string> getBinningNames() const override ;
+
+  /// remove a named binning (or a named range, which are stored internally as binnings)
+  void removeBinning(const char* name);
 
   // Set infinite fit range limits
   /// Remove lower range limit for binning with given name. Empty name means default range.
   void removeMin(const char* name=nullptr);
   /// Remove upper range limit for binning with given name. Empty name means default range.
-  void removeMax(const char* name=nullptr);
-  /// Remove range limits for binning with given name. Empty name means default range.
-  void removeRange(const char* name=nullptr);
+  void removeMax(const char *name = nullptr);
 
   // I/O streaming interface (machine readable)
   bool readFromStream(std::istream& is, bool compact, bool verbose=false) override ;
@@ -122,8 +120,8 @@ public:
   Int_t defaultPrintContents(Option_t* opt) const override ;
 
 
-  TString* format(const RooCmdArg& formatArg) const ;
-  TString* format(Int_t sigDigits, const char *options) const ;
+  std::string format(const RooCmdArg& formatArg) const ;
+  std::string format(Int_t sigDigits, const char *options) const ;
 
   static void printScientific(bool flag=false) ;
   static void printSigDigits(Int_t ndig=5) ;
@@ -141,16 +139,20 @@ public:
   static bool _printScientific ;
   static Int_t  _printSigDigits ;
 
-  void setValFast(double value) override { _value = value ; setValueDirty() ; }
-
+   void setValFast(double value) override
+   {
+      if (_value != value) {
+         ++_valueResetCounter;
+      }
+      _value = value;
+      setValueDirty();
+   }
 
   double evaluate() const override { return _value ; } // dummy because we overloaded getVal()
   void copyCache(const RooAbsArg* source, bool valueOnly=false, bool setValDirty=true) override ;
   void attachToTree(TTree& t, Int_t bufSize=32000) override ;
   void attachToVStore(RooVectorDataStore& vstore) override ;
   void fillTreeBranch(TTree& t) override ;
-
-  double chopAt(double what, Int_t where) const ;
 
   double _error;      ///< Symmetric error associated with current value
   double _asymErrLo ; ///< Low side of asymmetric error associated with current value
@@ -172,10 +174,9 @@ public:
 
   std::size_t _valueResetCounter = 0; ///<! How many times the value of this variable was reset
 
-  ClassDefOverride(RooRealVar,8) // Real-valued variable
+  static bool &isSilentClippingEnabled();
+
+  ClassDefOverride(RooRealVar,10); // Real-valued variable
 };
-
-
-
 
 #endif

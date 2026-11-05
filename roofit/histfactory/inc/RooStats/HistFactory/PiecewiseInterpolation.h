@@ -31,11 +31,15 @@ class PiecewiseInterpolation : public RooAbsReal {
 public:
 
   PiecewiseInterpolation() ;
-  PiecewiseInterpolation(const char *name, const char *title, const RooAbsReal& nominal, const RooArgList& lowSet, const RooArgList& highSet, const RooArgList& paramSet, bool takeOwnerShip=false) ;
+  PiecewiseInterpolation(const char *name, const char *title, const RooAbsReal &nominal, const RooArgList &lowSet,
+                         const RooArgList &highSet, const RooArgList &paramSet);
+  PiecewiseInterpolation(const char *name, const char *title, const RooAbsReal &nominal, const RooArgList &lowSet,
+                         const RooArgList &highSet, const RooArgList &paramSet,
+                         const std::vector<int> &interpolationCodes);
   ~PiecewiseInterpolation() override ;
 
   PiecewiseInterpolation(const PiecewiseInterpolation& other, const char *name = nullptr);
-  TObject* clone(const char* newname) const override { return new PiecewiseInterpolation(*this, newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new PiecewiseInterpolation(*this, newname); }
 
   /// Return pointer to the nominal hist function.
   const RooAbsReal* nominalHist() const {
@@ -58,8 +62,9 @@ public:
   double analyticalIntegralWN(Int_t code, const RooArgSet* normSet, const char* rangeName=nullptr) const override ;
 
   void setPositiveDefinite(bool flag=true){_positiveDefinite=flag;}
+  bool positiveDefinite() const {return _positiveDefinite;}
 
-  void setInterpCode(RooAbsReal& param, int code, bool silent=false);
+  void setInterpCode(RooAbsReal& param, int code, bool silent=true);
   void setAllInterpCodes(int code);
   void printAllInterpCodes();
 
@@ -72,7 +77,6 @@ protected:
   class CacheElem : public RooAbsCacheElement {
   public:
     CacheElem()  {} ;
-    ~CacheElem() override {} ;
     RooArgList containedArgs(Action) override {
       RooArgList ret(_funcIntList) ;
       ret.add(_lowIntList);
@@ -92,12 +96,16 @@ protected:
   RooListProxy _highSet ;          ///< High-side variation
   RooListProxy _paramSet ;         ///< interpolation parameters
   RooListProxy _normSet ;          ///< interpolation parameters
-  bool _positiveDefinite;        ///< protect against negative and 0 bins.
+  bool _positiveDefinite = false;  ///< protect against negative and 0 bins.
 
   std::vector<int> _interpCode;
 
   double evaluate() const override;
-  void computeBatch(cudaStream_t*, double* output, size_t size, RooFit::Detail::DataMap const&) const override;
+  void doEval(RooFit::EvalContext &) const override;
+
+private:
+
+  void setInterpCodeForParam(int iParam, int code);
 
   ClassDefOverride(PiecewiseInterpolation,4) // Sum of RooAbsReal objects
 };

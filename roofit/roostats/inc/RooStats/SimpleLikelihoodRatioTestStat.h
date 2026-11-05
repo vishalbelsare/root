@@ -24,76 +24,35 @@ namespace RooStats {
 
    public:
 
-      /// Constructor for proof. Do not use.
-      SimpleLikelihoodRatioTestStat() :
-         fNullPdf(nullptr), fAltPdf(nullptr)
-      {
-         fFirstEval = true;
-         fDetailedOutputEnabled = false;
-         fDetailedOutput = nullptr;
-         fNullParameters = nullptr;
-         fAltParameters = nullptr;
-         fReuseNll=false ;
-         fNllNull=nullptr ;
-         fNllAlt=nullptr ;
-      }
+      /// Constructor for proof, now removed. Do not use.
+      SimpleLikelihoodRatioTestStat() = default;
 
       /// Takes null and alternate parameters from PDF. Can be overridden.
-      SimpleLikelihoodRatioTestStat(
-         RooAbsPdf& nullPdf,
-         RooAbsPdf& altPdf
-      ) :
-         fFirstEval(true)
+      SimpleLikelihoodRatioTestStat(RooAbsPdf &nullPdf, RooAbsPdf &altPdf)
+         : fNullPdf(&nullPdf),
+           fAltPdf(&altPdf)
       {
-         fNullPdf = &nullPdf;
-         fAltPdf = &altPdf;
+         std::unique_ptr<RooArgSet> allNullVars{fNullPdf->getVariables()};
+         fNullParameters = allNullVars->snapshot();
 
-         RooArgSet * allNullVars = fNullPdf->getVariables();
-         fNullParameters = (RooArgSet*) allNullVars->snapshot();
-         delete allNullVars;
-
-         RooArgSet * allAltVars = fAltPdf->getVariables();
-         fAltParameters = (RooArgSet*) allAltVars->snapshot();
-         delete allAltVars;
-
-         fDetailedOutputEnabled = false;
-         fDetailedOutput = nullptr;
-
-         fReuseNll=false ;
-         fNllNull=nullptr ;
-         fNllAlt=nullptr ;
+         std::unique_ptr<RooArgSet> allAltVars{fAltPdf->getVariables()};
+         fAltParameters = allAltVars->snapshot();
       }
 
       /// Takes null and alternate parameters from values in nullParameters
       /// and altParameters. Can be overridden.
-      SimpleLikelihoodRatioTestStat(
-         RooAbsPdf& nullPdf,
-         RooAbsPdf& altPdf,
-         const RooArgSet& nullParameters,
-         const RooArgSet& altParameters
-      ) :
-         fFirstEval(true)
+      SimpleLikelihoodRatioTestStat(RooAbsPdf &nullPdf, RooAbsPdf &altPdf, const RooArgSet &nullParameters,
+                                    const RooArgSet &altParameters)
+         : fNullPdf(&nullPdf),
+           fAltPdf(&altPdf),
+           fNullParameters(nullParameters.snapshot()),
+           fAltParameters(altParameters.snapshot())
       {
-         fNullPdf = &nullPdf;
-         fAltPdf = &altPdf;
-
-         fNullParameters = (RooArgSet*) nullParameters.snapshot();
-         fAltParameters = (RooArgSet*) altParameters.snapshot();
-
-         fDetailedOutputEnabled = false;
-         fDetailedOutput = nullptr;
-
-         fReuseNll=false ;
-         fNllNull=nullptr ;
-         fNllAlt=nullptr ;
       }
 
       ~SimpleLikelihoodRatioTestStat() override {
          if (fNullParameters) delete fNullParameters;
          if (fAltParameters) delete fAltParameters;
-         if (fNllNull) delete fNllNull ;
-         if (fNllAlt) delete fNllAlt ;
-         if (fDetailedOutput) delete fDetailedOutput;
       }
 
       static void SetAlwaysReuseNLL(bool flag);
@@ -141,7 +100,7 @@ namespace RooStats {
       double Evaluate(RooAbsData& data, RooArgSet& nullPOI) override;
 
       virtual void EnableDetailedOutput( bool e=true ) { fDetailedOutputEnabled = e; fDetailedOutput = nullptr; }
-      const RooArgSet* GetDetailedOutput(void) const override { return fDetailedOutput; }
+      const RooArgSet* GetDetailedOutput(void) const override { return fDetailedOutput.get(); }
 
       const TString GetVarName() const override {
          return "log(L(#mu_{1}) / L(#mu_{0}))";
@@ -149,24 +108,23 @@ namespace RooStats {
 
    private:
 
-      RooAbsPdf* fNullPdf;
-      RooAbsPdf* fAltPdf;
-      RooArgSet* fNullParameters;
-      RooArgSet* fAltParameters;
+      RooAbsPdf* fNullPdf = nullptr;
+      RooAbsPdf* fAltPdf = nullptr;
+      RooArgSet* fNullParameters = nullptr;
+      RooArgSet* fAltParameters = nullptr;
       RooArgSet fConditionalObs;
       RooArgSet fGlobalObs;
-      bool fFirstEval;
+      bool fFirstEval = true;
 
-      bool fDetailedOutputEnabled;
-      RooArgSet* fDetailedOutput; ///<!
+      bool fDetailedOutputEnabled = false;
+      std::unique_ptr<RooArgSet> fDetailedOutput; ///<!
 
-      RooAbsReal* fNllNull ;  ///<! transient copy of the null NLL
-      RooAbsReal* fNllAlt ;   ///<!  transient copy of the alt NLL
+      std::unique_ptr<RooAbsReal> fNllNull; ///<! transient copy of the null NLL
+      std::unique_ptr<RooAbsReal> fNllAlt;  ///<!  transient copy of the alt NLL
       static bool fgAlwaysReuseNll ;
-      bool fReuseNll ;
+      bool fReuseNll = false;
 
 
-   protected:
    ClassDefOverride(SimpleLikelihoodRatioTestStat,4)
 };
 

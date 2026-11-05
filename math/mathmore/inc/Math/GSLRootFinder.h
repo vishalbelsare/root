@@ -76,15 +76,13 @@ namespace Math {
     GSLRootFinder();
     ~GSLRootFinder() override;
 
- private:
-    // usually copying is non trivial, so we make this unaccessible
-    GSLRootFinder(const GSLRootFinder &);
-    GSLRootFinder & operator = (const GSLRootFinder &);
+    // usually copying is non trivial, so we delete this
+    GSLRootFinder(const GSLRootFinder &) = delete;
+    GSLRootFinder &operator=(const GSLRootFinder &) = delete;
+    GSLRootFinder(GSLRootFinder &&) = delete;
+    GSLRootFinder &operator=(GSLRootFinder &&) = delete;
 
- public:
-
-
-#if defined(__MAKECINT__) || defined(G__DICTIONARY)
+#if defined(__ROOTCLING__) || defined(G__DICTIONARY)
     bool SetFunction( const IGradFunction & , double ) override {
        std::cerr <<"GSLRootFinder - Error : this method must be used with a Root Finder algorithm using derivatives" << std::endl;
        return false;

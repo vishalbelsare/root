@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : VariableTransformBase                                                 *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Implementation (see header for description)                               *
@@ -22,7 +22,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #include "TMVA/VariableTransformBase.h"
@@ -157,6 +157,10 @@ void CreateVariableTransforms(const TString& trafoDefinitionIn,
       else if (trName == "N" || trName == "Norm" || trName == "Normalise" || trName == "Normalize") {
          if (variables.Length() == 0) variables = "_V_,_T_";
          transformation = new VariableNormalizeTransform(dataInfo);
+      }
+      else if (trName == "S" || trName == "Scale" || trName == "ScaleNorm" ) {
+         if (variables.Length() == 0) variables = "_V_,_T_";
+         transformation = new VariableNormalizeTransform(dataInfo,"Scale");
       }
       else
          log << kFATAL << Form("Dataset[%s] : ",dataInfo.GetName())

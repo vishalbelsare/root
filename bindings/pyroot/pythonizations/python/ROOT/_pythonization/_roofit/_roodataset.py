@@ -27,10 +27,12 @@ class RooDataSet(object):
     \endcode
     """
 
+    __cpp_name__ = 'RooDataSet'
+
     @cpp_signature(
-        "RooDataSet(std::string_view name, std::string_view title, const RooArgSet& vars, const RooCmdArg& arg1, const RooCmdArg& arg2=RooCmdArg(),"
-        "    const RooCmdArg& arg3=RooCmdArg(), const RooCmdArg& arg4=RooCmdArg(),const RooCmdArg& arg5=RooCmdArg(),"
-        "    const RooCmdArg& arg6=RooCmdArg(),const RooCmdArg& arg7=RooCmdArg(),const RooCmdArg& arg8=RooCmdArg()) ;"
+        "RooDataSet(std::string_view name, std::string_view title, const RooArgSet& vars, const RooCmdArg& arg1, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},const RooCmdArg& arg5={},"
+        "    const RooCmdArg& arg6={},const RooCmdArg& arg7={},const RooCmdArg& arg8={}) ;"
     )
     def __init__(self, *args, **kwargs):
         r"""The RooDataSet constructor is pythonized with the command argument pythonization.
@@ -42,10 +44,10 @@ class RooDataSet(object):
 
     @cpp_signature(
         "RooPlot *RooDataSet::plotOnXY(RooPlot* frame,"
-        "    const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) const ;"
+        "    const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) const ;"
     )
     def plotOnXY(self, *args, **kwargs):
         r"""The RooDataSet::plotOnXY() function is pythonized with the command argument pythonization.
@@ -75,9 +77,11 @@ class RooDataSet(object):
         Returns:
             RooDataSet
         """
-        import ROOT
-        import numpy as np
         import ctypes
+
+        import numpy as np
+
+        import ROOT
 
         name = "" if name is None else name
         title = "" if title is None else title
@@ -85,7 +89,7 @@ class RooDataSet(object):
         if weight_name is None:
             dataset = ROOT.RooDataSet(name, title, variables)
         else:
-            dataset = ROOT.RooDataSet(name, title, variables, weight_name)
+            dataset = ROOT.RooDataSet(name, title, variables, WeightVar=weight_name)
 
         def log_warning(s):
             """Log a string to the RooFit message log for the WARNING level on
@@ -99,7 +103,6 @@ class RooDataSet(object):
         range_mask = np.ones_like(list(data.values())[0], dtype=bool)
 
         def in_range(arr, variable):
-
             # For categories, we need to check whether the elements of the
             # array are in the set of category state indices
             if variable.isCategory():
@@ -117,30 +120,28 @@ class RooDataSet(object):
             if range_mask is not None:
                 arr = arr[range_mask]
             arr = arr if arr.dtype == dtype else np.array(arr, dtype=dtype)
-            return arr
+            # Make sure that the array is contiguous so we can std::copy() it.
+            # In the implementation of ascontiguousarray(), no copy is done if
+            # the array is already contiguous, which is exactly what we want.
+            return np.ascontiguousarray(arr)
 
-        for real in dataset.store().realStoreList():
-            vec = real.data()
-            arg = real.bufArg()
-            arr = select_range_and_change_type(data[arg.GetName()], np.float64)
+        def copy_to_dataset(store_list, np_type, c_type, type_size_in_bytes):
+            for real in store_list:
+                vec = real.data()
+                arg = real.bufArg()
+                arr = select_range_and_change_type(data[arg.GetName()], np_type)
 
-            vec.resize(len(arr))
+                vec.resize(len(arr))
 
-            beg = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-            void_p = ctypes.cast(beg, ctypes.c_voidp).value + 8 * len(arr)
-            end = ctypes.cast(void_p, ctypes.POINTER(ctypes.c_double))
-            ROOT.std.copy(beg, end, vec.begin())
+                # The next part works because arr is guaranteed to be C-contiguous
+                beg = arr.ctypes.data_as(ctypes.POINTER(c_type))
+                n_bytes = type_size_in_bytes * len(arr)
+                void_p = ctypes.cast(beg, ctypes.c_voidp).value + n_bytes
+                end = ctypes.cast(void_p, ctypes.POINTER(c_type))
+                ROOT.std.copy(beg, end, vec.begin())
 
-        for cat in dataset.store().catStoreList():
-            vec = cat.data()
-            arg = cat.bufArg()
-            arr = select_range_and_change_type(data[arg.GetName()], np.int32)
-            vec.resize(len(arr))
-
-            beg = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
-            void_p = ctypes.cast(beg, ctypes.c_voidp).value + 4 * len(arr)
-            end = ctypes.cast(void_p, ctypes.POINTER(ctypes.c_int))
-            ROOT.std.copy(beg, end, vec.begin())
+        copy_to_dataset(dataset.store().realStoreList(), np.float64, ctypes.c_double, 8)
+        copy_to_dataset(dataset.store().catStoreList(), np.int32, ctypes.c_int, 4)
 
         dataset.store().recomputeSumWeight()
 
@@ -161,7 +162,7 @@ class RooDataSet(object):
         return dataset
 
     def to_numpy(self, copy=True):
-        """Export a RooDataSet to a dictinary of numpy arrays.
+        """Export a RooDataSet to a dictionary of numpy arrays.
 
         Args:
             copy (bool): If False, the data will not be copied. Use with
@@ -174,8 +175,8 @@ class RooDataSet(object):
             dict: A dictionary with the variable or weight names as keys and
                   the numpy arrays as values.
         """
+
         import ROOT
-        import numpy as np
 
         data = {}
 
@@ -239,7 +240,6 @@ class RooDataSet(object):
                               column names and the a row for each variable or
                               weight in the dataset.
         """
-        import ROOT
         import pandas as pd
 
         return pd.DataFrame(self.to_numpy(copy=False))

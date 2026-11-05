@@ -1,6 +1,5 @@
 // Author: Sergey Linev <S.Linev@gsi.de>
 // Date: 2022-10-07
-// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2022, Rene Brun and Fons Rademakers.               *
@@ -20,7 +19,7 @@
 #include "TBranchBrowsable.h"
 #include "TLeaf.h"
 
-using namespace ROOT::Experimental;
+using namespace ROOT;
 
 using namespace std::string_literals;
 
@@ -41,13 +40,11 @@ public:
       });
    }
 
-   virtual ~RBrowserTreeWidget() = default;
+   ~RBrowserTreeWidget() override = default;
 
    std::string GetKind() const override { return "tree"s; }
    std::string GetTitle() override { return fTitle; }
-   std::string GetUrl() override { return "../"s + fViewer.GetWindowAddr() + "/"s; }
-
-   void Show(const std::string &arg) override { fViewer.Show(arg); }
+   std::shared_ptr<RWebWindow> GetWindow() override { return fViewer.GetWindow(); }
 
    bool DrawElement(std::shared_ptr<Browsable::RElement> &elem, const std::string & = "") override
    {
@@ -115,5 +112,5 @@ protected:
    }
 public:
    RBrowserTreeProvider() : RBrowserWidgetProvider("tree") {}
-   ~RBrowserTreeProvider() = default;
+   ~RBrowserTreeProvider() override = default;
 } sRBrowserTreeProvider;

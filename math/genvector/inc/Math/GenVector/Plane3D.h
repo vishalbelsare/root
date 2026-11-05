@@ -46,7 +46,7 @@ namespace Impl {
 
    @ingroup GenVector
 
-   @sa Overview of the @ref GenVector "physics vector library"
+   @see GenVector
 */
 
 template <typename T = double>
@@ -244,8 +244,8 @@ protected:
       // what to do if s = 0 ?
       const auto m = (s == SCALAR(0));
       // set zero entries to 1 in the vector to avoid /0 later on
-      s(m)           = SCALAR(1);
-      fD(m)          = SCALAR(0);
+      where(m, s) = SCALAR(1);
+      where(m, fD) = SCALAR(0);
       const SCALAR w = SCALAR(1) / s;
       fA *= w;
       fB *= w;
@@ -268,7 +268,7 @@ private:
    // internal method to construct class from 3 points
    void BuildFrom3Points(const Point &p1, const Point &p2, const Point &p3)
    {
-      // plane from thre points
+      // plane from three points
       // normal is (x3-x1) cross (x2 -x1)
       const Vector n = (p2 - p1).Cross(p3 - p1);
       fA             = n.X();

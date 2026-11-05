@@ -98,7 +98,7 @@ public:
    Int_t  GetRun() const { return fRun; }
    Int_t  GetDate() const { return fDate; }
 
-   ClassDefOverride(EventHeader,1)  //Event Header
+   ClassDef(EventHeader,1)  //Event Header
 };
 
 
@@ -120,7 +120,7 @@ private:
    TRefArray     *fHighPt;            //array of High Pt tracks only
    TRefArray     *fMuons;             //array of Muon tracks only
    TRef           fLastTrack;         //reference pointer to last track
-   TRef           fWebHistogram;      //EXEC:GetWebHistogram reference to an histogram in a TWebFile
+   TRef           fWebHistogram;      //EXEC:GetWebHistogram reference to an histogram in a remote file
    TH1F          *fH;                 //->
    TBits          fTriggerBits;       //Bits triggered by this event.
    Bool_t         fIsValid;           //
@@ -196,7 +196,7 @@ public:
 
    void Hfill(Event *event);
 
-   ClassDefOverride(HistogramManager,1)  //Manages all histograms
+   ClassDef(HistogramManager,1)  //Manages all histograms
 };
 
 #endif

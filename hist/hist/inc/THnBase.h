@@ -25,6 +25,8 @@
 #include "TFitResultPtr.h"
 #include "TObjArray.h"
 #include "TArrayD.h"
+#include <vector>
+
 
 class TAxis;
 class TH1;
@@ -62,6 +64,8 @@ protected:
 
     THnBase(const char *name, const char *title, Int_t dim, const Int_t *nbins, const Double_t *xmin,
             const Double_t *xmax);
+
+    THnBase(const char* name, const char* title, const std::vector<TAxis>& axes);
 
     THnBase(const char *name, const char *title, Int_t dim, const Int_t *nbins,
             const std::vector<std::vector<double>> &xbins);
@@ -114,6 +118,7 @@ protected:
    THnBase* RebinBase(Int_t group) const;
    THnBase* RebinBase(const Int_t* group) const;
    void ResetBase(Option_t *option= "");
+   void SetTitleImpl(const char *title, bool overrideAxesTitle);
 
    static THnBase* CreateHnAny(const char* name, const char* title,
                                const TH1* h1, Bool_t sparse,
@@ -192,6 +197,8 @@ protected:
    void SetEntries(Double_t entries) { fEntries = entries; }
    void SetTitle(const char *title) override;
 
+   std::vector<Double_t> GetBinCenter(const std::vector<Int_t> &idx) const;
+
    Double_t GetBinContent(const Int_t *idx) const { return GetBinContent(GetBin(idx)); } // intentionally non-virtual
    virtual Double_t GetBinContent(Long64_t bin, Int_t* idx = nullptr) const = 0;
    virtual Double_t GetBinError2(Long64_t linidx) const = 0;
@@ -252,6 +259,14 @@ protected:
       return (TH3D*) ProjectionAny(3, dim, false, option);
    }
 
+   /// @brief Project histogram onto the axes specified in dim.
+   /// @param ndim Size of the dim array.
+   /// @param dim Indices of the axes to project on.
+   /// @param option - "E" errors will be calculated.
+   ///               - "A" ranges of the target axes will be ignored.
+   ///               - "O" original axis range of the target axes will be kept, but only bins inside the selected range
+   ///               will be filled.
+   /// @return A new THnBase derived class, such as THN or THNSparse.
    THnBase* ProjectionND(Int_t ndim, const Int_t* dim,
                          Option_t* option = "") const {
       return (THnBase*)ProjectionAny(ndim, dim, kTRUE /*wantNDim*/, option);
@@ -273,6 +288,7 @@ protected:
 
    Double_t ComputeIntegral();
    void GetRandom(Double_t *rand, Bool_t subBinRandom = kTRUE);
+   Double_t Integral(Bool_t respectAxisRange) const;
 
    void Print(Option_t* option = "") const override;
    void PrintEntries(Long64_t from = 0, Long64_t howmany = -1, Option_t* options = nullptr) const;

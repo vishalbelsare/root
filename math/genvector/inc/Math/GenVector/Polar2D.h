@@ -20,6 +20,7 @@
 #define ROOT_Math_GenVector_Polar2D  1
 
 #include "Math/Math.h"
+#include "TMath.h"
 
 #include "Math/GenVector/etaMax.h"
 
@@ -37,7 +38,7 @@ namespace Math {
 
        @ingroup GenVector
 
-       @sa Overview of the @ref GenVector "physics vector library"
+       @see GenVector
    */
 
 
@@ -47,11 +48,12 @@ class Polar2D {
 public :
 
    typedef T Scalar;
+   static constexpr unsigned int Dimension = 2U;
 
    /**
       Default constructor with r=1,phi=0
    */
-   Polar2D() : fR(1.), fPhi(0) {  }
+   constexpr Polar2D() noexcept = default;
 
    /**
       Construct from the polar coordinates:  r and phi
@@ -63,27 +65,8 @@ public :
       R() and Phi()
    */
    template <class CoordSystem >
-   explicit Polar2D( const CoordSystem & v ) :
+   explicit constexpr Polar2D( const CoordSystem & v ) :
       fR(v.R() ),  fPhi(v.Phi() )  { Restrict(); }
-
-   // for g++  3.2 and 3.4 on 32 bits found that the compiler generated copy ctor and assignment are much slower
-   // re-implement them ( there is no no need to have them with g++4)
-
-   /**
-      copy constructor
-    */
-   Polar2D(const Polar2D & v) :
-      fR(v.R() ),  fPhi(v.Phi() )  {   }
-
-   /**
-      assignment operator
-    */
-   Polar2D & operator= (const Polar2D & v) {
-      fR     = v.R();
-      fPhi   = v.Phi();
-      return *this;
-   }
-
 
    /**
       Set internal data based on 2 Scalar numbers
@@ -130,7 +113,7 @@ public :
 
 
 private:
-   inline static double pi()  { return M_PI; }
+   inline static double pi() { return TMath::Pi(); }
 
    /**
       restrict abgle hi to be between -PI and PI
@@ -200,7 +183,7 @@ public:
 
    // (none)
 
-#if defined(__MAKECINT__) || defined(G__DICTIONARY)
+#if defined(__ROOTCLING__) || defined(G__DICTIONARY)
 
    // ====== Set member functions for coordinates in other systems =======
 
@@ -211,8 +194,8 @@ public:
 #endif
 
 private:
-   T fR;
-   T fPhi;
+   T fR{1.};
+   T fPhi{0.};
 };
 
 
@@ -225,7 +208,7 @@ private:
 
 #include "Math/GenVector/Cartesian2D.h"
 
-#if defined(__MAKECINT__) || defined(G__DICTIONARY)
+#if defined(__ROOTCLING__) || defined(G__DICTIONARY)
 #include "Math/GenVector/GenVector_exception.h"
 #endif
 
@@ -239,7 +222,7 @@ void Polar2D<T>::SetXY(Scalar a, Scalar b) {
 }
 
 
-#if defined(__MAKECINT__) || defined(G__DICTIONARY)
+#if defined(__ROOTCLING__) || defined(G__DICTIONARY)
 
 
 // ====== Set member functions for coordinates in other systems =======

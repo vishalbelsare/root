@@ -7,11 +7,8 @@
  *************************************************************************/
 
 /// \file
-/// \ingroup rbrowser
 /// \author Sergey Linev <S.Linev@gsi.de>
 /// \date 2019-10-15
-/// \warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback
-/// is welcome!
 
 
 #include <ROOT/Browsable/RSysFile.hxx>
@@ -26,8 +23,8 @@
 #include "TROOT.h"
 #include "TList.h"
 #include "TBase64.h"
-#include "snprintf.h"
 
+#include <cstdio>
 #include <sstream>
 #include <fstream>
 #include <algorithm>
@@ -39,10 +36,9 @@
 
 using namespace std::string_literals;
 
-using namespace ROOT::Experimental::Browsable;
+using namespace ROOT::Browsable;
 
 namespace ROOT {
-namespace Experimental {
 namespace Browsable {
 
 
@@ -226,7 +222,7 @@ class RSysDirLevelIter : public RLevelIter {
 public:
    explicit RSysDirLevelIter(const std::string &path = "") : fPath(path) { OpenDir(); }
 
-   virtual ~RSysDirLevelIter() { CloseDir(); }
+   ~RSysDirLevelIter() override { CloseDir(); }
 
    bool Next() override { return NextDirEntry(); }
 
@@ -348,7 +344,6 @@ public:
 
 
 } // namespace Browsable
-} // namespace Experimental
 } // namespace ROOT
 
 
@@ -364,39 +359,16 @@ std::string RSysFile::GetFileIcon(const std::string &fname)
       return (name.length() > suffix.length()) ? (0 == name.compare (name.length() - suffix.length(), suffix.length(), suffix)) : false;
    };
 
-   if ((EndsWith(".c")) ||
-       (EndsWith(".cpp")) ||
-       (EndsWith(".cxx")) ||
-       (EndsWith(".c++")) ||
-       (EndsWith(".cxx")) ||
-       (EndsWith(".cc")) ||
-       (EndsWith(".h")) ||
-       (EndsWith(".hh")) ||
-       (EndsWith(".hpp")) ||
-       (EndsWith(".hxx")) ||
-       (EndsWith(".h++")) ||
-       (EndsWith(".py")) ||
-       (EndsWith(".txt")) ||
-       (EndsWith(".cmake")) ||
-       (EndsWith(".dat")) ||
-       (EndsWith(".log")) ||
-       (EndsWith(".xml")) ||
-       (EndsWith(".htm")) ||
-       (EndsWith(".html")) ||
-       (EndsWith(".json")) ||
-       (EndsWith(".sh")) ||
-       (EndsWith(".md")) ||
-       (EndsWith(".css")) ||
-       (EndsWith(".js")))
+   if (EndsWith(".c") || EndsWith(".cpp") || EndsWith(".cxx") || EndsWith(".c++") || EndsWith(".cxx") ||
+       EndsWith(".cc") || EndsWith(".h") || EndsWith(".hh") || EndsWith(".hpp") || EndsWith(".hxx") ||
+       EndsWith(".h++") || EndsWith(".py") || EndsWith(".txt") || EndsWith(".cmake") || EndsWith(".dat") ||
+       EndsWith(".log") || EndsWith(".xml") || EndsWith(".htm") || EndsWith(".html") || EndsWith(".json") ||
+       EndsWith(".sh") || EndsWith(".md") || EndsWith(".css") || EndsWith(".mjs") || EndsWith(".js"))
       return "sap-icon://document-text"s;
-   if ((EndsWith(".bmp")) ||
-       (EndsWith(".gif")) ||
-       (EndsWith(".jpeg")) ||
-       (EndsWith(".jpg")) ||
-       (EndsWith(".png")) ||
-       (EndsWith(".svg")))
+   if (EndsWith(".bmp") || EndsWith(".gif") || EndsWith(".jpeg") || EndsWith(".jpg") || EndsWith(".png") ||
+       EndsWith(".webp") || EndsWith(".svg"))
       return "sap-icon://picture"s;
-  if (EndsWith(".root"))
+   if (EndsWith(".root"))
       return "sap-icon://org-chart"s;
 
    return "sap-icon://document"s;
@@ -530,7 +502,7 @@ std::string RSysFile::GetContent(const std::string &kind)
 
 /////////////////////////////////////////////////////////////////////////////////
 /// Provide top entries for file system
-/// On windows it is list of existing drivers, on Linux it is "Files system" and "Home"
+/// On windows it is list of existing drivers, on Linux it is "File system" and "Home"
 
 RElementPath_t RSysFile::ProvideTopEntries(std::shared_ptr<RGroup> &comp, const std::string &workdir)
 {
@@ -554,9 +526,9 @@ RElementPath_t RSysFile::ProvideTopEntries(std::shared_ptr<RGroup> &comp, const 
       delete volumes;
 
    } else {
-      comp->Add(std::make_shared<Browsable::RWrapper>("Files system", std::make_unique<RSysFile>("/")));
+      comp->Add(std::make_shared<Browsable::RWrapper>("File system", std::make_unique<RSysFile>("/")));
 
-      seldir = "/Files system"s + seldir;
+      seldir = "/File system"s + seldir;
 
       std::string homedir = gSystem->UnixPathName(gSystem->HomeDirectory());
 
@@ -583,7 +555,7 @@ RElementPath_t RSysFile::GetWorkingPath(const std::string &workdir)
    if (volumes) {
       delete volumes;
    } else {
-      seldir = "/Files system"s + seldir;
+      seldir = "/File system"s + seldir;
    }
 
    return RElement::ParsePath(seldir);

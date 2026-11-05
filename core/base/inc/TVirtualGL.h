@@ -30,7 +30,6 @@
 
 #include "TNamed.h"
 #include "GuiTypes.h"
-#include "GLConstants.h"
 
 class TVirtualViewer3D;
 class TPoints3DABC;
@@ -156,9 +155,7 @@ private:
    ClassDef(TGLPaintDevice, 0) // Base class for GL widgets and GL off-screen rendering
 };
 
-#ifndef __CINT__
 #define gGLManager (TGLManager::Instance())
 R__EXTERN TGLManager *(*gPtr2GLManager)();
-#endif
 
 #endif

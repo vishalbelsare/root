@@ -39,22 +39,22 @@ clean_environment()
       fi
       if [ -n "${LD_LIBRARY_PATH-}" ]; then
          drop_from_path "$LD_LIBRARY_PATH" "${old_rootsys}/lib"
+         drop_from_path "$newpath" "${old_rootsys}/lib/root"
          LD_LIBRARY_PATH=$newpath
       fi
       if [ -n "${DYLD_LIBRARY_PATH-}" ]; then
          drop_from_path "$DYLD_LIBRARY_PATH" "${old_rootsys}/lib"
+         drop_from_path "$newpath" "${old_rootsys}/lib/root"
          DYLD_LIBRARY_PATH=$newpath
       fi
       if [ -n "${SHLIB_PATH-}" ]; then
          drop_from_path "$SHLIB_PATH" "${old_rootsys}/lib"
+         drop_from_path "$newpath" "${old_rootsys}/lib/root"
          SHLIB_PATH=$newpath
-      fi
-      if [ -n "${LIBPATH-}" ]; then
-         drop_from_path "$LIBPATH" "${old_rootsys}/lib"
-         LIBPATH=$newpath
       fi
       if [ -n "${PYTHONPATH-}" ]; then
          drop_from_path "$PYTHONPATH" "${old_rootsys}/lib"
+         drop_from_path "$newpath" "${old_rootsys}/lib/root"
          PYTHONPATH=$newpath
       fi
       if [ -n "${MANPATH-}" ]; then
@@ -69,6 +69,11 @@ clean_environment()
          drop_from_path "$JUPYTER_PATH" "${old_rootsys}/etc/notebook"
          JUPYTER_PATH=$newpath
       fi
+      if [ -n "${JUPYTER_CONFIG_PATH-}" ]; then
+         drop_from_path "$JUPYTER_CONFIG_PATH" "${old_rootsys}/etc/notebook"
+         JUPYTER_CONFIG_PATH=$newpath
+      fi
+      # Potential leftovers from ROOT < v6.36
       if [ -n "${JUPYTER_CONFIG_DIR-}" ]; then
          drop_from_path "$JUPYTER_CONFIG_DIR" "${old_rootsys}/etc/notebook"
          JUPYTER_CONFIG_DIR=$newpath
@@ -83,6 +88,10 @@ clean_environment()
       else
          default_manpath=""
       fi
+   fi
+   if [ -n "${ROOT_INCLUDE_PATH-}" ]; then
+      drop_from_path "$ROOT_INCLUDE_PATH" "@DEFAULT_ROOT_INCLUDE_PATH@"
+      ROOT_INCLUDE_PATH=$newpath
    fi
 }
 
@@ -118,14 +127,6 @@ set_environment()
       export SHLIB_PATH
    fi
 
-   if [ -z "${LIBPATH-}" ]; then
-      LIBPATH=@libdir@
-      export LIBPATH       # Linux, ELF HP-UX
-   else
-      LIBPATH=@libdir@:$LIBPATH
-      export LIBPATH
-   fi
-
    if [ -z "${PYTHONPATH-}" ]; then
       PYTHONPATH=@libdir@
       export PYTHONPATH       # Linux, ELF HP-UX
@@ -152,10 +153,18 @@ set_environment()
       JUPYTER_PATH=$ROOTSYS/etc/notebook:$JUPYTER_PATH; export JUPYTER_PATH
    fi
 
-   if [ -z "${JUPYTER_CONFIG_DIR-}" ]; then
-      JUPYTER_CONFIG_DIR=$ROOTSYS/etc/notebook; export JUPYTER_CONFIG_DIR # Linux, ELF HP-UX
+   if [ -z "${JUPYTER_CONFIG_PATH-}" ]; then
+      JUPYTER_CONFIG_PATH=$ROOTSYS/etc/notebook; export JUPYTER_CONFIG_PATH # Linux, ELF HP-UX
    else
-      JUPYTER_CONFIG_DIR=$ROOTSYS/etc/notebook:$JUPYTER_CONFIG_DIR; export JUPYTER_CONFIG_DIR
+      JUPYTER_CONFIG_PATH=$ROOTSYS/etc/notebook:$JUPYTER_CONFIG_PATH; export JUPYTER_CONFIG_PATH
+   fi
+
+   if [ -z "${ROOT_INCLUDE_PATH-}" ]; then
+      ROOT_INCLUDE_PATH=@DEFAULT_ROOT_INCLUDE_PATH@
+      export ROOT_INCLUDE_PATH
+   else
+      ROOT_INCLUDE_PATH=@DEFAULT_ROOT_INCLUDE_PATH@:$ROOT_INCLUDE_PATH
+      export ROOT_INCLUDE_PATH
    fi
 }
 
@@ -164,7 +173,12 @@ getTrueShellExeName() { # mklement0 https://stackoverflow.com/a/23011530/7471760
    local trueExe nextTarget 2>/dev/null # ignore error in shells without `local`
    # Determine the shell executable filename.
    if [ -r "/proc/$$/cmdline" ]; then
-      trueExe=$(cut -d '' -f1 /proc/$$/cmdline) || return 1
+      trueExe=$(tr '\0' '\n' < /proc/$$/cmdline 2>/dev/null | sed -n '1p') || trueExe=$(xargs -0 -n 1 < /proc/$$/cmdline | head -n 1) || return 1
+      # Qemu emulation has cmdline start with the emulator
+      if [ "${trueExe##*qemu*}" != "${trueExe}" ]; then
+         # but qemu sets comm to the emulated command
+         trueExe=$(cat /proc/$$/comm) || return 1
+      fi
    else
       trueExe=$(ps -p $$ -o comm=) || return 1
    fi
@@ -174,11 +188,17 @@ getTrueShellExeName() { # mklement0 https://stackoverflow.com/a/23011530/7471760
    fi
    # Determine full executable path.
    if [ "${trueExe#/}" = "$trueExe" ]; then
-      trueExe=$(if [ -n "${ZSH_VERSION-}" ]; then which -p "$trueExe"; else which "$trueExe"; fi)
+      trueExe=$(if [ -n "${ZSH_VERSION-}" ]; then builtin which -p "$trueExe"; else which "$trueExe"; fi)
    fi
    # If the executable is a symlink, resolve it to its *ultimate*
    # target.
    while nextTarget=$(readlink "$trueExe"); do trueExe=$nextTarget; done
+   
+   if [ "$(basename $trueExe)" = "sh" -a -L "/private/var/select/sh" ]; then
+      # on MacOS, sh re-execs /private/var/select/sh, so resolve it
+      trueExe="/private/var/select/sh";
+      while nextTarget=$(readlink "$trueExe"); do trueExe=$nextTarget; done
+   fi
    # Output the executable name only.
    printf '%s' "$(basename "$trueExe")"
 }
@@ -228,22 +248,19 @@ if [ -z "${SOURCE}" ]; then
       return 1
    fi
 else
-   # get param to "."
-   thisroot="$(dirname "${SOURCE}")"
-   ROOTSYS=$(cd "${thisroot}/.." > /dev/null && pwd); export ROOTSYS
-   if [ -z "$ROOTSYS" ]; then
-      echo "ERROR: \"cd ${thisroot}/..\" or \"pwd\" failed" >&2
-      return 1
-   fi
+   thisrootdir=$(dirname $(realpath "${SOURCE}"))
+   export ROOTSYS=${thisrootdir%/*}
 fi
 
+if ! [ -f "${ROOTSYS}/bin/root-config" ] ; then
+   echo "ERROR: root-config not found under ROOTSYS=\"${ROOTSYS}/\"" >&2
+   ROOTSYS=; export ROOTSYS
+   return 1
+fi
 
 clean_environment
 set_environment
 
-
-# Prevent Cppyy from checking the PCH (and avoid warning)
-export CLING_STANDARD_PCH=none
 
 if (root-config --arch | grep -v win32gcc | grep -q -i win32); then
    ROOTSYS="$(cygpath -w "$ROOTSYS")"

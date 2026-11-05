@@ -8,15 +8,15 @@ The idea of THttpServer is to provide remote http access to running ROOT applica
 
 ## Starting the HTTP server
 
-To start the http server, at any time, create an instance of the [THttpServer](https://root.cern/root/html/THttpServer.html) class like:
+To start the http server, at any time, create an instance of the [THttpServer](https://root.cern/doc/master/classTHttpServer.html) class like:
 
 ```cpp
 auto serv = new THttpServer("http:8080");
 ```
 
-This will start a [civetweb](https://github.com/civetweb/civetweb)-based http server on the port 8080. Then one should be able to open the address `http://localhost:8080` in any modern browser (Firefox, Chrome, Opera, Safari, IE11) and browse objects created in application. By default, the server can access files, canvases, and histograms via the gROOT pointer. All those objects can be displayed with JSROOT graphics.
+This will start a [civetweb](https://github.com/civetweb/civetweb)-based http server on the port 8080. Then one should be able to open the address `http://localhost:8080` in any modern browser (Firefox, Chrome, Opera, Safari, Edge) and browse objects created in application. By default, the server can access files, canvases, and histograms via the gROOT pointer. All those objects can be displayed with JSROOT graphics.
 
-There is a [server snapshot](https://root.cern/js/latest/httpserver.C/?layout=simple&item=Canvases/c1) of running macro [tutorials/http/httpserver.C](https://github.com/root-project/root/blob/master/tutorials/http/httpserver.C) from ROOT tutorials.
+There is a [server snapshot](https://root.cern/js/latest/httpserver.C/?layout=simple&item=Canvases/c1) of running macro [tutorials/http/httpserver.C](https://root.cern/doc/master/httpserver_8C.html) from ROOT tutorials.
 
 One could specify several options when creating http server. They could be add as additional URL parameters to the constructor arguments like:
 
@@ -55,7 +55,7 @@ One also can provide extra arguments for THttpServer itself:
 | Name           |    Description    |
 | :------------- | :---------------- |
 | readonly, ro   | use server in read-only mode (default) |
-| readwrite, rw  | use server in read-write mode |
+| readwrite, rw  | caution! server allowed to execute methods of registered objects |
 | global         | let scan global directories for canvases and files (default) |
 | noglobal       | disable scan of global directories |
 | basic_sniffer  | use basic `TRootSniffer` without support of hist, gpad, graph, tree classes |
@@ -89,36 +89,55 @@ THttpServer does not take ownership over registered objects - they should be del
 If the objects content is changing in the application, one could enable monitoring flag in the browser - then objects view will be regularly updated.
 
 
+## Accessing file system
+
+THttpServer provides partial access to the files from file system.
+First of all, JSROOT scripts and files can be accessed via "jsrootsys/" path like "http://localhost:8080/jsrootsys/modules/core.mjs".
+Files from ROOT install directory can be get via "rootsys/" path like "http://localhost:8080/rootsys/icons/about.xpm".
+Also files from current directory where ROOT is running can be accessed via "currentdir/" path like "http://localhost:8080/currentdir/file.txt".
+
+If necessary, one can add custom path as well, using [THttpServer::AddLocation](https://root.cern/doc/master/classTHttpServer.html#a5322c3bbfddb8eb6849297d83ccaf87f) method:
+
+```cpp
+ serv->AddLocation("mydir/", "/home/user/specials");
+```
+
+Then files from that directory could be addressed via URL like "http://localhost:8080/mydir/myfile.root"
+
+
 ## Command interface
 
 THttpServer class provide simple interface to invoke command from web browser.
 One just register command like:
 
 ```cpp
-serv->RegisterCommand("/DoSomething","SomeFunction()");
+serv->RegisterCommand("/DoSomething", "SomeFunction()");
 ```
 
 Element with name `DoSomething` will appear in the web browser and can be clicked.
 It will result in `gROOT->ProcessLineSync("SomeFunction()")` call.
 
+**CAUTION: Registering commands via RegisterCommand() grants remote users the ability to trigger server-side logic. If not strictly restricted, this can lead to Remote Code Execution (RCE). Never register commands that accept unvalidated user input, and ensure the server is protected by authentication or limited to trusted local interfaces.**
+
+
 One could configure argument(s) for the command.
 For that one should use `%arg1`, `%arg2` and so on identifiers. Like:
 
 ```cpp
-serv->RegisterCommand("/DoSomething","SomeFunction(%arg1%,%arg2%)");
+serv->RegisterCommand("/DoSomething", "SomeFunction(%arg1%,%arg2%)");
 ```
 
 User will be requested to enter arguments values, when command element clicked in the browser.
 Example of the command which executes arbitrary string in application via ProcessLine looks like:
 
 ```cpp
-serv->RegisterCommand("/Process","%arg1%");
+serv->RegisterCommand("/Process", "%arg1%");
 ```
 
 When registering command, one could specify icon name which will be displayed with the command.
 
 ```cpp
-serv->RegisterCommand("/DoSomething","SomeFunction()", "rootsys/icons/ed_execute.png");
+serv->RegisterCommand("/DoSomething", "SomeFunction()", "rootsys/icons/ed_execute.png");
 ```
 
 In example usage of images from `$ROOTSYS/icons` directory is shown. One could prepend `button;`
@@ -128,7 +147,7 @@ string to the icon name to let browser show command as extra button. In last cas
 serv->Hide("/DoSomething");
 ```
 
-One can find example of command interface usage in [tutorials/http/httpcontrol.C](https://github.com/root-project/root/blob/master/tutorials/http/httpcontrol.C) macro.
+One can find example of command interface usage in [tutorials/http/httpcontrol.C](https://root.cern/doc/master/httpcontrol_8C.html) macro.
 
 
 ## Customize user interface
@@ -200,14 +219,14 @@ Hidden folders or objects can not be accessed via http protocol.
 By default server runs in readonly mode and do not allow methods execution via 'exe.json' or 'exe.bin' requests. To allow such action, one could either grant generic access for all or one could allow to execute only special method:
 
 ```cpp
-serv->Restrict("/Folder/histo1",  "allow=all");
-serv->Restrict("/Folder/histo1",  "allow_method=GetTitle");
+serv->Restrict("/Folder/histo1", "allow=all");
+serv->Restrict("/Folder/histo1", "allow_method=GetTitle");
 ```
 
 One could provide several options for the same item, separating them with '&' sign:
 
 ```cpp
-serv->Restrict("/Folder/histo1",  "allow_method=GetTitle&hide=guest");
+serv->Restrict("/Folder/histo1", "allow_method=GetTitle&hide=guest");
 ```
 
 Complete list of supported options could be found in [TRootSniffer:Restrict()](https://root.cern/doc/master/classTRootSniffer.html#a8af1f11cbfb9c895f968ec0594794120) method documentation.
@@ -366,6 +385,7 @@ The following requests can be performed:
 | :----------- | :---------------- |
 |  `root.bin`   | binary data produced by object streaming with `TBufferFile` |
 |  `root.json`  | ROOT JSON representation for object and objects members |
+|  `file.root`  | Creates TMemFile with the only object, from ROOT 6.32 |
 |  `root.xml`   | ROOT XML representation |
 |  `root.png`   | PNG image (if object drawing implemented) |
 |  `root.gif`   | GIF image |
@@ -386,7 +406,7 @@ All data will be automatically zipped if '.gz' extension is appended. Like:
 If the access to the server is restricted with htdigest, it is recommended to use the **curl** program since only curl correctly implements such authentication method. The command will look like:
 
 ```bash
-[shell] curl --user "account:password" http://localhost:8080/Objects/subfolder/obj/root.json --digest -o root.json
+[shell] curl --user "accout:password" http://localhost:8080/Objects/subfolder/obj/root.json --digest -o root.json
 ```
 
 
@@ -430,7 +450,6 @@ For the ROOT classes which are implementing Draw method (like [TH1](https://root
 ```
 
 For all such requests following parameters could be specified:
-
    - **h** - image height
    - **w** - image width
    - **opt** - draw options
@@ -450,13 +469,17 @@ Or one could disable read-only mode with the call:
 serv->SetReadOnly(kFALSE);
 ```
 
-Or one could allow access to the folder, object or specific object methods with:
+**CAUTION: Disabling read-only mode exposes extensive ROOT functionality via HTTP. To prevent unauthorized remote access or potential system exploitation, it is strongly recommended to run the server only within an isolated network or behind a secure firewall without external exposure.**
+
+As alternative one could allow access only to the folder, object or specific object methods with:
 
 ```cpp
 serv->Restrict("/Histograms", "allow=admin"); // allow full access for user with 'admin' account
 serv->Restrict("/Histograms/hist1", "allow=all"); // allow full access for all users
 serv->Restrict("/Histograms/hist1", "allow_method=Rebin"); // allow only Rebin method
 ```
+
+Using of [THttpServer::Restrict()](https://root.cern/doc/master/classTRootSniffer.html#a8af1f11cbfb9c895f968ec0594794120) method is preferable compared to simple disable of readonly mode.
 
 'exe.json' accepts following parameters:
 
@@ -471,7 +494,7 @@ Example of retrieving object title:
 [shell] wget 'http://localhost:8080/Objects/subfolder/obj/exe.json?method=GetTitle' -O title.json
 ```
 
-Example of TTree::Draw method execution:
+Example of `TTree::Draw()` method execution:
 
 ```bash
 [shell] wget 'http://localhost:8080/Files/job1.root/ntuple/exe.json?method=Draw&prototype="Option_t*"&opt="px:py>>h1"&_ret_object_=h1' -O exe.json
@@ -483,16 +506,18 @@ One also used `exe.bin` method - in this case results of method execution will b
 [shell] wget 'http://localhost:8080/Objects/subfolder/obj/exe.json?method=Clone&_destroy_result_' -O clone.json
 ```
 
-If method required object as argument, it could be posted in binary or XML format as POST request. If binary form is used, one should specify following parameters:
+If method required object as argument, it could be posted in binary, JSON or XML format as POST request.
+If binary form is used, one should specify following parameters:
 
 ```bash
 [shell] wget 'http://localhost:8080/hist/exe.json?method=Add&h1=_post_object_&_post_class_=TH1I&c1=10' --post-file=h.bin -O res.json
 ```
 
-Here is important to specify post object class, which is not stored in the binary buffer. When used XML form (produced with [TBufferXML::ConvertToXML](https://root.cern/doc/master/classTBufferXML.html#a31320042dda441167ecb1b6f13092e89)) method, only string with XML code could be specified:
+Here is important to specify post object class, which is not stored in the binary buffer.
+When submitting argument as JSON produced with [TBufferJSON::ToJSON](https://root.cern/doc/master/classTBufferJSON.html#a49f3c7b200113d7009d61d75c933c398) method, class is not required:
 
 ```bash
-[shell] wget 'http://localhost:8080/hist/exe.json?method=Add&h1=_post_object_xml_&c1=10' --post-file=h.xml -O res.json
+[shell] wget 'http://localhost:8080/hist/exe.json?method=Add&h1=_post_object_json_&c1=10' --post-file=h.json -O res.json
 ```
 
 To get debug information about command execution, one could submit `exe.txt` request with same arguments.
@@ -524,6 +549,13 @@ One could specify them in the URL string:
 
 ```bash
 [shell] wget http://localhost:8080/ResetCounter/cmd.json?arg1=7&arg2=12 -O result.txt
+```
+
+**CAUTION: Registering commands via RegisterCommand() grants remote users the ability to trigger server-side logic. If not strictly restricted, this can lead to Remote Code Execution (RCE). Never register commands that accept unvalidated user input, and ensure the server is protected by authentication or limited to trusted local interfaces.**
+
+Access to registered commands can be restricted like:
+```cpp
+serv->Restrict("/Folder/Start", "allow=admin");
 ```
 
 
@@ -563,12 +595,33 @@ import { httpRequest, draw } from './jsrootsys/modules/core.mjs';
 let res = await httpRequest("your_server/multi.json?number=3", "multi",
                              "Files/job1.root/hpx/root.json\nFiles/job1.root/hpxpy/root.json\nFiles/job1.root/hprof/root.json\n");
 for (let n = 0; n < res.length; ++n) {
-   console.log('Requested element ', res[n]._typename);
+   console.log('Requested element of type', res[n]._typename);
    // draw('drawid', res[n], 'hist');
 }
 ```
 
 Here argument "multi" identifies, that server response should be parsed with `parseMulti()` function, which correctly interprets JSON code, produced by `multi.json` request. When sending such request to the server, one should provide list of objects names and not forget "?number=N" parameter in the request URL string.
+
+
+## Using unix sockets
+
+Starting from ROOT version 6.28, one can start server bind to the unix socket. Just do:
+
+Just call:
+```cpp
+   [root] new THttpServer("socket:/tmp/root.socket")
+```
+Name of socket should be unique and not match any existing files.
+
+Most easy way to access `THttpServer` running via unix socket is to configure ssh tunnel:
+```
+   [shell] ssh -L 7654:/tmp/root.socket localhost
+```
+
+Once such tunnel is configured one can open following URL in web browser:
+```
+   [shell] xdg-open http://localhost:7654
+```
 
 
 ## Websockets supports
@@ -586,7 +639,7 @@ public:
    TUserHandler(const char *name, const char *title) : THttpWSHandler(name, title) {}
 
    // provide custom HTML page when open correspondent address
-   TString GetDefaultPageContent() override { return ""; }
+   TString GetDefaultPageContent() override { return "file:ws.htm"; }
 
    Bool_t ProcessWS(THttpCallArg *arg) override;
 };
@@ -637,5 +690,27 @@ serv->Register(handler);
 ```
 
 After that web socket connection can be established with the address `ws://host_name:8080/name1/root.websocket`
-Example client code can be found in `$ROOTSYS/tutorials/http/ws.htm` file. Actually, custom HTML page for
-websocket handler can be specified with `TUserHandler::GetDefaultPageContent()` method returning `"file:ws.htm"`.
+Example client code can be found in [$ROOTSYS/tutorials/http/ws.C](https://root.cern/doc/master/ws_8C.html) file. Custom HTML page for websocket handler is specified with `TUserHandler::GetDefaultPageContent()` method returning `"file:ws.htm"`.
+
+
+## Processing of custom http requests
+
+To process custom http requests, one can derive from THttpServer class and
+reimplement `THttpServer::MissedRequest()` method. Like:
+
+```cpp
+class TCustomHttpServer : public THttpServer {
+
+   TCustomHttpServer(const char *engine) : THttpServer(engine) {}
+
+   void MissedRequest(THttpCallArg *arg) override
+   {
+      if (!strcmp(arg->GetPathName(), "custom_path") &&
+          !strcmp(arg->GetFileName(), "empty_object.json")) {
+         arg->SetJsonContent("{}");
+      } else {
+         THttpServer::MissedRequest(arg);
+      }
+   }
+};
+```

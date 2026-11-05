@@ -46,6 +46,7 @@ namespace ROOT {
    namespace Math {
 
       class GSLMultiFit;
+      class GSLMultiFit2;
 
 //_____________________________________________________________________________________________________
 /**
@@ -61,38 +62,22 @@ class GSLNLSMinimizer : public  ROOT::Math::BasicMinimizer {
 public:
 
    /**
-      Default constructor
+      Constructor from a type
    */
-   GSLNLSMinimizer (int type = 0);
+   explicit GSLNLSMinimizer (int type);
+   /**
+      Constructor from name
+   */
+   explicit GSLNLSMinimizer (const char * = nullptr);
+
 
    /**
       Destructor (no operations)
    */
    ~GSLNLSMinimizer () override;
 
-private:
-   // usually copying is non trivial, so we make this unaccessible
-
-   /**
-      Copy constructor
-   */
-   GSLNLSMinimizer(const GSLNLSMinimizer &) : ROOT::Math::BasicMinimizer() {}
-
-   /**
-      Assignment operator
-   */
-   GSLNLSMinimizer & operator = (const GSLNLSMinimizer & rhs)  {
-      if (this == &rhs) return *this;  // time saving self-test
-      return *this;
-   }
-
-public:
-
    /// set the function to minimize
    void SetFunction(const ROOT::Math::IMultiGenFunction & func) override;
-
-   /// set gradient the function to minimize
-   void SetFunction(const ROOT::Math::IMultiGradFunction & func) override;
 
 
    /// method to perform the minimization
@@ -117,7 +102,7 @@ public:
    bool ProvidesError() const override { return true; }
 
    /// return errors at the minimum
-   const double * Errors() const override { return (fErrors.size() > 0) ? &fErrors.front() : nullptr; }
+   const double * Errors() const override { return (!fErrors.empty()) ? &fErrors.front() : nullptr; }
 //  {
 //       static std::vector<double> err;
 //       err.resize(fDim);
@@ -137,8 +122,8 @@ protected:
 
    /// Internal method to perform minimization
    /// template on the type of method function
-   template<class Func>
-   bool DoMinimize(const Func & f);
+   template<class Func, class FitterType>
+   bool DoMinimize(const Func & f, FitterType * fitter);
 
 
 private:
@@ -147,7 +132,8 @@ private:
    unsigned int fNFree;      // dimension of the internal function to be minimized
    unsigned int fNCalls;        // number of function calls
 
-   ROOT::Math::GSLMultiFit * fGSLMultiFit;        // pointer to GSL multi fit solver
+   ROOT::Math::GSLMultiFit * fGSLMultiFit = nullptr;        // pointer to old GSL multi fit solver
+   ROOT::Math::GSLMultiFit2 * fGSLMultiFit2 = nullptr;       // pointer to new GSL multi fit driver
 
    double fEdm;                                   // edm value
    double fLSTolerance;                           // Line Search Tolerance

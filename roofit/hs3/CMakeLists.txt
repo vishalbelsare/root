@@ -9,53 +9,48 @@
 # @author Carsten Burgard, CERN
 ############################################################################
 
-if(roofit_hs3_ryml)
-  # If RapidYAML can be found on the system, we will use RapidYAML instead of
-  # nlohmann-json. Like this we can also convert to yaml.
-
-  message(STATUS "Looking for RapidYAML (used by RooFitHS3)")
-  find_package(ryml)
-  if(${RYML_FOUND})
-    message(STATUS "RapidYAML found, compiling RooFitHS3 with RapidYAML parser")
-    set(RYMLSources src/RYMLParser.cxx)
-    add_compile_definitions(ROOFIT_HS3_WITH_RYML)
-  else()
-    message(STATUS "RapidYAML not found, compiling RooFitHS3 with nlohmann-json parser")
-  endif()
-endif()
+set (ROOFITHS3_HEADERS
+  RooFit/Detail/JSONInterface.h
+  RooFitHS3/JSONIO.h
+  RooFitHS3/RooJSONFactoryWSTool.h
+)
 
 ROOT_STANDARD_LIBRARY_PACKAGE(RooFitHS3
   HEADERS
-    RooFitHS3/RooJSONFactoryWSTool.h
-    RooFitHS3/HistFactoryJSONTool.h
-    RooFitHS3/JSONInterface.h
+    ${ROOFITHS3_HEADERS}
   SOURCES
-    src/RooJSONFactoryWSTool.cxx
-    src/HistFactoryJSONTool.cxx
+    src/Domains.cxx
     src/JSONInterface.cxx
+    src/JSONIO.cxx
+    src/RooJSONFactoryWSTool.cxx
     src/JSONFactories_RooFitCore.cxx
     src/JSONFactories_HistFactory.cxx
-    src/JSONParser.cxx
-    ${RYMLSources}
+    src/JSONIOUtils.cxx
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
-  LIBRARIES
+  DEPENDENCIES
+    HistFactory
     RooFit
     RooFitCore
-    RooStats
-    HistFactory
 )
 
-if(${RYML_FOUND})
-  target_include_directories(RooFitHS3 PRIVATE ${RYML_INCLUDE_DIRS})
-  target_link_libraries(RooFitHS3 PRIVATE -lc4core -lryml)
-  target_link_directories(RooFitHS3 PRIVATE ${RYML_LIB_DIR})
-else()
-  if(builtin_nlohmannjson)
-    target_include_directories(RooFitHS3 PRIVATE ${CMAKE_SOURCE_DIR}/builtins)
-  else()
-    target_link_libraries(RooFitHS3 PUBLIC nlohmann_json::nlohmann_json)
-  endif()
-endif()
+
+target_link_libraries(RooFitHS3 PRIVATE nlohmann_json::nlohmann_json)
+
+set(RELATIVE_INC_HEADERS ${ROOFITHS3_HEADERS})
+list(TRANSFORM RELATIVE_INC_HEADERS PREPEND inc/)
+target_sources(
+    RooFitHS3
+    PRIVATE
+    FILE_SET private_header_files
+    TYPE HEADERS
+    BASE_DIRS inc/ src/
+    FILES
+        ${RELATIVE_INC_HEADERS}
+        # LinkDef.h # seemingly not being used by ROOT_STANDARD_LIBRARY_PACKAGE call
+        src/Domains.h
+        src/JSONIOUtils.h
+        src/static_execute.h
+)
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

@@ -11,19 +11,62 @@
 #ifndef ROOT_RDF_RDATASETSPEC
 #define ROOT_RDF_RDATASETSPEC
 
+#include <any>
 #include <limits>
 #include <string>
 #include <utility> // std::pair
 #include <vector>
 
-#include <ROOT/RFriendInfo.hxx>
+#include <ROOT/RDF/RSample.hxx>
 #include <RtypesCore.h> // Long64_t
 
+namespace ROOT::TreeUtils {
+struct RFriendInfo;
+}
+
 namespace ROOT {
+namespace Detail {
+namespace RDF {
+class RLoopManager;
+} // namespace RDF
+} // namespace Detail
+
+namespace RDF {
+namespace Experimental {
+class RDatasetSpec;
+class RSample;
+} // namespace Experimental
+} // namespace RDF
+
+namespace Internal {
+namespace RDF {
+std::vector<ROOT::RDF::Experimental::RSample> MoveOutSamples(ROOT::RDF::Experimental::RDatasetSpec &spec);
+}
+} // namespace Internal
+
 namespace RDF {
 namespace Experimental {
 
+// clang-format off
+/**
+\class ROOT::RDF::Experimental::RDatasetSpec
+\ingroup dataframe
+\brief The dataset specification for RDataFrame.
+
+This class allows users to create the dataset specification for RDataFrame 
+to which they add samples (using the RSample class object) with tree names and file names, 
+and, optionally, the metadata information (using the RMetaData class objects). 
+Adding global friend trees and/or setting the range of events to be processed
+are also available.
+
+Note, there exists yet another method to build RDataFrame from the dataset information using the JSON file format: \ref FromSpec(const std::string &jsonFile) "FromSpec()". 
+*/
+
 class RDatasetSpec {
+   // clang-format on 
+   friend class ::ROOT::Detail::RDF::RLoopManager; // for MoveOutSamples
+   friend std::vector<ROOT::RDF::Experimental::RSample> ROOT::Internal::RDF::MoveOutSamples(ROOT::RDF::Experimental::RDatasetSpec &); 
+
 
 public:
    struct REntryRange {
@@ -35,43 +78,38 @@ public:
    };
 
 private:
-   /**
-    * A list of names of trees.
-    * This list should go in lockstep with fFileNameGlobs, only in case this dataset is a TChain where each file
-    * contains its own tree with a different name from the global name of the dataset.
-    * Otherwise, fTreeNames contains 1 treename, that is common for all file globs.
-    */
-   std::vector<std::string> fTreeNames;
-   /**
-    * A list of file names.
-    * They can contain the globbing characters supported by TChain. See TChain::Add for more information.
-    */
-   std::vector<std::string> fFileNameGlobs;
-   REntryRange fEntryRange;                  ///< Start (inclusive) and end (exclusive) entry for the dataset processing
-   ROOT::TreeUtils::RFriendInfo fFriendInfo; ///< List of friends
+   std::vector<RSample> fSamples;             ///< List of samples
+   std::any fFriendInfo;  ///< List of friends
+   REntryRange fEntryRange; ///< Start (inclusive) and end (exclusive) entry for the dataset processing
+   std::vector<RSample> MoveOutSamples();
+   ROOT::TreeUtils::RFriendInfo &GetFriendInfo();
 
 public:
-   RDatasetSpec(const std::string &treeName, const std::string &fileNameGlob, const REntryRange &entryRange = {});
+   RDatasetSpec() noexcept;
 
-   RDatasetSpec(const std::string &treeName, const std::vector<std::string> &fileNameGlobs,
-                const REntryRange &entryRange = {});
-
-   RDatasetSpec(const std::vector<std::pair<std::string, std::string>> &treeAndFileNameGlobs,
-                const REntryRange &entryRange = {});
-
-   void AddFriend(const std::string &treeName, const std::string &fileNameGlob, const std::string &alias = "");
-
-   void
-   AddFriend(const std::string &treeName, const std::vector<std::string> &fileNameGlobs, const std::string &alias = "");
-
-   void AddFriend(const std::vector<std::pair<std::string, std::string>> &treeAndFileNameGlobs,
-                  const std::string &alias = "");
-
-   const std::vector<std::string> &GetTreeNames() const;
-   const std::vector<std::string> &GetFileNameGlobs() const;
+   const std::vector<std::string> GetSampleNames() const;
+   const std::vector<std::string> GetTreeNames() const;
+   const std::vector<std::string> GetFileNameGlobs() const;
+   const std::vector<RMetaData> GetMetaData() const;
+   const ROOT::TreeUtils::RFriendInfo &GetFriendInfo() const;
    Long64_t GetEntryRangeBegin() const;
    Long64_t GetEntryRangeEnd() const;
-   const ROOT::TreeUtils::RFriendInfo &GetFriendInfo() const;
+
+   RDatasetSpec &AddSample(RSample sample);
+
+   RDatasetSpec &
+   WithGlobalFriends(const std::string &treeName, const std::string &fileNameGlob, const std::string &alias = "");
+
+   RDatasetSpec &WithGlobalFriends(const std::string &treeName, const std::vector<std::string> &fileNameGlobs,
+                             const std::string &alias = "");
+
+   RDatasetSpec &WithGlobalFriends(const std::vector<std::pair<std::string, std::string>> &treeAndFileNameGlobs,
+                             const std::string &alias = "");
+
+   RDatasetSpec &WithGlobalFriends(const std::vector<std::string> &treeNames,
+                                   const std::vector<std::string> &fileNameGlobs, const std::string &alias = "");
+ 
+   RDatasetSpec &WithGlobalRange(const RDatasetSpec::REntryRange &entryRange = {});
 };
 
 } // namespace Experimental

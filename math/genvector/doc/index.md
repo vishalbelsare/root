@@ -121,6 +121,10 @@ The metric used for any such LorentzVector is (-,-,-,+).
 \anchor GenVectorOperations
 ## Operations
 
+### Utility Functions for all Vectors
+
+Check the functions below, as well as in \ref ROOT::Math::VectorUtil for non-member functions such as DeltaR, Angle, boost.
+
 ### Constructors and Assignment
 
 A vector can be constructed from its coordinate representation:
@@ -162,6 +166,8 @@ v3 = v1 - v2;
 Note that the multiplication between two vectors using the `operator *` is not supported
 because it is ambiguous.
 
+\note For the vectors using the 4D coordinate systems based on mass instead of energy (such as **`ROOT::Math::PxPyPzM4D`** or **`ROOT::Math::PtEtaPhiM4D`**) the unary operator `-` (negation) doesn't perform a 4-vector negation. Instead, it negates only the spatial components, which might result in unintuive behaviours (for instance, for PxPyPzM4D coordinate system, \f$\textbf{v}+ \left(-\textbf{v}\right) \neq \textbf{v} -\textbf{v}\f$).
+
 ### Other Methods
 
 The vector classes support methods for:
@@ -177,7 +183,7 @@ The vector classes support methods for:
 The transformations are modeled using simple (non-template) classes, using `double` as
 the scalar type to avoid too large numerical errors. The transformations are grouped
 in Rotations (in 3 dimensions), Lorentz transformations. Each group has several members which may
-model physically equivalent trasformations but with different internal representations.
+model physically equivalent transformations but with different internal representations.
 Transformation classes can operate on all type of vectors using the `operator()`
 or the `operator *` and the transformations can also be combined via the `operator *`.
 In more detail the transformations available are:

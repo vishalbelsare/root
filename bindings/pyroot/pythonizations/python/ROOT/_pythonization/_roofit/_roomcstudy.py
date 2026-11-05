@@ -27,11 +27,13 @@ class RooMCStudy(object):
     \endcode
     """
 
+    __cpp_name__ = 'RooMCStudy'
+    
     @cpp_signature(
         "RooMCStudy(const RooAbsPdf& model, const RooArgSet& observables,"
-        "    const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(), const RooCmdArg& arg5=RooCmdArg::none(),"
-        "    const RooCmdArg& arg6=RooCmdArg::none(), const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "    const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={}, const RooCmdArg& arg5={},"
+        "    const RooCmdArg& arg6={}, const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def __init__(self, *args, **kwargs):
         r"""The RooMCStudy constructor is pythonized with the command argument pythonization.
@@ -42,10 +44,10 @@ class RooMCStudy(object):
         self._init(*args, **kwargs)
 
     @cpp_signature(
-        "RooPlot *RooMCStudy::plotParamOn(RooPlot* frame, const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "RooPlot *RooMCStudy::plotParamOn(RooPlot* frame, const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def plotParamOn(self, *args, **kwargs):
         r"""The RooMCStudy::plotParamOn() function is pythonized with the command argument pythonization.
@@ -56,13 +58,13 @@ class RooMCStudy(object):
 
     @cpp_signature(
         [
-            "RooPlot *RooMCStudy::plotParam(const RooRealVar& param, const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-            "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-            "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-            "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;",
-            "RooPlot *RooMCStudy::plotParam(const char* paramName, const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-            "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(), const RooCmdArg& arg5=RooCmdArg::none(), "
-            "    const RooCmdArg& arg6=RooCmdArg::none(), const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;",
+            "RooPlot *RooMCStudy::plotParam(const RooRealVar& param, const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+            "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+            "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+            "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;",
+            "RooPlot *RooMCStudy::plotParam(const char* paramName, const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+            "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={}, const RooCmdArg& arg5={}, "
+            "    const RooCmdArg& arg6={}, const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;",
         ]
     )
     def plotParam(self, *args, **kwargs):
@@ -74,10 +76,10 @@ class RooMCStudy(object):
         return self._plotParam(*args, **kwargs)
 
     @cpp_signature(
-        "RooPlot *RooMCStudy::plotNLL(const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "RooPlot *RooMCStudy::plotNLL(const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def plotNLL(self, *args, **kwargs):
         r"""The RooMCStudy::plotNLL() function is pythonized with the command argument pythonization.
@@ -88,10 +90,10 @@ class RooMCStudy(object):
         return self._plotNLL(*args, **kwargs)
 
     @cpp_signature(
-        "RooPlot *RooMCStudy::plotError(const RooRealVar& param, const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "RooPlot *RooMCStudy::plotError(const RooRealVar& param, const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def plotError(self, *args, **kwargs):
         r"""The RooMCStudy::plotError() function is pythonized with the command argument pythonization.
@@ -102,10 +104,10 @@ class RooMCStudy(object):
         return self._plotError(*args, **kwargs)
 
     @cpp_signature(
-        "RooPlot *RooMCStudy::plotPull(const RooRealVar& param, const RooCmdArg& arg1, const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "RooPlot *RooMCStudy::plotPull(const RooRealVar& param, const RooCmdArg& arg1, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def plotPull(self, *args, **kwargs):
         r"""The RooMCStudy::plotError() function is pythonized with the command argument pythonization.

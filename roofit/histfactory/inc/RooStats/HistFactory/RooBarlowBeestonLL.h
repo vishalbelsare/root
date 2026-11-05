@@ -25,10 +25,9 @@ namespace RooStats{
 class RooBarlowBeestonLL : public RooAbsReal {
 public:
 
-  RooBarlowBeestonLL() ;
   RooBarlowBeestonLL(const char *name, const char *title, RooAbsReal& nll /*, const RooArgSet& observables*/);
   RooBarlowBeestonLL(const RooBarlowBeestonLL& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooBarlowBeestonLL(*this,newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooBarlowBeestonLL(*this,newname); }
 
   // A simple class to store the
   // necessary objects for a
@@ -56,8 +55,8 @@ public:
 protected:
 
   RooRealProxy _nll ;    ///< Input -log(L) function
-  RooAbsPdf* _pdf;
-  RooAbsData* _data;
+  RooAbsPdf* _pdf = nullptr;
+  RooAbsData* _data = nullptr;
   mutable std::map< std::string, std::vector< BarlowCache > > _barlowCache;
   mutable std::set< std::string > _statUncertParams;
   mutable std::map<std::string,bool> _paramFixed ; ///< Parameter constant status at last time of use

@@ -18,7 +18,6 @@
 
 #include "Rtypes.h"
 
-#include "RooNormSetCache.h"
 #include "RooAbsReal.h"
 #include "RooArgSet.h"
 #include "RooArgList.h"
@@ -39,7 +38,6 @@ public:
   void operModeHook() override ;
   void optimizeCacheMode(const RooArgSet& /*obs*/, RooArgSet& /*optSet*/, RooLinkedList& /*processedNodes*/) override ;
   void printCompactTreeHook(std::ostream&, const char *) override ;
-  void findConstantNodes(const RooArgSet& /*obs*/, RooArgSet& /*cacheList*/, RooLinkedList& /*processedNodes*/) override ;
 
   void insertObjectHook(RooAbsCacheElement&) override ;
 
@@ -53,10 +51,10 @@ public:
 protected:
 
   bool _clearOnRedirect ;
-  bool _allowOptimize ;
+  bool _allowOptimize ; ///< No longer used, but kept because it is a persistent member (schema evolution)
   bool _optCacheModeSeen  ;              ///<!
 
-  RooArgSet* _optCacheObservables ;        ///<! current optCacheObservables
+  RooArgSet* _optCacheObservables = nullptr; ///<! current optCacheObservables
 
   static bool _clearObsList ; ///< Clear obslist on sterilize?
 

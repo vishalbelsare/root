@@ -52,8 +52,8 @@ void TMVA::draw_network(TString dataset, TFile* f, TDirectory* d, const TString&
    Int_t ixc = 100 + (icanvas)*40;
    Int_t iyc =   0 + (icanvas+1)*20;
    if (MovieMode) ixc = iyc = 0;
-   TString canvasnumber =  Form( "c%i", icanvas );
-   TString canvastitle = Form("Neural Network Layout for: %s", d->GetName());
+   TString canvasnumber =  TString::Format( "c%i", icanvas );
+   TString canvastitle = TString::Format("Neural Network Layout for: %s", d->GetName());
    TCanvas* c = new TCanvas( canvasnumber, canvastitle,
                              ixc, 0 + (icanvas+1)*20, 1000, 650  );
    icanvas++;
@@ -89,7 +89,7 @@ void TMVA::draw_network(TString dataset, TFile* f, TDirectory* d, const TString&
          Int_t n2 = h->GetNbinsY();
          for (Int_t i = 0; i < n1; i++) {
             for (Int_t j = 0; j < n2; j++) {
-               Double_t weight = TMath::Abs(h->GetBinContent(i+1, j+1));
+               Double_t weight = std::abs(h->GetBinContent(i+1, j+1));
                if (maxWeight < weight) maxWeight = weight;
             }
          }
@@ -135,7 +135,7 @@ void TMVA::draw_network(TString dataset, TFile* f, TDirectory* d, const TString&
       t.SetTextColor( 0 );
       t.SetTextAlign( 31 );
       t.DrawTextNDC( 1 - c->GetRightMargin(), 1 - c->GetTopMargin() - 0.033,
-                      Form( "Epoch: %s", epoch.Data() ) );
+                      TString::Format( "Epoch: %s", epoch.Data() ) );
    }
 
    // ============================================================
@@ -178,7 +178,7 @@ void TMVA::draw_layer_labels(Int_t nLayers)
    Double_t margY = LABEL_HEIGHT - height;
 
    for (Int_t i = 0; i < nLayers; i++) {
-      TString label = Form("Layer %i", i);
+      TString label = TString::Format("Layer %i", i);
       if (i == nLayers-1) label = "Output layer";
       Double_t cx = i*(1.0-LABEL_WIDTH)/nLayers+1.0/(2.0*nLayers)+LABEL_WIDTH;
       Double_t x1 = cx-0.8*effWidth/2.0;
@@ -186,7 +186,7 @@ void TMVA::draw_layer_labels(Int_t nLayers)
       Double_t y1 = margY;
       Double_t y2 = margY + height;
 
-      TPaveLabel *p = new TPaveLabel(x1, y1, x2, y2, label+"", "br");
+      TPaveLabel *p = new TPaveLabel(x1, y1, x2, y2, label, "br");
       p->SetFillColor(gStyle->GetTitleFillColor());
       p->SetTextColor(gStyle->GetTitleTextColor());
       p->SetFillStyle(1001);
@@ -309,8 +309,8 @@ void TMVA::draw_activation(TCanvas* c, Double_t cx, Double_t cy,
 
    radx *= 0.7;
    rady *= 0.7;
-   TString name = Form("activation%f%f", cx, cy);
-   TPad* p = new TPad(name+"", name+"", cx-radx, cy-rady, cx+radx, cy+rady);
+   TString name = TString::Format("activation%f%f", cx, cy);
+   TPad* p = new TPad(name, name, cx-radx, cy-rady, cx+radx, cy+rady);
 
    p->Draw();
    p->cd();
@@ -415,7 +415,7 @@ void TMVA::draw_synapse(Double_t cx1, Double_t cy1, Double_t cx2, Double_t cy2,
    TArrow *arrow = new TArrow(cx1+rad1, cy1, cx2-rad2, cy2, TIP_SIZE, ">");
    arrow->SetFillColor(1);
    arrow->SetFillStyle(1001);
-   arrow->SetLineWidth((Int_t)(TMath::Abs(weightNormed)*MAX_WEIGHT+0.5));
+   arrow->SetLineWidth((Int_t)(std::abs(weightNormed)*MAX_WEIGHT+0.5));
    arrow->SetLineColor((Int_t)((weightNormed+1.0)/2.0*(MAX_COLOR-MIN_COLOR)+MIN_COLOR+0.5));
    arrow->Draw();
 }

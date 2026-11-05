@@ -102,8 +102,7 @@ public:
    using RNNDescriptors_t = RNN::TRNNDescriptors<TCpu<AReal>>;
    using RNNWorkspace_t = RNN::TRNNWorkspace<TCpu<AReal>>;
 
-
-   static TMVA::Experimental::MemoryLayout GetTensorLayout() { return TMVA::Experimental::MemoryLayout::ColumnMajor; }
+   static TMVA::DNN::MemoryLayout GetTensorLayout() { return TMVA::DNN::MemoryLayout::ColumnMajor; }
 
    static Tensor_t CreateTensor(size_t n, size_t c, size_t h, size_t w) {
       return Tensor_t( {c,h*w,n}, GetTensorLayout());
@@ -629,7 +628,7 @@ public:
 
    // dummy RNN functions
    static void RNNForward(const Tensor_t & /* x */, const Matrix_t & /* hx */, const Matrix_t & /* cx */,
-                          const Matrix_t & /* weights */, Tensor_t & /* y */, Matrix_t & /* hy */, Matrix_t & /* cy */,
+                          const Tensor_t & /* weights */, Tensor_t & /* y */, Matrix_t & /* hy */, Matrix_t & /* cy */,
                           const RNNDescriptors_t & /* descr */, RNNWorkspace_t & /* workspace */, bool /* isTraining */)
    {
    }

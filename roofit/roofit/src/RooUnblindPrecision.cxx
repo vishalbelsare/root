@@ -33,17 +33,6 @@ of the unblind parameter
 #include "RooUnblindPrecision.h"
 
 
-using namespace std;
-
-ClassImp(RooUnblindPrecision);
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
-
-RooUnblindPrecision::RooUnblindPrecision()
-{
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor from a given RooAbsReal (to hold the blind value) and a set of blinding parameters
 
@@ -77,13 +66,6 @@ RooUnblindPrecision::RooUnblindPrecision(const RooUnblindPrecision& other, const
   RooAbsHiddenReal(other, name),
   _value("asym",this,other._value),
   _blindEngine(other._blindEngine)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooUnblindPrecision::~RooUnblindPrecision()
 {
 }
 

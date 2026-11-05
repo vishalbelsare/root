@@ -38,7 +38,7 @@ namespace {
    class ROOTTabCompletion: public TabCompletion {
    public:
       ROOTTabCompletion(): fLineBuf(new char[fgLineBufSize]) {}
-      virtual ~ROOTTabCompletion() { delete []fLineBuf; }
+      ~ROOTTabCompletion() override { delete[] fLineBuf; }
 
       ROOTTabCompletion(const ROOTTabCompletion&) = delete;
       ROOTTabCompletion& operator=(const ROOTTabCompletion&) = delete;
@@ -48,7 +48,10 @@ namespace {
                     EditorRange& r /*out*/,
                     std::vector<std::string>& displayCompletions /*out*/) override {
          strlcpy(fLineBuf, line.GetText().c_str(), fgLineBufSize);
-         int cursorInt = (int) cursor;
+         // TTabCom edits the UTF-8 buffer, so it speaks byte offsets; the
+         // editor's cursor and ranges count characters. Convert on the way in
+         // and back out.
+         int cursorInt = (int) line.GetByteOffset(cursor);
          std::stringstream sstr;
          size_t posFirstChange = gApplication->TabCompletionHook(fLineBuf, &cursorInt, sstr);
          if (posFirstChange == (size_t) -1) {
@@ -73,12 +76,12 @@ namespace {
                r.fEdit.Extend(Range::AllText());
                r.fDisplay.Extend(Range::AllText());
             } else {
-               r.fEdit.Extend(Range(posFirstChange, Range::End()));
-               r.fDisplay.Extend(Range(posFirstChange, Range::End()));
+               size_t charFirstChange = line.GetCharIndex(posFirstChange);
+               r.fEdit.Extend(Range(charFirstChange, Range::End()));
+               r.fDisplay.Extend(Range(charFirstChange, Range::End()));
             }
          }
-         cursor = (size_t)cursorInt;
-         line.GetColors().resize(lenLineBuf);
+         cursor = line.GetCharIndex((size_t)cursorInt);
          return true;
       }
    private:
@@ -86,28 +89,6 @@ namespace {
       char* fLineBuf;
    };
    const size_t ROOTTabCompletion::fgLineBufSize = 16 * 1024; // must be equal to/larger than BUF_SIZE in TTabCom.cxx
-
-   class TClingTabCompletion: public TabCompletion {
-   public:
-      TClingTabCompletion() {}
-      virtual ~TClingTabCompletion() {}
-
-      TClingTabCompletion(const TClingTabCompletion&) = delete;
-      TClingTabCompletion& operator=(const TClingTabCompletion&) = delete;
-
-      // Returns false on error
-      bool Complete(Text& line /*in+out*/, size_t& cursor /*in+out*/,
-                    EditorRange& r /*out*/,
-                    std::vector<std::string>& completions /*out*/) override {
-         gInterpreter->CodeComplete(line.GetText(), cursor, completions);
-         // FIXME: handle single completion by completing "line"
-         // FIXME: adjust r's update range, for now:
-         // redraw whole line, incl prompt
-         r.fEdit.Extend(Range::AllWithPrompt());
-         r.fDisplay.Extend(Range::AllWithPrompt());
-         return true;
-      }
-   };
 
    // Helper to define the lifetime of the TextInput singleton.
    class TextInputHolder {

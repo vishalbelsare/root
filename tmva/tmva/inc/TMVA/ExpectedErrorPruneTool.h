@@ -2,7 +2,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : TMVA::DecisionTree                                                    *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Implementation of a Decision Tree                                         *
@@ -57,8 +57,8 @@ namespace TMVA {
       virtual ~ExpectedErrorPruneTool( );
 
       // returns the PruningInfo object for a given tree and test sample
-      virtual PruningInfo* CalculatePruningInfo( DecisionTree* dt, const IPruneTool::EventSample* testEvents = nullptr,
-                                                 Bool_t isAutomatic = kFALSE );
+      PruningInfo* CalculatePruningInfo( DecisionTree* dt, const IPruneTool::EventSample* testEvents = nullptr,
+                                                 Bool_t isAutomatic = kFALSE ) override;
 
    public:
       // set the increment dalpha with which to scan for the optimal prune strength
@@ -74,7 +74,7 @@ namespace TMVA {
       Double_t fNodePurityLimit; ///<! the purity limit for labelling a terminal node as signal
       std::vector<DecisionTreeNode*> fPruneSequence; ///<! the (optimal) prune sequence
       //      std::multimap<const Double_t, Double_t> fQualityMap; ///<! map of tree quality <=> prune strength
-      mutable MsgLogger* fLogger;   ///< message logger
+      mutable MsgLogger* fLogger;   ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
    };
 

@@ -42,24 +42,20 @@
 
 #include "RooStreamParser.h"
 #include "RooAbsCategoryLValue.h"
-#include "RooTrace.h"
 #include "RooMsgService.h"
 #include "RooConstVar.h"
 
 #include <stdexcept>
 
-using namespace std;
+using std::endl, std::istream, std::ostream;
 
-ClassImp(RooArgList);
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor
 
-RooArgList::RooArgList() :
-  RooAbsCollection()
+RooArgList::RooArgList()
 {
-  TRACE_CREATE
 }
 
 
@@ -71,7 +67,6 @@ RooArgList::RooArgList(const RooAbsCollection& coll) :
   RooAbsCollection(coll.GetName())
 {
   add(coll) ;
-  TRACE_CREATE
 }
 
 
@@ -82,7 +77,6 @@ RooArgList::RooArgList(const RooAbsCollection& coll) :
 RooArgList::RooArgList(const char *name) :
   RooAbsCollection(name)
 {
-  TRACE_CREATE
 }
 
 
@@ -97,12 +91,11 @@ RooArgList::RooArgList(const TCollection& tcoll, const char* name) :
   for(TObject * obj : tcoll) {
     if (!dynamic_cast<RooAbsArg*>(obj)) {
       coutW(InputArguments) << "RooArgList::RooArgList(TCollection) element " << obj->GetName()
-             << " is not a RooAbsArg, ignored" << endl ;
+             << " is not a RooAbsArg, ignored" << std::endl ;
       continue ;
     }
-    add(*(RooAbsArg*)obj) ;
+    add(*static_cast<RooAbsArg*>(obj)) ;
   }
-  TRACE_CREATE
 }
 
 
@@ -110,12 +103,11 @@ RooArgList::RooArgList(const TCollection& tcoll, const char* name) :
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy constructor. Note that a copy of a list is always non-owning,
 /// even the source list is owning. To create an owning copy of
-/// a list (owning or not), use the snaphot() method.
+/// a list (owning or not), use the snapshot() method.
 
 RooArgList::RooArgList(const RooArgList& other, const char *name)
   : RooAbsCollection(other,name)
 {
-  TRACE_CREATE
 }
 
 
@@ -125,7 +117,6 @@ RooArgList::RooArgList(const RooArgList& other, const char *name)
 
 RooArgList::~RooArgList()
 {
-  TRACE_DESTROY
 }
 
 
@@ -139,7 +130,7 @@ RooArgList::~RooArgList()
 void RooArgList::writeToStream(ostream& os, bool compact)
 {
   if (!compact) {
-    coutE(InputArguments) << "RooArgList::writeToStream(" << GetName() << ") non-compact mode not supported" << endl ;
+    coutE(InputArguments) << "RooArgList::writeToStream(" << GetName() << ") non-compact mode not supported" << std::endl ;
     return ;
   }
 
@@ -147,7 +138,7 @@ void RooArgList::writeToStream(ostream& os, bool compact)
     obj->writeToStream(os,true);
     os << " " ;
   }
-  os << endl ;
+  os << std::endl ;
 }
 
 
@@ -162,7 +153,7 @@ void RooArgList::writeToStream(ostream& os, bool compact)
 bool RooArgList::readFromStream(istream& is, bool compact, bool verbose)
 {
   if (!compact) {
-    coutE(InputArguments) << "RooArgList::readFromStream(" << GetName() << ") non-compact mode not supported" << endl ;
+    coutE(InputArguments) << "RooArgList::readFromStream(" << GetName() << ") non-compact mode not supported" << std::endl ;
     return true ;
   }
 
@@ -182,7 +173,7 @@ bool RooArgList::readFromStream(istream& is, bool compact, bool verbose)
     TString rest = parser.readLine() ;
     if (verbose) {
       coutW(InputArguments) << "RooArgSet::readFromStream(" << GetName()
-             << "): ignoring extra characters at end of line: '" << rest << "'" << endl ;
+             << "): ignoring extra characters at end of line: '" << rest << "'" << std::endl ;
     }
   }
 

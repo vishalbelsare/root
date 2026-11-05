@@ -11,6 +11,7 @@
 #include <iostream>
 #include <limits>
 #include <utility>
+#include <cmath>
 
 #define PRINTRANGE(a, b, bn)                                                                                          \
    Printf(" base: %f %f %d, %s: %f %f %d", a->GetXmin(), a->GetXmax(), a->GetNbins(), bn, b->GetXmin(), b->GetXmax(), \
@@ -434,7 +435,7 @@ TH1Merger::EMergerType TH1Merger::ExamineHistograms() {
       if (gDebug)
          Info("TH1Merger::ExamineHistogram","Examine histogram %s - labels %d - same limits %d - axis found %d",h->GetName(),allHaveLabels,allSameLimits,initialLimitsFound );
 
-   }    while ( ( h = dynamic_cast<TH1*> ( next() ) ) != NULL );
+   }    while ( ( h = dynamic_cast<TH1*> ( next() ) ) != nullptr );
 
    if (!h && (*next) ) {
       Error("Merge","Attempt to merge object of class: %s to a %s",
@@ -493,7 +494,7 @@ void TH1Merger::DefineNewAxes() {
       Bool_t mustCleanup = fH0->TestBit(kMustCleanup);
       if (mustCleanup) fH0->ResetBit(kMustCleanup);
       fHClone = (TH1*)fH0->IsA()->New();
-      fHClone->SetDirectory(0);
+      fHClone->SetDirectory(nullptr);
       fH0->Copy(*fHClone);
       if (mustCleanup) fH0->SetBit(kMustCleanup);
       fH0->BufferEmpty(1);         // To remove buffer.
@@ -556,7 +557,7 @@ void TH1Merger::CopyBuffer(TH1 *hsrc, TH1 *hdes)
    // Check inputs
    //if (!hsrc || !hsrc->fBuffer || !hdes || !hdes->fBuffer) {
    if (!hsrc || !hsrc->fBuffer || !hdes ) {
-      void *p1 = hsrc ? hsrc->fBuffer : 0;
+      void *p1 = hsrc ? hsrc->fBuffer : nullptr;
       //void *p2 = hdes ? hdes->fBuffer : 0;
       //Warning("TH1Merger::CopyMerge", "invalid inputs: %p, %p, %p, %p -> do nothing", hsrc, hdes, p1, p2);
       Warning("TH1Merger::CopyMerge", "invalid inputs: %p, %p, %p, -> do nothing", hsrc, hdes, p1);
@@ -588,7 +589,7 @@ void TH1Merger::CopyBuffer(TH1 *hsrc, TH1 *hdes)
 Bool_t TH1Merger::AutoP2BufferMerge()
 {
 
-   TH1 *href = 0, *hist = 0;
+   TH1 *href = nullptr, *hist = nullptr;
    TIter nextref(&fInputList);
    if (TH1Merger::AxesHaveLimits(fH0)) {
       href = fH0;
@@ -637,7 +638,7 @@ Bool_t TH1Merger::AutoP2Merge()
    }
 
    TIter next(&fInputList);
-   TH1 *hist = 0;
+   TH1 *hist = nullptr;
    // Calculate boundaries and bins
    Double_t xmin = 0., xmax = 0.;
    if (!(fH0->IsEmpty())) {
@@ -660,7 +661,7 @@ Bool_t TH1Merger::AutoP2Merge()
       Error("TH1Merger::AutoP2Merge", "cannot create axes from %s", hist->GetName());
       return kFALSE;
    }
-   TH1 *h = 0;
+   TH1 *h = nullptr;
    while ((h = (TH1 *)next())) {
       if (!AutoP2BuildAxes(h)) {
          Error("TH1Merger::AutoP2Merge", "cannot merge histogram %s: not merge compatible", h->GetName());
@@ -707,7 +708,7 @@ Bool_t TH1Merger::AutoP2Merge()
       for (Int_t ibin = 0; ibin < hist->fNcells; ibin++) {
 
          Double_t cu = hist->RetrieveBinContent(ibin);
-         Double_t e1sq = TMath::Abs(cu);
+         Double_t e1sq = std::abs(cu);
          if (fH0->fSumw2.fN)
             e1sq = hist->GetBinErrorSqUnchecked(ibin);
 
@@ -804,6 +805,7 @@ Bool_t TH1Merger::DifferentAxesMerge() {
    for (Int_t i=0;i<TH1::kNstat;i++) {totstats[i] = stats[i] = 0;}
    fH0->GetStats(totstats);
    Double_t nentries = fH0->GetEntries();
+   const Int_t tProfileMergeCode = !fIsProfileMerge ? 0 : fIsProfile1D ? 1 : fIsProfile2D ? 2 : fIsProfile3D ? 3 : -1;
 
    TIter next(&fInputList);
    while (TH1* hist=(TH1*)next()) {
@@ -824,7 +826,8 @@ Bool_t TH1Merger::DifferentAxesMerge() {
       for (Int_t ibin = 0; ibin < hist->fNcells; ibin++) {
 
          // if bin is empty we can skip it
-         if (IsBinEmpty(hist,ibin)) continue;
+         if (IsBinEmpty(hist, ibin, tProfileMergeCode))
+            continue;
 
          Int_t binx,biny,binz;
          hist->GetBinXYZ(ibin, binx, biny, binz);
@@ -870,8 +873,16 @@ Bool_t TH1Merger::DifferentAxesMerge() {
                   fH0->GetName(), ib,fH0->fNcells);
          }
 
-         MergeBin(hist, ibin, ib);
-
+         if (!fIsProfileMerge) {
+            MergeBin(hist, ibin, ib);
+         } else {
+            if (fIsProfile1D)
+               MergeProfileBin(static_cast<const TProfile *> (hist), ibin, ib);
+            else if (fIsProfile2D)
+               MergeProfileBin(static_cast<const TProfile2D *> (hist), ibin, ib);
+            else if (fIsProfile3D)
+               MergeProfileBin(static_cast<const TProfile3D *> (hist), ibin, ib);
+         }
       }
    }
    //copy merged stats
@@ -1010,6 +1021,24 @@ Bool_t TH1Merger::LabelMerge(bool newLimits) {
             }
          }
       }
+      // Cache bins in vectors
+      auto getLabelsCache = [](TAxis *axis) {
+         std::vector<const char *> labels;
+         const auto nBins = axis->GetNbins();
+         if (nBins == 0) {
+            return labels;
+         }
+         const auto nBinsUfOf = nBins + 2;
+         labels.resize(nBinsUfOf, nullptr); // underflow and overflow
+         for (int i = 0; i < nBinsUfOf; ++i) {
+            labels[i] = axis->GetBinLabel(i);
+         }
+         return labels;
+      };
+      auto xlabels = getLabelsCache(hist->GetXaxis());
+      auto ylabels = getLabelsCache(hist->GetYaxis());
+      auto zlabels = getLabelsCache(hist->GetZaxis());
+
       for (Int_t ibin = 0; ibin < hist->fNcells; ibin++) {
 
          // if bin is empty we can skip it
@@ -1019,9 +1048,9 @@ Bool_t TH1Merger::LabelMerge(bool newLimits) {
          hist->GetBinXYZ(ibin, binx, biny, binz);
 
          // here only in the case of bins with labels
-         const char * labelX = hist->GetXaxis()->GetBinLabel(binx);
-         const char * labelY = (fH0->fDimension > 1) ? hist->GetYaxis()->GetBinLabel(biny) : nullptr;
-         const char * labelZ = (fH0->fDimension > 2) ? hist->GetYaxis()->GetBinLabel(binz) : nullptr;
+         const char * labelX = xlabels[binx];
+         const char * labelY = (fH0->fDimension > 1) ? ylabels[biny] : nullptr;
+         const char * labelZ = (fH0->fDimension > 2) ? zlabels[binz] : nullptr;
 
          // do we need to support case when there are bins with labels and bins without them ??
          // this case should have been detected before when examining the histograms
@@ -1121,11 +1150,24 @@ Bool_t TH1Merger::LabelMerge(bool newLimits) {
 }
 
 /// helper function for merging
+/// \param profileDim 0 if it's a regular TH1 merge (default), 1 for TProfile, 2 for TProfile2D and 3 for TProfile3D
 
-Bool_t TH1Merger::IsBinEmpty(const TH1 * hist, Int_t ibin) {
+Bool_t TH1Merger::IsBinEmpty(const TH1 * hist, Int_t ibin, Int_t profileDim) {
    Double_t cu = hist->RetrieveBinContent(ibin);
    Double_t e1sq = (hist->fSumw2.fN) ?  hist->GetBinErrorSqUnchecked(ibin) : cu;
-   return cu == 0 && e1sq == 0;
+   bool profileCheck = (profileDim == 0);
+   // For TProfiles we need also to check that entries is 0 even if content and errors are 0
+   if (profileDim == 1) {
+      auto prof = static_cast<const TProfile *>(hist);
+      profileCheck = prof->fBinEntries.fArray[ibin] == 0;
+   } else if (profileDim == 2) {
+      auto prof = static_cast<const TProfile2D *>(hist);
+      profileCheck = prof->fBinEntries.fArray[ibin] == 0;
+   } else if (profileDim == 3) {
+      auto prof = static_cast<const TProfile3D *>(hist);
+      profileCheck = prof->fBinEntries.fArray[ibin] == 0;
+   }
+   return cu == 0 && e1sq == 0 && profileCheck;
 }
 
 // merge input bin (ibin) of histograms hist ibin into current bin cbin of this histogram

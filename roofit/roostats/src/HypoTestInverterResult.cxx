@@ -22,7 +22,6 @@ Some contributions to this class have been written by Matthias Wolf (error estim
 // include header file of this class
 #include "RooStats/HypoTestInverterResult.h"
 
-#include "RooStats/HybridResult.h"
 #include "RooStats/SamplingDistribution.h"
 #include "RooStats/AsymptoticCalculator.h"
 #include "RooMsgService.h"
@@ -41,12 +40,9 @@ Some contributions to this class have been written by Matthias Wolf (error estim
 
 #include <algorithm>
 
-ClassImp(RooStats::HypoTestInverterResult);
 
 using namespace RooStats;
 using namespace RooFit;
-using namespace std;
-
 
 // initialize static value
 double HypoTestInverterResult::fgAsymptoticMaxSigma      = 5;
@@ -78,24 +74,24 @@ HypoTestInverterResult::HypoTestInverterResult(const char * name ) :
 ////////////////////////////////////////////////////////////////////////////////
 /// copy constructor
 
-HypoTestInverterResult::HypoTestInverterResult( const HypoTestInverterResult& other, const char * name ) :
-   SimpleInterval(other,name),
-   fUseCLs(other.fUseCLs),
-   fIsTwoSided(other.fIsTwoSided),
-   fInterpolateLowerLimit(other.fInterpolateLowerLimit),
-   fInterpolateUpperLimit(other.fInterpolateUpperLimit),
-   fFittedLowerLimit(other.fFittedLowerLimit),
-   fFittedUpperLimit(other.fFittedUpperLimit),
-   fInterpolOption(other.fInterpolOption),
-   fLowerLimitError(other.fLowerLimitError),
-   fUpperLimitError(other.fUpperLimitError),
-   fCLsCleanupThreshold(other.fCLsCleanupThreshold)
+HypoTestInverterResult::HypoTestInverterResult(const HypoTestInverterResult &other, const char *name)
+   : SimpleInterval(other, name),
+     fUseCLs(other.fUseCLs),
+     fIsTwoSided(other.fIsTwoSided),
+     fInterpolateLowerLimit(other.fInterpolateLowerLimit),
+     fInterpolateUpperLimit(other.fInterpolateUpperLimit),
+     fFittedLowerLimit(other.fFittedLowerLimit),
+     fFittedUpperLimit(other.fFittedUpperLimit),
+     fInterpolOption(other.fInterpolOption),
+     fLowerLimitError(other.fLowerLimitError),
+     fUpperLimitError(other.fUpperLimitError),
+     fCLsCleanupThreshold(other.fCLsCleanupThreshold),
+     fXValues(other.fXValues)
 {
    fLowerLimit = TMath::QuietNaN();
    fUpperLimit = TMath::QuietNaN();
    int nOther = other.ArraySize();
 
-   fXValues = other.fXValues;
    for (int i = 0; i < nOther; ++i)
      fYObjects.Add( other.fYObjects.At(i)->Clone() );
    for (int i = 0; i <  fExpPValues.GetSize() ; ++i)
@@ -171,8 +167,7 @@ HypoTestInverterResult::HypoTestInverterResult( const char* name,
    // to avoid I/O problem of the Result class -
    // make the set owning the cloned copy (use clone instead of Clone to not copying all links)
    fParameters.removeAll();
-   fParameters.takeOwnership();
-   fParameters.addOwned(*((RooRealVar *) scannedVariable.clone(scannedVariable.GetName()) ));
+   fParameters.addOwned(std::unique_ptr<RooRealVar>{static_cast<RooRealVar *>(scannedVariable.clone(scannedVariable.GetName()))});
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -216,7 +211,7 @@ int HypoTestInverterResult::ExclusionCleanup()
   bool resultIsAsymptotic(false);
   if (nEntries>=1) {
     HypoTestResult* r = dynamic_cast<HypoTestResult *> ( GetResult(0) );
-    assert(r!=0);
+    assert(r!=nullptr);
     if ( !r->GetNullDistribution() && !r->GetAltDistribution() ) {
       resultIsAsymptotic = true;
     }
@@ -259,7 +254,7 @@ int HypoTestInverterResult::ExclusionCleanup()
       q[3] = values[i3];
       q[4] = values[i4];
     } else {
-      double * z = const_cast<double *>( &values[0] ); // need to change TMath::Quantiles
+      double * z = const_cast<double *>(&values[0] ); // need to change TMath::Quantiles
       TMath::Quantiles(values.size(), 5, z, q, p, false);
     }
 
@@ -353,8 +348,8 @@ bool HypoTestInverterResult::Add( const HypoTestInverterResult& otherResult   )
    else {
       for (int i = 0; i < nOther; ++i) {
          double otherVal = otherResult.fXValues[i];
-         HypoTestResult * otherHTR = (HypoTestResult*) otherResult.fYObjects.At(i);
-         if (otherHTR == 0) continue;
+         HypoTestResult * otherHTR = static_cast<HypoTestResult*>(otherResult.fYObjects.At(i));
+         if (otherHTR == nullptr) continue;
          bool sameXFound = false;
          for (int j = 0; j < nThis; ++j) {
             double thisVal = fXValues[j];
@@ -362,11 +357,11 @@ bool HypoTestInverterResult::Add( const HypoTestInverterResult& otherResult   )
             // if same value merge the result
             if ( (std::abs(otherVal) < 1  && TMath::AreEqualAbs(otherVal, thisVal,1.E-12) ) ||
                  (std::abs(otherVal) >= 1 && TMath::AreEqualRel(otherVal, thisVal,1.E-12) ) ) {
-               HypoTestResult * thisHTR = (HypoTestResult*) fYObjects.At(j);
+               HypoTestResult * thisHTR = static_cast<HypoTestResult*>(fYObjects.At(j));
                thisHTR->Append(otherHTR);
                sameXFound = true;
                if (mergeExpPValues) {
-                  ((SamplingDistribution*) fExpPValues.At(j))->Add( (SamplingDistribution*)otherResult.fExpPValues.At(i) );
+                  (static_cast<SamplingDistribution*>(fExpPValues.At(j)))->Add( static_cast<SamplingDistribution*>(otherResult.fExpPValues.At(i)) );
                   // check if same toys have been used for the test statistic distribution
                   int thisNToys = (thisHTR->GetNullDistribution() ) ? thisHTR->GetNullDistribution()->GetSize() : 0;
                   int otherNToys = (otherHTR->GetNullDistribution() ) ? otherHTR->GetNullDistribution()->GetSize() : 0;
@@ -389,13 +384,13 @@ bool HypoTestInverterResult::Add( const HypoTestInverterResult& otherResult   )
       }
    }
 
-   if (ArraySize() > nThis)
+   if (ArraySize() > nThis) {
       coutI(Eval) << "HypoTestInverterResult::Add  - new number of points is " << fXValues.size()
                          << std::endl;
-   else
+   } else {
       coutI(Eval) << "HypoTestInverterResult::Add  - new toys/point is "
-                         <<  ((HypoTestResult*) fYObjects.At(0))->GetNullDistribution()->GetSize()
-                         << std::endl;
+                  << (static_cast<HypoTestResult *>(fYObjects.At(0)))->GetNullDistribution()->GetSize() << std::endl;
+   }
 
    // reset cached limit values
    fLowerLimit = TMath::QuietNaN();
@@ -552,10 +547,10 @@ HypoTestResult* HypoTestInverterResult::GetResult( int index ) const
 {
    if ( index >= ArraySize() || index<0 ) {
       coutE(InputArguments) << "Problem: You are asking for an impossible array index value\n";
-      return 0;
+      return nullptr;
    }
 
-   return ((HypoTestResult*) fYObjects.At(index));
+   return (static_cast<HypoTestResult*>(fYObjects.At(index)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -584,7 +579,7 @@ double HypoTestInverterResult::GetGraphX(const TGraph & graph, double y0, bool l
 
 //#define DO_DEBUG
 #ifdef DO_DEBUG
-   std::cout << "using graph for search " << lowSearch << " min " << axmin << " max " << axmax << std::endl;
+   ccoutD(Eval) << "using graph for search " << lowSearch << " min " << axmin << " max " << axmax << std::endl;
 #endif
 
 
@@ -598,7 +593,7 @@ double HypoTestInverterResult::GetGraphX(const TGraph & graph, double y0, bool l
 
    double varmin = - TMath::Infinity();
    double varmax = TMath::Infinity();
-   const RooRealVar* var = dynamic_cast<RooRealVar*>( fParameters.first() );
+   const RooRealVar* var = dynamic_cast<RooRealVar*>(fParameters.first() );
    if (var) {
        varmin = var->getMin();
        varmax = var->getMax();
@@ -623,7 +618,7 @@ double HypoTestInverterResult::GetGraphX(const TGraph & graph, double y0, bool l
    if (axmin >= axmax ) {
 
 #ifdef DO_DEBUG
-      std::cout << "No rage given - check if extrapolation is needed " << std::endl;
+      ccoutD(Eval) << "No range given - check if extrapolation is needed " << std::endl;
 #endif
 
       xmin = graph.GetX()[0];
@@ -652,10 +647,10 @@ double HypoTestInverterResult::GetGraphX(const TGraph & graph, double y0, bool l
 
    ROOT::Math::BrentRootFinder brf;
    brf.SetFunction(f1d,xmin,xmax);
-   brf.SetNpx(TMath::Max(graph.GetN()*2,100) );
+   brf.SetNpx(std::max(graph.GetN()*2,100) );
 #ifdef DO_DEBUG
-   std::cout << "findind root for " << xmin << " ,  "<< xmax << "f(x) : " << graph.Eval(xmin) << " , " << graph.Eval(0.5*(xmax+xmin))
-             << " , " << graph.Eval(xmax) << " target " << y0 << std::endl;
+   ccoutD(Eval) << "findind root for " << xmin << " ,  "<< xmax << "f(x) : " << graph.Eval(xmin) << " , " << graph.Eval(0.5*(xmax+xmin))
+                << " , " << graph.Eval(xmax) << " target " << y0 << std::endl;
 #endif
 
    bool ret = brf.Solve(100, 1.E-16, 1.E-6);
@@ -669,10 +664,10 @@ double HypoTestInverterResult::GetGraphX(const TGraph & graph, double y0, bool l
    double limit =  brf.Root();
 
 #ifdef DO_DEBUG
-   if (lowSearch) std::cout << "lower limit search : ";
-   else std::cout << "Upper limit search :  ";
-   std::cout << "interpolation done between " << xmin << "  and " << xmax
-             << "\n Found limit using RootFinder is " << limit << std::endl;
+   if (lowSearch) ccoutD(Eval) << "lower limit search : ";
+   else ccoutD(Eval) << "Upper limit search :  ";
+   ccoutD(Eval) << "interpolation done between " << xmin << "  and " << xmax
+                << "\n Found limit using RootFinder is " << limit << std::endl;
 
    TString fname = "graph_upper.root";
    if (lowSearch) fname = "graph_lower.root";
@@ -687,7 +682,7 @@ double HypoTestInverterResult::GetGraphX(const TGraph & graph, double y0, bool l
    if (axmin >= axmax) {
       int index = TMath::BinarySearch(n, graph.GetX(), limit);
 #ifdef DO_DEBUG
-   std::cout << "do new interpolation dividing from " << index << "  and " << y[index] << std::endl;
+   ccoutD(Eval) << "do new interpolation dividing from " << index << "  and " << y[index] << std::endl;
 #endif
 
       if (lowSearch && index >= 1 && (y[0] - y0) * ( y[index]- y0) < 0) {
@@ -716,7 +711,7 @@ double HypoTestInverterResult::FindInterpolatedLimit(double target, bool lowSear
    // variable minimum and maximum
    double varmin = - TMath::Infinity();
    double varmax = TMath::Infinity();
-   const RooRealVar* var = dynamic_cast<RooRealVar*>( fParameters.first() );
+   const RooRealVar* var = dynamic_cast<RooRealVar*>(fParameters.first() );
    if (var) {
        varmin = var->getMin();
        varmax = var->getMax();
@@ -756,7 +751,7 @@ double HypoTestInverterResult::FindInterpolatedLimit(double target, bool lowSear
       double xwithymax = graph.GetX()[iymax];
 
 #ifdef DO_DEBUG
-      std::cout << " max of y " << iymax << "  " << xwithymax << "  " << ymax << " target is " << target << std::endl;
+      ccoutD(Eval) << " max of y " << iymax << "  " << xwithymax << "  " << ymax << " target is " << target << std::endl;
 #endif
       // look if maximum is above/below target
       if (ymax > target) {
@@ -799,7 +794,7 @@ double HypoTestInverterResult::FindInterpolatedLimit(double target, bool lowSear
       }
 
 #ifdef DO_DEBUG
-      std::cout << " found xmin, xmax  = " << xmin << "  " << xmax << " for search " << lowSearch << std::endl;
+      ccoutD(Eval) << " found xmin, xmax  = " << xmin << "  " << xmax << " for search " << lowSearch << std::endl;
 #endif
 
       // now come here if I have already found a lower/upper limit
@@ -824,10 +819,10 @@ double HypoTestInverterResult::FindInterpolatedLimit(double target, bool lowSear
    }
 
 #ifdef DO_DEBUG
-   std::cout << "finding " << lowSearch << " limit between " << xmin << "  " << xmax << endl;
+   ccoutD(Eval) << "finding " << lowSearch << " limit between " << xmin << "  " << xmax << std::endl;
 #endif
 
-   // compute noe the limit using the TGraph interpolations routine
+   // compute now the limit using the TGraph interpolations routine
    double limit =  GetGraphX(graph, target, lowSearch, xmin, xmax);
    if (lowSearch) fLowerLimit = limit;
    else fUpperLimit = limit;
@@ -839,7 +834,7 @@ double HypoTestInverterResult::FindInterpolatedLimit(double target, bool lowSear
       << "the computed " << limitType << " limit is " << limit << " +/- " << error << std::endl;
 
 #ifdef DO_DEBUG
-   std::cout << "Found limit is " << limit << " +/- " << error << std::endl;
+   ccoutD(Eval) << "Found limit is " << limit << " +/- " << error << std::endl;
 #endif
 
 
@@ -892,7 +887,7 @@ int HypoTestInverterResult::FindClosestPointIndex(double target, int mode, doubl
      double smallestError = 2; // error must be < 1
      double bestValue = 2;
      for (int i=0; i<ArraySize(); i++) {
-        double dist = fabs(GetYValue(i)-target);
+        double dist = std::abs(GetYValue(i)-target);
         if ( dist <3 *GetYError(i) ) { // less than 1 sigma from target CL
            if (GetYError(i) < smallestError ) {
               smallestError = GetYError(i);
@@ -919,7 +914,7 @@ int HypoTestInverterResult::FindClosestPointIndex(double target, int mode, doubl
   int index1 = TMath::BinarySearch( n, &xsorted[0], xtarget);
 
 #ifdef DO_DEBUG
-  std::cout << "finding closest point to " << xtarget << " is " << index1 << "  " << indx[index1] << std::endl;
+  ccoutD(Eval) << "finding closest point to " << xtarget << " is " << index1 << "  " << indx[index1] << std::endl;
 #endif
 
    // case xtarget is outside the range (before or afterwards)
@@ -930,7 +925,7 @@ int HypoTestInverterResult::FindClosestPointIndex(double target, int mode, doubl
   if (mode == 2) return (GetXValue(indx[index1]) < GetXValue(indx[index2])) ? indx[index1] : indx[index2];
   if (mode == 3) return (GetXValue(indx[index1]) > GetXValue(indx[index2])) ? indx[index1] : indx[index2];
   // get smaller point of the two (mode == 1)
-  if (fabs(GetYValue(indx[index1])-target) <= fabs(GetYValue(indx[index2])-target) )
+  if (std::abs(GetYValue(indx[index1])-target) <= std::abs(GetYValue(indx[index2])-target) )
      return indx[index1];
   return indx[index2];
 
@@ -941,7 +936,7 @@ int HypoTestInverterResult::FindClosestPointIndex(double target, int mode, doubl
 double HypoTestInverterResult::LowerLimit()
 {
   if (fFittedLowerLimit) return fLowerLimit;
-  //std::cout << "finding point with cl = " << 1-(1-ConfidenceLevel())/2 << endl;
+  //std::cout << "finding point with cl = " << 1-(1-ConfidenceLevel())/2 << std::endl;
   if ( fInterpolateLowerLimit ) {
      // find both lower/upper limit
      if (TMath::IsNaN(fLowerLimit) )  FindInterpolatedLimit(1-ConfidenceLevel(),true);
@@ -956,7 +951,7 @@ double HypoTestInverterResult::LowerLimit()
 
 double HypoTestInverterResult::UpperLimit()
 {
-   //std::cout << "finding point with cl = " << (1-ConfidenceLevel())/2 << endl;
+   //std::cout << "finding point with cl = " << (1-ConfidenceLevel())/2 << std::endl;
   if (fFittedUpperLimit) return fUpperLimit;
   if ( fInterpolateUpperLimit ) {
      if (TMath::IsNaN(fUpperLimit) )  FindInterpolatedLimit(1-ConfidenceLevel(),false);
@@ -993,8 +988,8 @@ double HypoTestInverterResult::CalculateEstimatedError(double target, bool lower
   TString type = (!lower) ? "upper" : "lower";
 
 #ifdef DO_DEBUG
-  std::cout << "calculate estimate error " << type << " between " << xmin << " and " << xmax << std::endl;
-  std::cout << "computed limit is " << ( (lower) ? fLowerLimit : fUpperLimit ) << std::endl;
+  ccoutD(Eval) << "calculate estimate error " << type << " between " << xmin << " and " << xmax << std::endl;
+  ccoutD(Eval) << "computed limit is " << ( (lower) ? fLowerLimit : fUpperLimit ) << std::endl;
 #endif
 
     // make a TGraph Errors with the sorted points
@@ -1002,7 +997,8 @@ double HypoTestInverterResult::CalculateEstimatedError(double target, bool lower
   TMath::SortItr(fXValues.begin(), fXValues.end(), indx.begin(), false);
   // make a graph with the sorted point
   TGraphErrors graph;
-  int ip = 0, np = 0;
+  int ip = 0;
+  int np = 0;
   for (int i = 0; i < ArraySize(); ++i) {
      if ( (xmin < xmax) && ( GetXValue(indx[i]) >= xmin && GetXValue(indx[i]) <= xmax) ) {
         np++;
@@ -1046,7 +1042,7 @@ double HypoTestInverterResult::CalculateEstimatedError(double target, bool lower
 
 #ifdef DO_DEBUG
   TCanvas * c1 = new TCanvas();
-  std::cout << "fitting for limit " << type << "between " << minX << " , " << maxX << " points considered " << graph.GetN() <<  std::endl;
+  ccoutD(Eval) << "fitting for limit " << type << "between " << minX << " , " << maxX << " points considered " << graph.GetN() <<  std::endl;
   int fitstat = graph.Fit(&fct," EX0");
   graph.SetMarkerStyle(20);
   graph.Draw("AP");
@@ -1063,20 +1059,21 @@ double HypoTestInverterResult::CalculateEstimatedError(double target, bool lower
      double errY = GetYError(index);
      if (errY >  0) {
         double m = fct.Derivative( GetXValue(index) );
-        theError = std::min(fabs( GetYError(index) / m), maxX-minX);
+        theError = std::min(std::abs( GetYError(index) / m), maxX-minX);
      }
   }
   else {
      coutW(Eval) << "HypoTestInverterResult::CalculateEstimatedError - cannot estimate  the " << type << " limit error " << std::endl;
      theError = 0;
   }
-  if (lower)
+  if (lower) {
      fLowerLimitError = theError;
-  else
+  } else {
      fUpperLimitError = theError;
+  }
 
 #ifdef DO_DEBUG
-  std::cout << "closes point to the limit is " << index << "  " << GetXValue(index) << " and has error " << GetYError(index) << std::endl;
+  ccoutD(Eval) << "closes point to the limit is " << index << "  " << GetXValue(index) << " and has error " << GetYError(index) << std::endl;
 #endif
 
   return theError;
@@ -1108,8 +1105,8 @@ double HypoTestInverterResult::UpperLimitEstimatedError()
 
 SamplingDistribution *  HypoTestInverterResult::GetBackgroundTestStatDist(int index ) const {
 
-   HypoTestResult * firstResult = (HypoTestResult*) fYObjects.At(index);
-   if (!firstResult) return 0;
+   HypoTestResult * firstResult = static_cast<HypoTestResult*>(fYObjects.At(index));
+   if (!firstResult) return nullptr;
    return firstResult->GetBackGroundIsAlt() ? firstResult->GetAltDistribution() : firstResult->GetNullDistribution();
 }
 
@@ -1117,8 +1114,8 @@ SamplingDistribution *  HypoTestInverterResult::GetBackgroundTestStatDist(int in
 /// get the signal and background test statistic distribution
 
 SamplingDistribution *  HypoTestInverterResult::GetSignalAndBackgroundTestStatDist(int index) const {
-   HypoTestResult * result = (HypoTestResult*) fYObjects.At(index);
-   if (!result) return 0;
+   HypoTestResult * result = static_cast<HypoTestResult*>(fYObjects.At(index));
+   if (!result) return nullptr;
    return !result->GetBackGroundIsAlt() ? result->GetAltDistribution() : result->GetNullDistribution();
 }
 
@@ -1127,10 +1124,10 @@ SamplingDistribution *  HypoTestInverterResult::GetSignalAndBackgroundTestStatDi
 
 SamplingDistribution *  HypoTestInverterResult::GetExpectedPValueDist(int index) const {
 
-   if (index < 0 || index >=  ArraySize() ) return 0;
+   if (index < 0 || index >=  ArraySize() ) return nullptr;
 
    if (fExpPValues.GetSize() == ArraySize()  ) {
-      return (SamplingDistribution*)  fExpPValues.At(index)->Clone();
+      return static_cast<SamplingDistribution*>( fExpPValues.At(index)->Clone());
    }
 
    static bool useFirstB = false;
@@ -1140,7 +1137,7 @@ SamplingDistribution *  HypoTestInverterResult::GetExpectedPValueDist(int index)
    SamplingDistribution * bDistribution = GetBackgroundTestStatDist(bIndex);
    SamplingDistribution * sbDistribution = GetSignalAndBackgroundTestStatDist(index);
 
-   HypoTestResult * result = (HypoTestResult*) fYObjects.At(index);
+   HypoTestResult * result = static_cast<HypoTestResult*>(fYObjects.At(index));
 
    if (bDistribution && sbDistribution) {
 
@@ -1170,7 +1167,7 @@ SamplingDistribution *  HypoTestInverterResult::GetExpectedPValueDist(int index)
    for (int i = 0; i < npoints; ++i) {
       double nsig = -smax + dsig*i;
       double pval = AsymptoticCalculator::GetExpectedPValues( result->NullPValue(), result->AlternatePValue(), nsig, fUseCLs, !fIsTwoSided);
-      if (pval < 0) { return 0;}
+      if (pval < 0) { return nullptr;}
       values[i] = pval;
    }
    return new SamplingDistribution("Asymptotic expected values","Asymptotic expected values",values);
@@ -1185,7 +1182,7 @@ SamplingDistribution *  HypoTestInverterResult::GetLimitDistribution(bool lower 
    if (ArraySize()<2) {
       coutE(Eval) << "HypoTestInverterResult::GetLimitDistribution"
                          << " not  enough points -  return 0 " << std::endl;
-      return 0;
+      return nullptr;
    }
 
    ooccoutD(this,Eval) << "HypoTestInverterResult - computing  limit distribution...." << std::endl;
@@ -1222,7 +1219,7 @@ SamplingDistribution *  HypoTestInverterResult::GetLimitDistribution(bool lower 
 
      // make quantiles from the sampling distributions of the expected p values
      std::vector<double> pvalues = distVec[i]->GetSamplingDistribution();
-     delete distVec[i];  distVec[i] = 0;
+     delete distVec[i];  distVec[i] = nullptr;
      std::sort(pvalues.begin(), pvalues.end());
      // find the quantiles of the distribution
      double p[1] = {0};
@@ -1233,7 +1230,7 @@ SamplingDistribution *  HypoTestInverterResult::GetLimitDistribution(bool lower 
         // exclude for a bug in TMath::Quantiles last item
         p[0] = std::min( (ibin+1) * 1./double(size), 1.0);
         // use the type 1 which give the point value
-        TMath::Quantiles(pvalues.size(), 1, &pvalues[0], q, p, true, 0, 1 );
+        TMath::Quantiles(pvalues.size(), 1, &pvalues[0], q, p, true, nullptr, 1 );
         (quantVec[i])[ibin] = q[0];
      }
 
@@ -1253,7 +1250,7 @@ SamplingDistribution *  HypoTestInverterResult::GetLimitDistribution(bool lower 
 
      TGraph g;
      for (int k = 0; k < npoints ; ++k) {
-        if (quantVec[index[k]].size()  > 0 )
+        if (!quantVec[index[k]].empty() )
            g.SetPoint(g.GetN(), GetXValue(index[k]), (quantVec[index[k]])[j] );
      }
 
@@ -1261,12 +1258,11 @@ SamplingDistribution *  HypoTestInverterResult::GetLimitDistribution(bool lower 
 
   }
 
-
-  if (lower)
+  if (lower) {
      return new SamplingDistribution("Expected lower Limit","Expected lower limits",limits);
-  else
-     return new SamplingDistribution("Expected upper Limit","Expected upper limits",limits);
-
+  } else {
+     return new SamplingDistribution("Expected upper Limit", "Expected upper limits", limits);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1318,7 +1314,7 @@ double  HypoTestInverterResult::GetExpectedLimit(double nsig, bool lower, const 
    if (nEntries <= 0)  return (lower) ? 1 : 0;  // return 1 for lower, 0 for upper
 
    HypoTestResult * r = dynamic_cast<HypoTestResult *> (fYObjects.First() );
-   assert(r != 0);
+   assert(r != nullptr);
    if (!r->GetNullDistribution() && !r->GetAltDistribution() ) {
       // we are in the asymptotic case
       // get the limits obtained at the different sigma values

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : Timer                                                                 *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Timing information for methods training                                   *
@@ -22,7 +22,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_Timer
@@ -93,10 +93,10 @@ namespace TMVA {
       static const TString fgClassName; ///< used for output
       static const Int_t   fgNbins;     ///< number of bins in progress bar
 
-      mutable MsgLogger*   fLogger;     ///< the output logger
+      mutable MsgLogger*   fLogger;     ///<! the output logger
       MsgLogger& Log() const { return *fLogger; }
 
-      ClassDef(Timer,0); // Timing information for training and evaluation of MVA methods
+      ClassDefOverride(Timer,0); // Timing information for training and evaluation of MVA methods
    };
 
 } // namespace

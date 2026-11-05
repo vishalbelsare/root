@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : Types                                                                 *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      GLobal types (singleton class)                                            *
@@ -178,7 +178,7 @@ namespace TMVA {
    private:
 
       std::map<TString, TMVA::Types::EMVA> fStr2type; ///< types-to-text map
-      mutable MsgLogger* fLogger;   ///< message logger
+      mutable MsgLogger* fLogger;   ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
 
    };

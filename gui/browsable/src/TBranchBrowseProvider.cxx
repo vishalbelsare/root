@@ -19,7 +19,7 @@
 #include "TBranchElement.h"
 #include "TBranchBrowsable.h"
 
-using namespace ROOT::Experimental::Browsable;
+using namespace ROOT::Browsable;
 using namespace std::string_literals;
 
 
@@ -128,7 +128,7 @@ class TBrBrowsableElement : public TTreeBrowsingElement {
 public:
    TBrBrowsableElement(std::unique_ptr<RHolder> &br) : TTreeBrowsingElement(br) {}
 
-   virtual ~TBrBrowsableElement() = default;
+   ~TBrBrowsableElement() override = default;
 
    int GetNumChilds() override
    {

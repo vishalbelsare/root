@@ -16,8 +16,8 @@
 #ifndef ROO_ABS_FUNC
 #define ROO_ABS_FUNC
 
-#include "Rtypes.h"
-#include "RooSpan.h"
+#include <ROOT/RSpan.hxx>
+#include <Rtypes.h>
 
 #include <list>
 #include <vector>
@@ -77,7 +77,7 @@ public:
 protected:
   mutable Int_t _ncall ;  ///< Function call counter
   UInt_t _dimension;      ///< Number of observables
-  bool _valid;          ///< Is binding in valid state?
+  bool _valid;            ///< Is binding in valid state?
    ClassDef(RooAbsFunc,0) ///< Abstract real-valued function interface
 };
 

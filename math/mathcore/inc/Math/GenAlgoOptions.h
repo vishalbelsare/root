@@ -48,7 +48,7 @@ public:
       return new GenAlgoOptions(*this);
    }
 
-   // t.b.d need probably to implement in a .cxx file for CINT
+   // t.b.d need probably to implement in a .cxx file for Cling
 
 
    bool GetRealValue(const char * name, double & val) const override {
@@ -72,7 +72,7 @@ public:
       return true;
    }
 
-   /// method wich need to be re-implemented by the derived classes
+   /// Method that needs to be re-implemented by the derived classes.
    void SetRealValue(const char * name, double val) override  {
       InsertValue(name, fRealOpts, val);
    }

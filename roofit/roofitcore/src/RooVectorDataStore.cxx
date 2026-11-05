@@ -19,7 +19,7 @@
 \class RooVectorDataStore
 \ingroup Roofitcore
 
-RooVectorDataStore uses std::vectors to store data columns. Each of these vectors
+Uses `std::vector` to store data columns. Each of these vectors
 is associated to an instance of a RooAbsReal, whose values it represents. Those
 RooAbsReal are the observables of the dataset.
 In addition to the observables, a data column can be bound to a different instance
@@ -39,25 +39,21 @@ which returns spans pointing directly to the data.
 #include "RooRealVar.h"
 #include "RooCategory.h"
 #include "RooHistError.h"
-#include "RooTrace.h"
-#include "RooHelpers.h"
+#include "RooFitImplHelpers.h"
 
 #include "Math/Util.h"
 #include "ROOT/StringUtils.hxx"
 #include "TBuffer.h"
 
 #include <iomanip>
-using namespace std;
+using std::string, std::vector, std::list;
 
-ClassImp(RooVectorDataStore);
-ClassImp(RooVectorDataStore::RealVector);
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
 RooVectorDataStore::RooVectorDataStore()
 {
-  TRACE_CREATE
 }
 
 
@@ -74,7 +70,6 @@ RooVectorDataStore::RooVectorDataStore(RooStringView name, RooStringView title, 
   }
 
   setAllBuffersNative() ;
-  TRACE_CREATE
 }
 
 
@@ -127,14 +122,14 @@ RooRealVar* RooVectorDataStore::weightVar(const RooArgSet& allVars, const char* 
     RooRealVar* wgt = dynamic_cast<RooRealVar*>(allVars.find(wgtName)) ;
     return wgt ;
   }
-  return 0 ;
+  return nullptr ;
 }
 
 
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Regular copy ctor
+/// Regular copy constructor.
 
 RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const char* newname) :
   RooAbsDataStore(other,newname),
@@ -149,29 +144,28 @@ RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const ch
   _currentWeightIndex(other._currentWeightIndex)
 {
   for (const auto realVec : other._realStoreList) {
-    _realStoreList.push_back(new RealVector(*realVec, (RooAbsReal*)_varsww.find(realVec->_nativeReal->GetName()))) ;
+    _realStoreList.push_back(new RealVector(*realVec, static_cast<RooAbsReal*>(_varsww.find(realVec->_nativeReal->GetName())))) ;
   }
 
   for (const auto realFullVec : other._realfStoreList) {
-    _realfStoreList.push_back(new RealFullVector(*realFullVec, (RooAbsReal*)_varsww.find(realFullVec->_nativeReal->GetName()))) ;
+    _realfStoreList.push_back(new RealFullVector(*realFullVec, static_cast<RooAbsReal*>(_varsww.find(realFullVec->_nativeReal->GetName())))) ;
   }
 
   for (const auto catVec : other._catStoreList) {
-    _catStoreList.push_back(new CatVector(*catVec, (RooAbsCategory*)_varsww.find(catVec->_cat->GetName()))) ;
+    _catStoreList.push_back(new CatVector(*catVec, static_cast<RooAbsCategory*>(_varsww.find(catVec->_cat->GetName())))) ;
  }
 
   setAllBuffersNative() ;
 
-  TRACE_CREATE
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
 RooVectorDataStore::RooVectorDataStore(const RooTreeDataStore& other, const RooArgSet& vars, const char* newname) :
-  RooAbsDataStore(other,varsNoWeight(vars,other._wgtVar?other._wgtVar->GetName():0),newname),
+  RooAbsDataStore(other,varsNoWeight(vars,other._wgtVar?other._wgtVar->GetName():nullptr),newname),
   _varsww(vars),
-  _wgtVar(weightVar(vars,other._wgtVar?other._wgtVar->GetName():0))
+  _wgtVar(weightVar(vars,other._wgtVar?other._wgtVar->GetName():nullptr))
 {
   for (const auto arg : _varsww) {
     arg->attachToVStore(*this) ;
@@ -186,18 +180,17 @@ RooVectorDataStore::RooVectorDataStore(const RooTreeDataStore& other, const RooA
     _varsww.assign(other._varsww) ;
     fill() ;
   }
-  TRACE_CREATE
 
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Clone ctor, must connect internal storage to given new external set of vars
+/// Clone constructor, must connect internal storage to given new external set of variables.
 
 RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const RooArgSet& vars, const char* newname) :
-  RooAbsDataStore(other,varsNoWeight(vars,other._wgtVar?other._wgtVar->GetName():0),newname),
+  RooAbsDataStore(other,varsNoWeight(vars,other._wgtVar?other._wgtVar->GetName():nullptr),newname),
   _varsww(vars),
-  _wgtVar(other._wgtVar?weightVar(vars,other._wgtVar->GetName()):0),
+  _wgtVar(other._wgtVar?weightVar(vars,other._wgtVar->GetName()):nullptr),
   _sumWeight(other._sumWeight),
   _sumWeightCarry(other._sumWeightCarry),
   _extWgtArray(other._extWgtArray),
@@ -216,12 +209,12 @@ RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const Ro
     }
   }
 
-  vector<RealFullVector*>::const_iterator fiter = other._realfStoreList.begin() ;
-  for (; fiter!=other._realfStoreList.end() ; ++fiter) {
-    RooAbsReal* real = (RooAbsReal*) vars.find((*fiter)->bufArg()->GetName()) ;
+  auto forwardIter = other._realfStoreList.begin() ;
+  for (; forwardIter!=other._realfStoreList.end() ; ++forwardIter) {
+    RooAbsReal* real = static_cast<RooAbsReal*>(vars.find((*forwardIter)->bufArg()->GetName())) ;
     if (real) {
       // Clone vector
-      _realfStoreList.push_back(new RealFullVector(**fiter,real)) ;
+      _realfStoreList.push_back(new RealFullVector(**forwardIter,real)) ;
       // Adjust buffer pointer
       real->attachToVStore(*this) ;
     }
@@ -229,7 +222,7 @@ RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const Ro
 
   vector<CatVector*>::const_iterator citer = other._catStoreList.begin() ;
   for (; citer!=other._catStoreList.end() ; ++citer) {
-    RooAbsCategory* cat = (RooAbsCategory*) vars.find((*citer)->bufArg()->GetName()) ;
+    RooAbsCategory* cat = static_cast<RooAbsCategory*>(vars.find((*citer)->bufArg()->GetName())) ;
     if (cat) {
       // Clone vector
       _catStoreList.push_back(new CatVector(**citer,cat)) ;
@@ -239,8 +232,6 @@ RooVectorDataStore::RooVectorDataStore(const RooVectorDataStore& other, const Ro
   }
 
   setAllBuffersNative() ;
-
-  TRACE_CREATE
 
 }
 
@@ -275,21 +266,14 @@ RooVectorDataStore::RooVectorDataStore(RooStringView name, RooStringView title, 
   setAllBuffersNative() ;
 
   // Deep clone cutVar and attach clone to this dataset
-  RooFormulaVar* cloneVar = 0;
+  std::unique_ptr<RooFormulaVar> cloneVar;
   if (cutVar) {
-    cloneVar = (RooFormulaVar*) cutVar->cloneTree() ;
+    cloneVar.reset(static_cast<RooFormulaVar*>(cutVar->cloneTree()));
     cloneVar->attachDataStore(tds) ;
   }
 
-  RooVectorDataStore* vds = dynamic_cast<RooVectorDataStore*>(&tds) ;
-  if (vds && vds->_cache) {
-    _cache = new RooVectorDataStore(*vds->_cache) ;
-  }
+  loadValues(&tds,cloneVar.get(),cutRange,nStart,nStop);
 
-  loadValues(&tds,cloneVar,cutRange,nStart,nStop);
-
-  delete cloneVar ;
-  TRACE_CREATE
 }
 
 
@@ -313,9 +297,6 @@ RooVectorDataStore::~RooVectorDataStore()
   for (auto elm : _catStoreList) {
     delete elm;
   }
-
-  delete _cache ;
-  TRACE_DESTROY
 }
 
 
@@ -351,7 +332,7 @@ Int_t RooVectorDataStore::fill()
 /// and return a pointer to the RooArgSet that holds them.
 const RooArgSet* RooVectorDataStore::get(Int_t index) const
 {
-  if (index < 0 || static_cast<std::size_t>(index) >= size()) return 0;
+  if (index < 0 || static_cast<std::size_t>(index) >= size()) return nullptr;
 
   for (const auto realV : _realStoreList) {
     realV->load(index);
@@ -375,10 +356,6 @@ const RooArgSet* RooVectorDataStore::get(Int_t index) const
   // Update current weight cache
   _currentWeightIndex = index;
 
-  if (_cache) {
-    _cache->get(index) ;
-  }
-
   return &_vars;
 }
 
@@ -394,7 +371,8 @@ double RooVectorDataStore::weightError(RooAbsData::ErrorType etype) const
     // We have a weight array, use that info
 
     // Return symmetric error on current bin calculated either from Poisson statistics or from SumOfWeights
-    double lo = 0, hi = 0 ;
+    double lo = 0;
+    double hi = 0;
     weightError(lo,hi,etype) ;
     return (lo+hi)/2 ;
 
@@ -447,7 +425,8 @@ void RooVectorDataStore::weightError(double& lo, double& hi, RooAbsData::ErrorTy
 
       // Otherwise Calculate poisson errors
       wgt = weight();
-      double ym,yp ;
+      double ym;
+      double yp;
       RooHistError::instance().getPoissonInterval(Int_t(wgt+0.5),ym,yp,1);
       lo = wgt-ym;
       hi = yp-wgt;
@@ -510,20 +489,20 @@ void RooVectorDataStore::loadValues(const RooAbsDataStore *ads, const RooFormula
   const auto numEntr = static_cast<std::size_t>(ads->numEntries());
   const std::size_t nevent = nStop < numEntr ? nStop : numEntr;
 
-  auto TDS = dynamic_cast<const RooTreeDataStore*>(ads);
-  auto VDS = dynamic_cast<const RooVectorDataStore*>(ads);
+  auto treeDS = dynamic_cast<const RooTreeDataStore*>(ads);
+  auto vectorDS = dynamic_cast<const RooVectorDataStore*>(ads);
 
   // Check if weight is being renamed - if so set flag to enable special handling in copy loop
   bool weightRename(false) ;
-  bool newWeightVar = _wgtVar ? _wgtVar->getAttribute("NewWeight") : false ;
+  const bool newWeightVar = _wgtVar ? _wgtVar->getAttribute("NewWeight") : false ;
 
-  if (_wgtVar && VDS && ((RooVectorDataStore*)(ads))->_wgtVar) {
-    if (string(_wgtVar->GetName())!=((RooVectorDataStore*)(ads))->_wgtVar->GetName() && !newWeightVar) {
+  if (_wgtVar && vectorDS && vectorDS->_wgtVar) {
+    if (std::string(_wgtVar->GetName()) != vectorDS->_wgtVar->GetName() && !newWeightVar) {
       weightRename=true ;
     }
   }
-  if (_wgtVar && TDS && ((RooTreeDataStore*)(ads))->_wgtVar) {
-    if (string(_wgtVar->GetName())!=((RooTreeDataStore*)(ads))->_wgtVar->GetName() && !newWeightVar) {
+  if (_wgtVar && treeDS && treeDS->_wgtVar) {
+    if (std::string(_wgtVar->GetName()) != treeDS->_wgtVar->GetName() && !newWeightVar) {
       weightRename=true ;
     }
   }
@@ -542,23 +521,25 @@ void RooVectorDataStore::loadValues(const RooAbsDataStore *ads, const RooFormula
       continue ;
     }
 
-    if (TDS) {
-      _varsww.assignValueOnly(TDS->_varsww) ;
+    RooArgSet const* otherVarsww = nullptr;
+
+    if (treeDS) {
+      otherVarsww = &treeDS->_varsww;
       if (weightRename) {
-        _wgtVar->setVal(TDS->_wgtVar->getVal()) ;
+        _wgtVar->setVal(treeDS->_wgtVar->getVal()) ;
       }
-    } else if (VDS) {
-      _varsww.assignValueOnly(VDS->_varsww) ;
+    } else if (vectorDS) {
+      otherVarsww = &vectorDS->_varsww;
       if (weightRename) {
-        _wgtVar->setVal(VDS->_wgtVar->getVal()) ;
+        _wgtVar->setVal(vectorDS->_wgtVar->getVal()) ;
       }
     } else {
-      _varsww.assignValueOnly(*ads->get()) ;
+      otherVarsww = ads->get();
     }
 
     // Check that all copied values are valid and in range
     bool allValid = true;
-    for (const auto arg : _varsww) {
+    for (const auto arg : *otherVarsww) {
       allValid &= arg->isValid();
       if (allValid && !ranges.empty()) {
         // If we have one or multiple ranges to be selected, the value
@@ -573,6 +554,8 @@ void RooVectorDataStore::loadValues(const RooAbsDataStore *ads, const RooFormula
     if (!allValid) {
       continue ;
     }
+
+    _varsww.assign(*otherVarsww) ;
 
     fill() ;
   }
@@ -617,19 +600,19 @@ bool RooVectorDataStore::changeObservableName(const char* /*from*/, const char* 
 RooAbsArg* RooVectorDataStore::addColumn(RooAbsArg& newVar, bool /*adjustRange*/)
 {
   // Create a fundamental object of the right type to hold newVar values
-  RooAbsArg* valHolder= newVar.createFundamental();
+  auto valHolder = std::unique_ptr<RooAbsArg>{newVar.createFundamental()}.release();
   // Sanity check that the holder really is fundamental
   if(!valHolder->isFundamental()) {
     coutE(InputArguments) << GetName() << "::addColumn: holder argument is not fundamental: \""
-    << valHolder->GetName() << "\"" << endl;
-    return 0;
+    << valHolder->GetName() << "\"" << std::endl;
+    return nullptr;
   }
 
   // Attention: need to do this now, as adding an empty column might give 0 as size
   const std::size_t numEvt = size();
 
   // Clone variable and attach to cloned tree
-  RooAbsArg* newVarClone = newVar.cloneTree() ;
+  std::unique_ptr<RooAbsArg> newVarClone{newVar.cloneTree()};
   newVarClone->recursiveRedirectServers(_vars,false) ;
 
   // Attach value place holder to this tree
@@ -638,14 +621,14 @@ RooAbsArg* RooVectorDataStore::addColumn(RooAbsArg& newVar, bool /*adjustRange*/
   _varsww.add(*valHolder) ;
 
   // Fill values of placeholder
-  RealVector* rv(0) ;
-  CatVector* cv(0) ;
+  RealVector* rv(nullptr) ;
+  CatVector* cv(nullptr) ;
   assert(numEvt != 0);
   if (dynamic_cast<RooAbsReal*>(valHolder)) {
-    rv = addReal((RooAbsReal*)valHolder);
+    rv = addReal(static_cast<RooAbsReal*>(valHolder));
     rv->resize(numEvt) ;
-  } else if (dynamic_cast<RooAbsCategory*>((RooAbsCategory*)valHolder)) {
-    cv = addCategory((RooAbsCategory*)valHolder) ;
+  } else if (dynamic_cast<RooAbsCategory*>(static_cast<RooAbsCategory*>(valHolder))) {
+    cv = addCategory(static_cast<RooAbsCategory*>(valHolder)) ;
     cv->resize(numEvt) ;
   }
 
@@ -653,15 +636,13 @@ RooAbsArg* RooVectorDataStore::addColumn(RooAbsArg& newVar, bool /*adjustRange*/
     get(i) ;
 
     newVarClone->syncCache(&_vars) ;
-    valHolder->copyCache(newVarClone) ;
+    valHolder->copyCache(newVarClone.get()) ;
 
     if (rv) rv->write(i) ;
     if (cv) cv->write(i) ;
   }
 
-  delete newVarClone ;
   return valHolder ;
-
 }
 
 
@@ -750,297 +731,6 @@ void RooVectorDataStore::reset()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Cache given RooAbsArgs: The tree is
-/// given direct write access of the args internal cache
-/// the args values is pre-calculated for all data points
-/// in this data collection. Upon a get() call, the
-/// internal cache of 'newVar' will be loaded with the
-/// precalculated value and it's dirty flag will be cleared.
-
-void RooVectorDataStore::cacheArgs(const RooAbsArg* owner, RooArgSet& newVarSet, const RooArgSet* nset, bool skipZeroWeights)
-{
-  // Delete previous cache, if any
-  delete _cache ;
-  _cache = 0 ;
-
-  // Reorder cached elements. First constant nodes, then tracked nodes in order of dependence
-
-  // Step 1 - split in constant and tracked
-  RooArgSet newVarSetCopy(newVarSet);
-  RooArgSet orderedArgs;
-  vector<RooAbsArg*> trackArgs;
-  for (const auto arg : newVarSetCopy) {
-    if (arg->getAttribute("ConstantExpression") && !arg->getAttribute("NOCacheAndTrack")) {
-      orderedArgs.add(*arg) ;
-    } else {
-
-      // Explicitly check that arg depends on any of the observables, if this
-      // is not the case, skip it, as inclusion would result in repeated
-      // calculation of a function that has the same value for every event
-      // in the likelihood
-      if (arg->dependsOn(_vars) && !arg->getAttribute("NOCacheAndTrack")) {
-        trackArgs.push_back(arg) ;
-      } else {
-        newVarSet.remove(*arg) ;
-      }
-    }
-  }
-
-  // Step 2 - reorder tracked nodes
-  std::sort(trackArgs.begin(), trackArgs.end(), [](RooAbsArg* left, RooAbsArg* right){
-    //LM: exclude same comparison. This avoids an issue when using sort in MacOS  versions
-    if (left == right) return false;
-    return right->dependsOn(*left);
-  });
-
-  // Step 3 - put back together
-  for (const auto trackedArg : trackArgs) {
-    orderedArgs.add(*trackedArg);
-  }
-
-  // WVE need to prune tracking entries _below_ constant nodes as the're not needed
-//   cout << "Number of Cache-and-Tracked args are " << trackArgs.size() << endl ;
-//   cout << "Compound ordered cache parameters = " << endl ;
-//   orderedArgs.Print("v") ;
-
-  checkInit() ;
-
-  std::vector<RooArgSet*> vlist;
-  RooArgList cloneSet;
-
-  for (const auto var : orderedArgs) {
-
-    // Clone variable and attach to cloned tree
-    RooArgSet* newVarCloneList = (RooArgSet*) RooArgSet(*var).snapshot() ;
-    RooAbsArg* newVarClone = newVarCloneList->find(var->GetName()) ;
-    newVarClone->recursiveRedirectServers(_vars,false) ;
-
-    vlist.push_back(newVarCloneList) ;
-    cloneSet.add(*newVarClone) ;
-  }
-
-  _cacheOwner = (RooAbsArg*) owner ;
-  RooVectorDataStore* newCache = new RooVectorDataStore("cache","cache",orderedArgs) ;
-
-
-  RooAbsArg::setDirtyInhibit(true) ;
-
-  std::vector<RooArgSet*> nsetList ;
-  std::vector<RooArgSet*> argObsList ;
-
-  // Now need to attach branch buffers of clones
-  for (const auto arg : cloneSet) {
-    arg->attachToVStore(*newCache) ;
-
-    RooArgSet* argObs = nset ? arg->getObservables(*nset) : arg->getVariables() ;
-    argObsList.push_back(argObs) ;
-
-    RooArgSet* normSet(0) ;
-    const char* catNset = arg->getStringAttribute("CATNormSet") ;
-    if (catNset) {
-//       cout << "RooVectorDataStore::cacheArgs() cached node " << arg->GetName() << " has a normalization set specification CATNormSet = " << catNset << endl ;
-
-      RooArgSet anset = RooHelpers::selectFromArgSet(nset ? *nset : RooArgSet{}, catNset);
-      normSet = (RooArgSet*) anset.selectCommon(*argObs) ;
-
-    }
-    const char* catCset = arg->getStringAttribute("CATCondSet") ;
-    if (catCset) {
-//       cout << "RooVectorDataStore::cacheArgs() cached node " << arg->GetName() << " has a conditional observable set specification CATCondSet = " << catCset << endl ;
-
-      RooArgSet acset = RooHelpers::selectFromArgSet(nset ? *nset : RooArgSet{}, catCset);
-      argObs->remove(acset,true,true) ;
-      normSet = argObs ;
-    }
-
-    // now construct normalization set for component from cset/nset spec
-//     if (normSet) {
-//       cout << "RooVectorDaraStore::cacheArgs() component " << arg->GetName() << " has custom normalization set " << *normSet << endl ;
-//     }
-    nsetList.push_back(normSet) ;
-  }
-
-
-  // Fill values of of placeholder
-  const std::size_t numEvt = size();
-  newCache->reserve(numEvt);
-  for (std::size_t i=0; i < numEvt; i++) {
-    get(i) ;
-    if (weight()!=0 || !skipZeroWeights) {
-      for (unsigned int j = 0; j < cloneSet.size(); ++j) {
-        auto& cloneArg = cloneSet[j];
-        auto argNSet = nsetList[j];
-        // WVE need to intervene here for condobs from ProdPdf
-        cloneArg.syncCache(argNSet ? argNSet : nset) ;
-      }
-    }
-    newCache->fill() ;
-  }
-
-  RooAbsArg::setDirtyInhibit(false) ;
-
-
-  // Now need to attach branch buffers of original function objects
-  for (const auto arg : orderedArgs) {
-    arg->attachToVStore(*newCache) ;
-
-    // Activate change tracking mode, if requested
-    if (!arg->getAttribute("ConstantExpression") && dynamic_cast<RooAbsReal*>(arg)) {
-      RealVector* rv = newCache->addReal((RooAbsReal*)arg) ;
-      RooArgSet* deps = arg->getParameters(_vars) ;
-      rv->setDependents(*deps) ;
-
-      // WV lookup normalization set and associate with RealVector
-      // find ordinal number of arg in original list
-      Int_t idx = cloneSet.index(arg->GetName()) ;
-
-      coutI(Optimization) << "RooVectorDataStore::cacheArg() element " << arg->GetName() << " has change tracking enabled on parameters " << *deps << endl ;
-      rv->setNset(nsetList[idx]) ;
-      delete deps ;
-    }
-
-  }
-
-
-  for (auto set : vlist) {
-    delete set;
-  }
-  for (auto set : argObsList) {
-    delete set;
-  }
-
-  _cache = newCache ;
-  _cache->setDirtyProp(_doDirtyProp) ;
-}
-
-
-void RooVectorDataStore::forceCacheUpdate()
-{
-  if (_cache) _forcedUpdate = true ;
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-void RooVectorDataStore::recalculateCache( const RooArgSet *projectedArgs, Int_t firstEvent, Int_t lastEvent, Int_t stepSize, bool skipZeroWeights)
-{
-  if (!_cache) return ;
-
-  std::vector<RooVectorDataStore::RealVector *> tv;
-  tv.reserve(static_cast<std::size_t>(_cache->_realStoreList.size() * 0.7)); // Typically, 30..60% need to be recalculated
-
-  // Check which items need recalculation
-  for (const auto realVec : _cache->_realStoreList) {
-    if (_forcedUpdate || realVec->needRecalc()) {
-       tv.push_back(realVec);
-       realVec->_nativeReal->setOperMode(RooAbsArg::ADirty);
-       realVec->_nativeReal->_operMode = RooAbsArg::Auto;
-    }
-  }
-  _forcedUpdate = false ;
-
-  // If no recalculations are needed stop here
-  if (tv.empty()) {
-     return;
-  }
-
-
-  // Refill caches of elements that require recalculation
-  RooArgSet* ownedNset = 0 ;
-  RooArgSet* usedNset = 0 ;
-  if (projectedArgs && projectedArgs->getSize()>0) {
-    ownedNset = (RooArgSet*) _vars.snapshot(false) ;
-    ownedNset->remove(*projectedArgs,false,true);
-    usedNset = ownedNset ;
-  } else {
-    usedNset = &_vars ;
-  }
-
-
-  for (int i=firstEvent ; i<lastEvent ; i+=stepSize) {
-    get(i) ;
-    bool zeroWeight = (weight()==0) ;
-    if (!zeroWeight || !skipZeroWeights) {
-       for (auto realVector : tv) {
-          realVector->_nativeReal->_valueDirty = true;
-          realVector->_nativeReal->getValV(realVector->_nset ? realVector->_nset : usedNset);
-          realVector->write(i);
-      }
-    }
-  }
-
-  for (auto realVector : tv) {
-     realVector->_nativeReal->setOperMode(RooAbsArg::AClean);
-  }
-
-  delete ownedNset ;
-
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Initialize cache of dataset: attach variables of cache ArgSet
-/// to the corresponding TTree branches
-
-void RooVectorDataStore::attachCache(const RooAbsArg* newOwner, const RooArgSet& cachedVarsIn)
-{
-  // Only applicable if a cache exists
-  if (!_cache) return ;
-
-  // Clone ctor, must connect internal storage to given new external set of vars
-  std::vector<RealVector*> cacheElements(_cache->realStoreList());
-  cacheElements.insert(cacheElements.end(), _cache->_realfStoreList.begin(), _cache->_realfStoreList.end());
-
-  for (const auto elm : cacheElements) {
-    auto real = static_cast<RooAbsReal*>(cachedVarsIn.find(elm->bufArg()->GetName()));
-    if (real) {
-      // Adjust buffer pointer
-      real->attachToVStore(*_cache) ;
-    }
-  }
-
-  for (const auto catVec : _cache->_catStoreList) {
-    auto cat = static_cast<RooAbsCategory*>(cachedVarsIn.find(catVec->bufArg()->GetName()));
-    if (cat) {
-      // Adjust buffer pointer
-      cat->attachToVStore(*_cache) ;
-    }
-  }
-
-  _cacheOwner = (RooAbsArg*) newOwner ;
-}
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-void RooVectorDataStore::resetCache()
-{
-  delete _cache;
-  _cache = nullptr;
-  _cacheOwner = nullptr;
-  return ;
-}
-
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Disabling of branches is (intentionally) not implemented in vector
-/// data stores (as the doesn't result in a net saving of time)
-
-void RooVectorDataStore::setArgStatus(const RooArgSet& /*set*/, bool /*active*/)
-{
-  return ;
-}
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
 
 void RooVectorDataStore::attachBuffers(const RooArgSet& extObs)
 {
@@ -1069,37 +759,37 @@ void RooVectorDataStore::resetBuffers()
 
 void RooVectorDataStore::dump()
 {
-  cout << "RooVectorDataStor::dump()" << endl ;
+  std::cout << "RooVectorDataStor::dump()" << std::endl ;
 
-  cout << "_varsww = " << endl ; _varsww.Print("v") ;
-  cout << "realVector list is" << endl ;
+  std::cout << "_varsww = " << std::endl ; _varsww.Print("v") ;
+  std::cout << "realVector list is" << std::endl ;
 
   for (const auto elm : _realStoreList) {
-    cout << "RealVector " << elm << " _nativeReal = " << elm->_nativeReal << " = " << elm->_nativeReal->GetName() << " bufptr = " << elm->_buf  << endl ;
-    cout << " values : " ;
+    std::cout << "RealVector " << elm << " _nativeReal = " << elm->_nativeReal << " = " << elm->_nativeReal->GetName() << " bufptr = " << elm->_buf  << std::endl ;
+    std::cout << " values : " ;
     Int_t imax = elm->_vec.size()>10 ? 10 : elm->_vec.size() ;
     for (Int_t i=0 ; i<imax ; i++) {
-      cout << elm->_vec[i] << " " ;
+      std::cout << elm->_vec[i] << " " ;
     }
-    cout << endl ;
+    std::cout << std::endl ;
   }
 
   for (const auto elm : _realfStoreList) {
-    cout << "RealFullVector " << elm << " _nativeReal = " << elm->_nativeReal << " = " << elm->_nativeReal->GetName()
-    << " bufptr = " << elm->_buf  << " errbufptr = " << elm->_bufE << endl ;
+    std::cout << "RealFullVector " << elm << " _nativeReal = " << elm->_nativeReal << " = " << elm->_nativeReal->GetName()
+    << " bufptr = " << elm->_buf  << " errbufptr = " << elm->bufE() << std::endl ;
 
-    cout << " values : " ;
+    std::cout << " values : " ;
     Int_t imax = elm->_vec.size()>10 ? 10 : elm->_vec.size() ;
     for (Int_t i=0 ; i<imax ; i++) {
-      cout << elm->_vec[i] << " " ;
+      std::cout << elm->_vec[i] << " " ;
     }
-    cout << endl ;
-    if (elm->_vecE) {
-      cout << " errors : " ;
+    std::cout << std::endl ;
+    if (elm->bufE()) {
+      std::cout << " errors : " ;
       for (Int_t i=0 ; i<imax ; i++) {
-   cout << (*elm->_vecE)[i] << " " ;
+   std::cout << elm->dataE()[i] << " " ;
       }
-      cout << endl ;
+      std::cout << std::endl ;
 
     }
   }
@@ -1134,26 +824,6 @@ void RooVectorDataStore::Streamer(TBuffer &R__b)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Stream an object of class RooVectorDataStore::RealFullVector.
-
-void RooVectorDataStore::RealFullVector::Streamer(TBuffer &R__b)
-{
-   if (R__b.IsReading()) {
-     R__b.ReadClassBuffer(RooVectorDataStore::RealFullVector::Class(),this);
-
-     // WVE - It seems that ROOT persistence turns null pointers to vectors into pointers to null-sized vectors
-     //       Intervene here to remove those null-sized vectors and replace with null pointers to not break
-     //       assumptions made elsewhere in this class
-     if (_vecE  && _vecE->empty()) { delete _vecE   ; _vecE = 0 ; }
-     if (_vecEL && _vecEL->empty()) { delete _vecEL ; _vecEL = 0 ; }
-     if (_vecEH && _vecEH->empty()) { delete _vecEH ; _vecEH = 0 ; }
-   } else {
-     R__b.WriteClassBuffer(RooVectorDataStore::RealFullVector::Class(),this);
-   }
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
 /// Return batches of the data columns for the requested events.
 /// \param[in] first First event in the batches.
 /// \param[in] len   Number of events in batches.
@@ -1173,7 +843,7 @@ RooAbsData::RealSpans RooVectorDataStore::getBatches(std::size_t first, std::siz
     if (realVec->_real) {
       // If a buffer is attached, i.e. we are ready to load into a RooAbsReal outside of our dataset,
       // we can directly map our spans to this real.
-      evalData.emplace(realVec->_real, std::move(span));
+      evalData.emplace(realVec->_real, span);
     }
   };
 
@@ -1182,15 +852,6 @@ RooAbsData::RealSpans RooVectorDataStore::getBatches(std::size_t first, std::siz
   }
   for (const auto realVec : _realfStoreList) {
     emplace(realVec);
-  }
-
-  if (_cache) {
-    for (const auto realVec : _cache->_realStoreList) {
-      emplace(realVec);
-    }
-    for (const auto realVec : _cache->_realfStoreList) {
-      emplace(realVec);
-    }
   }
 
   return evalData;
@@ -1224,10 +885,10 @@ RooAbsData::CategorySpans RooVectorDataStore::getCategoryBatches(std::size_t fir
 /// If an array with weights is stored, a batch with these weights will be returned. If
 /// no weights are stored, an empty batch is returned. Use weight() to check if there's
 /// a constant weight.
-RooSpan<const double> RooVectorDataStore::getWeightBatch(std::size_t first, std::size_t len) const
+std::span<const double> RooVectorDataStore::getWeightBatch(std::size_t first, std::size_t len) const
 {
   if (_extWgtArray) {
-    return RooSpan<const double>(_extWgtArray + first, _extWgtArray + first + len);
+    return std::span<const double>(_extWgtArray + first, _extWgtArray + first + len);
   }
 
   if (_wgtVar) {
@@ -1306,7 +967,7 @@ bool RooVectorDataStore::hasError(RooAbsReal* real) {
   // First try a match by name
   for (auto fullVec : _realfStoreList) {
     if (std::string(fullVec->bufArg()->GetName())==real->GetName()) {
-      return fullVec->_vecE ? true : false ;
+      return fullVec->bufE();
     }
   }
   return false ;
@@ -1318,7 +979,7 @@ bool RooVectorDataStore::hasAsymError(RooAbsReal* real) {
   // First try a match by name
   for (auto fullVec : _realfStoreList) {
     if (std::string(fullVec->bufArg()->GetName())==real->GetName()) {
-      return fullVec->_vecEL ? true : false ;
+      return fullVec->bufEL();
     }
   }
   return false ;
@@ -1397,9 +1058,9 @@ RooVectorDataStore::ArraysStruct  RooVectorDataStore::getArrays() const {
   for(auto const* realf : _realfStoreList) {
     std::string name = realf->_nativeReal->GetName();
     out.reals.emplace_back(name, realf->_vec.data());
-    if(realf->_vecE) out.reals.emplace_back(name + "Err", realf->_vecE->data());
-    if(realf->_vecEL) out.reals.emplace_back(name + "ErrLo", realf->_vecEL->data());
-    if(realf->_vecEH) out.reals.emplace_back(name + "ErrHi", realf->_vecEH->data());
+    if(realf->bufE()) out.reals.emplace_back(name + "Err", realf->dataE().data());
+    if(realf->bufEL()) out.reals.emplace_back(name + "ErrLo", realf->dataEL().data());
+    if(realf->bufEH()) out.reals.emplace_back(name + "ErrHi", realf->dataEH().data());
   }
   for(auto const* cat : _catStoreList) {
     out.cats.emplace_back(cat->_cat->GetName(), cat->_vec.data());

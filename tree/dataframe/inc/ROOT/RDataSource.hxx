@@ -12,20 +12,34 @@
 #define ROOT_RDATASOURCE
 
 #include "RDF/RColumnReaderBase.hxx"
-#include "ROOT/RStringView.hxx"
-#include "ROOT/RConfig.hxx" // R__DEPRECATED
+#include <string_view>
 #include "RtypesCore.h" // ULong64_t
-#include "TError.h" // Warning
 #include "TString.h"
 
 #include <algorithm> // std::transform
+#include <cassert>
+#include <optional>
+#include <set>
 #include <string>
 #include <typeinfo>
+#include <unordered_map>
+#include <variant>
 #include <vector>
+#include <functional>
+
+// Need to fwd-declare TTreeReader for CreateColumnReader
+class TTreeReader;
+namespace ROOT::Detail::RDF {
+class RLoopManager;
+}
 
 namespace ROOT {
 namespace RDF {
 class RDataSource;
+class RSampleInfo;
+namespace Experimental {
+class RSample;
+}
 }
 }
 
@@ -37,7 +51,7 @@ std::string printValue(ROOT::RDF::RDataSource *ds);
 namespace ROOT {
 
 namespace Internal {
-namespace TDS {
+namespace RDF {
 
 /// Mother class of TTypedPointerHolder. The instances
 /// of this class can be put in a container. Upon destruction,
@@ -71,7 +85,21 @@ public:
    ~TTypedPointerHolder() { delete static_cast<T *>(fPointer); }
 };
 
-} // ns TDS
+std::string GetTypeNameWithOpts(const ROOT::RDF::RDataSource &ds, std::string_view colName, bool vector2RVec);
+const std::vector<std::string> &GetTopLevelFieldNames(const ROOT::RDF::RDataSource &ds);
+const std::vector<std::string> &GetColumnNamesNoDuplicates(const ROOT::RDF::RDataSource &ds);
+void CallInitializeWithOpts(ROOT::RDF::RDataSource &ds, const std::set<std::string> &suppressErrorsForMissingColumns);
+std::string DescribeDataset(ROOT::RDF::RDataSource &ds);
+ROOT::RDF::RSampleInfo
+CreateSampleInfo(const ROOT::RDF::RDataSource &ds, unsigned int slot,
+                 const std::unordered_map<std::string, ROOT::RDF::Experimental::RSample *> &sampleMap);
+void RunFinalChecks(const ROOT::RDF::RDataSource &ds, bool nodesLeftNotRun);
+void ProcessMT(ROOT::RDF::RDataSource &ds, ROOT::Detail::RDF::RLoopManager &lm);
+std::unique_ptr<ROOT::Detail::RDF::RColumnReaderBase>
+CreateColumnReader(ROOT::RDF::RDataSource &ds, unsigned int slot, std::string_view col, const std::type_info &tid,
+                   TTreeReader *treeReader);
+} // namespace RDF
+
 } // ns Internal
 
 namespace RDF {
@@ -110,20 +138,72 @@ RDataSource implementations must support running multiple event-loops consecutiv
 */
 class RDataSource {
    // clang-format on
-private:
-   /// \cond
-   // Temporary boolean value used by the backwards compatibility code for the deprecated spellings Initialise,
-   // Finalise and FinaliseSlot.
-   bool fDeprecatedBaseCalled = false;
-   /// \endcond
-
 protected:
    using Record_t = std::vector<void *>;
    friend std::string cling::printValue(::ROOT::RDF::RDataSource *);
 
    virtual std::string AsString() { return "generic data source"; };
 
+   unsigned int fNSlots{};
+
+   std::optional<std::pair<ULong64_t, ULong64_t>> fGlobalEntryRange{};
+
+   friend std::string ROOT::Internal::RDF::GetTypeNameWithOpts(const RDataSource &, std::string_view, bool);
+   virtual std::string GetTypeNameWithOpts(std::string_view colName, bool) const { return GetTypeName(colName); }
+
+   friend const std::vector<std::string> &ROOT::Internal::RDF::GetTopLevelFieldNames(const ROOT::RDF::RDataSource &);
+   virtual const std::vector<std::string> &GetTopLevelFieldNames() const { return GetColumnNames(); }
+
+   friend const std::vector<std::string> &
+   ROOT::Internal::RDF::GetColumnNamesNoDuplicates(const ROOT::RDF::RDataSource &);
+   virtual const std::vector<std::string> &GetColumnNamesNoDuplicates() const { return GetColumnNames(); }
+
+   friend void ROOT::Internal::RDF::CallInitializeWithOpts(ROOT::RDF::RDataSource &, const std::set<std::string> &);
+   virtual void InitializeWithOpts(const std::set<std::string> &) { Initialize(); }
+
+   friend std::string ROOT::Internal::RDF::DescribeDataset(ROOT::RDF::RDataSource &);
+   virtual std::string DescribeDataset() { return "Dataframe from datasource " + GetLabel(); }
+
+   friend ROOT::RDF::RSampleInfo
+   ROOT::Internal::RDF::CreateSampleInfo(const ROOT::RDF::RDataSource &, unsigned int,
+                                         const std::unordered_map<std::string, ROOT::RDF::Experimental::RSample *> &);
+   virtual ROOT::RDF::RSampleInfo
+   CreateSampleInfo(unsigned int, const std::unordered_map<std::string, ROOT::RDF::Experimental::RSample *> &) const;
+
+   friend void ROOT::Internal::RDF::RunFinalChecks(const ROOT::RDF::RDataSource &, bool);
+   virtual void RunFinalChecks(bool) const {}
+
+   friend void ROOT::Internal::RDF::ProcessMT(RDataSource &, ROOT::Detail::RDF::RLoopManager &);
+   virtual void ProcessMT(ROOT::Detail::RDF::RLoopManager &);
+
+   friend std::unique_ptr<ROOT::Detail::RDF::RColumnReaderBase>
+   ROOT::Internal::RDF::CreateColumnReader(ROOT::RDF::RDataSource &, unsigned int, std::string_view,
+                                           const std::type_info &, TTreeReader *);
+   /**
+    * \brief Creates a column reader for the requested column
+    *
+    * In the general case, this is just a redirect to the right GetColumnReaders overload. The signature notably also
+    * has a TTreeReader * parameter. This is currently necessary to still allow the TTree-based MT scheduling via
+    * TTreeProcessorMT. We use the TTreeProcessorMT::Process method to launch the same kernel across all threads. In
+    * each thread task, TTreeProcessorMT creates a thread-local instance of a TTreeReader which is going to read the
+    * range of events assigned to that task. That TTreeReader instance is what is passed to this method whenever a
+    * column reader needs to be created in a thread task. In the future this method might be removed by either allowing
+    * to request a handle to the thread-local TTreeReader instance programmatically from the TTreeProcessorMT, or
+    * refactoring the TTreeProcessorMT scheduling into RTTreeDS altogether.
+    */
+   virtual std::unique_ptr<ROOT::Detail::RDF::RColumnReaderBase>
+   CreateColumnReader(unsigned int slot, std::string_view col, const std::type_info &tid, TTreeReader *)
+   {
+      return GetColumnReaders(slot, col, tid);
+   }
+
 public:
+   RDataSource() = default;
+   // Rule of five
+   RDataSource(const RDataSource &) = delete;
+   RDataSource &operator=(const RDataSource &) = delete;
+   RDataSource(RDataSource &&) = delete;
+   RDataSource &operator=(RDataSource &&) = delete;
    virtual ~RDataSource() = default;
 
    // clang-format off
@@ -131,7 +211,15 @@ public:
    /// Slots numbers are used to simplify parallel execution: RDataFrame guarantees that different threads will always
    /// pass different slot values when calling methods concurrently.
    // clang-format on
-   virtual void SetNSlots(unsigned int nSlots) = 0;
+   virtual void SetNSlots(unsigned int nSlots)
+   {
+      assert(fNSlots == 0);
+      assert(nSlots > 0);
+      fNSlots = nSlots;
+   };
+
+   /// \brief Returns the number of files from which the dataset is constructed
+   virtual std::size_t GetNFiles() const { return 0; }
 
    // clang-format off
    /// \brief Returns a reference to the collection of the dataset's column names
@@ -207,30 +295,6 @@ public:
    // clang-format on
    virtual void Initialize() {}
 
-   /// \cond
-   // Unused deprecated struct, it's here to remind us to remove the deprecated spellings Initialise, Finalise and
-   // FinaliseSlot. PR that removes the deprecated code: https://github.com/root-project/root/pull/9521 .
-   struct R__DEPRECATED(6, 30,
-                        "Use Initialize, Finalize and FinalizeSlot instead of the corresponding british spellings.")
-      NeverUsedJustAReminder {
-   };
-
-   virtual void Initialise() { fDeprecatedBaseCalled = true; }
-
-   void CallInitialize()
-   {
-      fDeprecatedBaseCalled = false;
-      Initialise();
-      if (!fDeprecatedBaseCalled) {
-         Warning("RDataSource::Initialise", "Initialise is deprecated. Please rename it to \"Initialize\" (with a z).");
-         return;
-      }
-
-      // `Initialise()` was not overridden, the data source uses the new spelling: good!
-      Initialize();
-   }
-   /// \endcond
-
    // clang-format off
    /// \brief Convenience method called at the start of the data processing associated to a slot.
    /// \param[in] slot The data processing slot wihch needs to be initialized
@@ -246,51 +310,24 @@ public:
    // clang-format on
    virtual void FinalizeSlot(unsigned int /*slot*/) {}
 
-   /// \cond
-   virtual void FinaliseSlot(unsigned int) { fDeprecatedBaseCalled = true; }
-
-   void CallFinalizeSlot(unsigned int slot)
-   {
-      fDeprecatedBaseCalled = false;
-      FinaliseSlot(slot);
-      if (!fDeprecatedBaseCalled) {
-         Warning("RDataSource::FinaliseSlot",
-                 "FinaliseSlot is deprecated. Please implement FinalizeSlot (with a z) instead of FinaliseSlot.");
-         return;
-      }
-
-      FinalizeSlot(slot);
-   }
-   /// \endcond
-
    // clang-format off
    /// \brief Convenience method called after concluding an event-loop.
    /// See Initialize for more details.
    // clang-format on
    virtual void Finalize() {}
 
-   /// \cond
-   virtual void Finalise() { fDeprecatedBaseCalled = true; }
-
-   void CallFinalize()
-   {
-      fDeprecatedBaseCalled = false;
-      Finalise();
-      if (!fDeprecatedBaseCalled) {
-         Warning("RDataSource::FinaliseSlot",
-                 "Finalise is deprecated. Please implement Finalize (with a z) instead of Finalise.");
-         return;
-      }
-
-      Finalize();
-   }
-   /// \endcond
-
    /// \brief Return a string representation of the datasource type.
    /// The returned string will be used by ROOT::RDF::SaveGraph() to represent
    /// the datasource in the visualization of the computation graph.
    /// Concrete datasources can override the default implementation.
    virtual std::string GetLabel() { return "Custom Datasource"; }
+
+   /// \brief Restrict processing to a [begin, end) range of entries.
+   /// \param entryRange The range of entries to process.
+   virtual void SetGlobalEntryRange(std::pair<ULong64_t, ULong64_t> entryRange)
+   {
+      fGlobalEntryRange = std::move(entryRange);
+   };
 
 protected:
    /// type-erased vector of pointers to pointers to column values - one per slot

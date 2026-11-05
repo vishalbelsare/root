@@ -29,7 +29,9 @@
 
 #include "Math/IFunctionfwd.h"
 
+#include <algorithm>
 #include <vector>
+#include <algorithm>
 
 namespace ROOT {
 
@@ -204,24 +206,11 @@ public:
    */
    ~GSLSimAnnealing ()  {}
 
-private:
-   // usually copying is non trivial, so we make this unaccessible
-
-   /**
-      Copy constructor
-   */
-   GSLSimAnnealing(const GSLSimAnnealing &) {}
-
-   /**
-      Assignment operator
-   */
-   GSLSimAnnealing & operator = (const GSLSimAnnealing & rhs)  {
-      if (this == &rhs) return *this;  // time saving self-test
-      return *this;
-   }
-
-public:
-
+   // usually copying is non trivial, so we delete this
+   GSLSimAnnealing(const GSLSimAnnealing &) = delete;
+   GSLSimAnnealing & operator = (const GSLSimAnnealing & rhs) = delete;
+   GSLSimAnnealing(GSLSimAnnealing &&) = delete;
+   GSLSimAnnealing & operator = (GSLSimAnnealing && rhs) = delete;
 
    /**
       solve the simulated annealing given a multi-dim function, the initial vector parameters
@@ -239,10 +228,6 @@ public:
    GSLSimAnParams & Params() { return fParams; }
    const GSLSimAnParams & Params() const { return fParams; }
    void SetParams(const GSLSimAnParams & params) { fParams = params; }
-
-
-protected:
-
 
 private:
 

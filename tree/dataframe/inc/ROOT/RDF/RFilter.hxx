@@ -39,8 +39,7 @@ namespace GraphDrawing {
 std::shared_ptr<GraphNode>
 CreateFilterNode(const RFilterBase *filterPtr, std::unordered_map<void *, std::shared_ptr<GraphNode>> &visitedMap);
 
-std::shared_ptr<GraphNode> AddDefinesToGraph(std::shared_ptr<GraphNode> node,
-                                             const RDFInternal::RColumnRegister &colRegister,
+std::shared_ptr<GraphNode> AddDefinesToGraph(std::shared_ptr<GraphNode> node, const RColumnRegister &colRegister,
                                              const std::vector<std::string> &prevNodeDefines,
                                              std::unordered_map<void *, std::shared_ptr<GraphNode>> &visitedMap);
 } // ns GraphDrawing
@@ -81,9 +80,14 @@ public:
       fLoopManager->Register(this);
    }
 
+   // Rule of five
+
    RFilter(const RFilter &) = delete;
    RFilter &operator=(const RFilter &) = delete;
-   ~RFilter() {
+   RFilter(RFilter &&) = delete;
+   RFilter &operator=(RFilter &&) = delete;
+   ~RFilter() final
+   {
       // must Deregister objects from the RLoopManager here, before the fPrevNode data member is destroyed:
       // otherwise if fPrevNode is the RLoopManager, it will be destroyed before the calls to Deregister happen.
       fLoopManager->Deregister(this);
@@ -107,10 +111,22 @@ public:
       return fLastResult[slot * RDFInternal::CacheLineStep<int>()];
    }
 
+   template <typename ColType>
+   auto GetValueChecked(unsigned int slot, std::size_t readerIdx, Long64_t entry) -> ColType &
+   {
+      if (auto *val = fValues[slot][readerIdx]->template TryGet<ColType>(entry))
+         return *val;
+
+      throw std::out_of_range{"RDataFrame: Filter could not retrieve value for column '" + fColumnNames[readerIdx] +
+                              "' for entry " + std::to_string(entry) +
+                              ". You can use the DefaultValueFor operation to provide a default value, or "
+                              "FilterAvailable/FilterMissing to discard/keep entries with missing values instead."};
+   }
+
    template <typename... ColTypes, std::size_t... S>
    bool CheckFilterHelper(unsigned int slot, Long64_t entry, TypeList<ColTypes...>, std::index_sequence<S...>)
    {
-      return fFilter(fValues[slot][S]->template Get<ColTypes>(entry)...);
+      return fFilter(GetValueChecked<ColTypes>(slot, S, entry)...);
       // avoid unused parameter warnings (gcc 12.1)
       (void)slot;
       (void)entry;
@@ -182,7 +198,7 @@ public:
       auto upmostNode = AddDefinesToGraph(thisNode, fColRegister, prevColumns, visitedMap);
 
       // Keep track of the columns defined up to this point.
-      thisNode->AddDefinedColumns(fColRegister.GetNames());
+      thisNode->AddDefinedColumns(fColRegister.GenerateColumnNames());
 
       upmostNode->SetPrevNode(prevNode);
       return thisNode;
@@ -191,6 +207,8 @@ public:
    /// Return a clone of this Filter that works with values in the variationName "universe".
    std::shared_ptr<RNodeBase> GetVariedFilter(const std::string &variationName) final
    {
+      // Only the nominal filter should be asked to produce varied filters
+      assert(fVariation == "nominal");
       // nobody should ask for a varied filter for the nominal variation: they can just
       // use the nominal filter!
       assert(variationName != "nominal");

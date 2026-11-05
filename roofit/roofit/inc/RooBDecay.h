@@ -38,14 +38,13 @@ public:
          const RooResolutionModel& model,
          DecayType type);
   RooBDecay(const RooBDecay& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override
+  TObject* clone(const char* newname=nullptr) const override
   {
     return new RooBDecay(*this,newname);
   }
-  ~RooBDecay() override;
 
   double coefficient(Int_t basisIndex) const override;
-  RooArgSet* coefVars(Int_t coefIdx) const override ;
+  RooFit::OwningPtr<RooArgSet> coefVars(Int_t coefIdx) const override ;
 
   Int_t getCoefAnalyticalIntegral(Int_t coef, RooArgSet& allVars, RooArgSet& analVars, const char* rangeName=nullptr) const override ;
   double coefAnalyticalIntegral(Int_t coef, Int_t code, const char* rangeName=nullptr) const override ;

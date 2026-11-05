@@ -10,7 +10,7 @@
 ############################################################################
 
 if (imt)
-  list(APPEND TREE_EXTRA_DEPENDENCIES Imt)
+  list(APPEND TREE_EXTRA_LIBRARIES Imt)
 endif(imt)
 
 ROOT_STANDARD_LIBRARY_PACKAGE(Tree
@@ -52,7 +52,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Tree
     TLeafS.h
     TNtupleD.h
     TNtuple.h
-    TQueryResult.h
     TreeUtils.h
     TSelector.h
     TSelectorList.h
@@ -109,7 +108,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Tree
     src/TLeafS.cxx
     src/TNtuple.cxx
     src/TNtupleD.cxx
-    src/TQueryResult.cxx
     src/TreeUtils.cxx
     src/TSelector.cxx
     src/TSelectorList.cxx
@@ -126,12 +124,13 @@ ROOT_STANDARD_LIBRARY_PACKAGE(Tree
   DICTIONARY_OPTIONS
     -writeEmptyRootPCM
   DEPENDENCIES
-    ${TREE_EXTRA_DEPENDENCIES}
     Net
     RIO
-    MathCore
   LIBRARIES
     ${ROOT_ATOMIC_LIBS}
+    ${TREE_EXTRA_LIBRARIES}
+    Thread
+    MathCore
 )
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

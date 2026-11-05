@@ -28,7 +28,7 @@ class TH1;
 
 class RooHist : public TGraphAsymmErrors, public RooPlotable {
 public:
-  RooHist() ;
+  RooHist() {}
   RooHist(double nominalBinWidth, double nSigma= 1, double xErrorFrac=1.0, double scaleFactor=1.0);
   RooHist(const TH1 &data, double nominalBinWidth= 0, double nSigma= 1, RooAbsData::ErrorType=RooAbsData::Poisson,
      double xErrorFrac=1.0, bool correctForBinWidth=true, double scaleFactor=1.);
@@ -68,7 +68,8 @@ public:
 
   double getFitRangeNEvt() const override;
   double getFitRangeNEvt(double xlo, double xhi) const override ;
-  double getFitRangeBinW() const override;
+  /// Return (average) bin width of this RooHist.
+  double getFitRangeBinW() const override { return _nominalBinWidth ; }
   inline double getNominalBinWidth() const { return _nominalBinWidth; }
   inline void setRawEntries(double n) { _rawEntries = n ; }
 
@@ -91,12 +92,17 @@ protected:
   std::unique_ptr<RooHist> createEmptyResidHist(const RooCurve& curve, bool normalize=false) const;
 
 private:
-  double _nominalBinWidth ; ///< Average bin width
-  double _nSigma ;          ///< Number of 'sigmas' error bars represent
-  double _entries ;         ///< Number of entries in histogram
-  double _rawEntries;       ///< Number of entries in source dataset
 
-  ClassDefOverride(RooHist,1) // 1-dimensional histogram with error bars
+  void addPoint(Axis_t binCenter, double y, double yscale, double exlow, double exhigh, double eylow, double eyhigh);
+
+  double _nominalBinWidth = 1.0; ///< Average bin width
+  double _nSigma = 1.0;          ///< Number of 'sigmas' error bars represent
+  double _entries = 0.0;         ///< Number of entries in histogram
+  double _rawEntries = 0.0;      ///< Number of entries in source dataset
+
+  std::vector<double> _originalWeights; ///< The original bin weights that were passed to the `RooHist::addBin` functions before scaling and bin width correction
+
+  ClassDefOverride(RooHist,2) // 1-dimensional histogram with error bars
 };
 
 #endif

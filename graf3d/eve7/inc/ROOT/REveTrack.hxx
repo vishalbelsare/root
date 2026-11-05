@@ -63,7 +63,7 @@ protected:
    Int_t fStatus;          // Status-word, user-defined.
    Bool_t fLockPoints;     // Lock points that are currently in - do nothing in MakeTrack().
    vPathMark_t fPathMarks; // REveVector of known points along the track
-   Int_t fLastPMIdx;       //! Last path-mark index tried in track-propagation.
+   Int_t fLastPMIdx;       ///<! Last path-mark index tried in track-propagation.
 
    REveTrackPropagator *fPropagator{nullptr}; // Pointer to shared render-style
 
@@ -75,7 +75,7 @@ public:
    REveTrack(REveRecTrack* t, REveTrackPropagator *prop = nullptr);
    REveTrack(REveRecTrackD* t, REveTrackPropagator *prop = nullptr);
    REveTrack(const REveTrack &t);
-   virtual ~REveTrack();
+   ~REveTrack() override;
 
    void ComputeBBox() override;
 
@@ -170,7 +170,7 @@ protected:
 public:
    REveTrackList(REveTrackPropagator *prop = nullptr);
    REveTrackList(const std::string &name, REveTrackPropagator *prop = nullptr);
-   virtual ~REveTrackList();
+   ~REveTrackList() override;
 
    void MakeTracks(Bool_t recurse = kTRUE);
    void FindMomentumLimits(Bool_t recurse = kTRUE);

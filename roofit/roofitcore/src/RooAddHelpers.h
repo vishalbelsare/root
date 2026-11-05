@@ -1,3 +1,5 @@
+/// \cond ROOFIT_INTERNAL
+
 /*
  * Project: RooFit
  *
@@ -55,9 +57,10 @@ private:
 
 class RooAddHelpers {
 public:
-   static void updateCoefficients(RooAbsPdf const &addPdf, std::vector<double> &coefCache, RooArgList const &pdfList,
-                                  bool haveLastCoef, AddCacheElem &cache, const RooArgSet *nset,
-                                  RooArgSet const &refCoefNormSet, bool allExtendable, int &coefErrCount);
+   static void updateCoefficients(RooAbsPdf const &addPdf, std::size_t nPdfs, std::vector<double> &coefCache,
+                                  bool haveLastCoef, AddCacheElem &cache, int &coefErrCount);
 };
 
 #endif
+
+/// \endcond

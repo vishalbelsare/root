@@ -77,10 +77,9 @@ public:
             DecayType       type = DoubleSided );
 
   RooNonCPEigenDecay(const RooNonCPEigenDecay& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override {
+  TObject* clone(const char* newname=nullptr) const override {
     return new RooNonCPEigenDecay(*this,newname);
   }
-  ~RooNonCPEigenDecay( void ) override;
 
   double coefficient( Int_t basisIndex ) const override;
 

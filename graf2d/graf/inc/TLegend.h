@@ -30,7 +30,7 @@ public:
    TLegend( Double_t x1, Double_t y1, Double_t x2, Double_t y2,
             const char* header = "", Option_t* option="brNDC" );
    TLegend( Double_t w, Double_t h, const char* header = "", Option_t* option="brNDC" );
-   virtual ~TLegend();
+   ~TLegend() override;
    TLegend(const TLegend &legend);
 
    TLegendEntry   *AddEntry(const TObject* obj, const char* label = "", Option_t* option = "lpf" );
@@ -70,14 +70,14 @@ public:
    void            SetNColumns( Int_t nColumns ); // *MENU*
 
 protected:
-   TList     *fPrimitives;       ///< List of TLegendEntries
-   Float_t    fEntrySeparation;  ///< Separation between entries, as a fraction of
-                                 ///< The space allocated to one entry.
-                                 ///< Typical value is 0.1.
-   Float_t    fMargin;           ///< Fraction of total width used for symbol
-   Int_t      fNColumns;         ///< Number of columns in the legend
-   Float_t    fColumnSeparation; ///< Separation between columns, as a fraction of
-                                 ///< The space allowed to one column
+   TList     *fPrimitives{nullptr}; ///< List of TLegendEntries
+   Float_t    fEntrySeparation;     ///< Separation between entries, as a fraction of
+                                    ///< The space allocated to one entry.
+                                    ///< Typical value is 0.1.
+   Float_t    fMargin;              ///< Fraction of total width used for symbol
+   Int_t      fNColumns;            ///< Number of columns in the legend
+   Float_t    fColumnSeparation;    ///< Separation between columns, as a fraction of
+                                    ///< The space allowed to one column
 
    ClassDefOverride(TLegend,3) // Legend of markers/lines/boxes to represent obj's
 };

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Classes: PDEFoam                                                               *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Class for PDEFoam object                                                  *
@@ -22,7 +22,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_PDEFoam
@@ -132,7 +132,7 @@ namespace TMVA {
       void InitCells();                   // Initialisation of all foam cells
       Int_t CellFill(Int_t, PDEFoamCell*);// Allocates new empty cell and return its index
       virtual void Explore(PDEFoamCell *Cell); // Exploration of the new cell, determine <wt>, wtMax etc.
-      void Varedu(Double_t [], Int_t&, Double_t&,Double_t&); // Determines the best edge, variance reduction
+      void Varedu(Double_t [5], Int_t&, Double_t&,Double_t&); // Determines the best edge, variance reduction
       void MakeAlpha();             // Provides random point inside hyperrectangle
       void Grow();                  // build up foam
       Long_t PeekMax();             // peek cell with max. driver integral
@@ -270,7 +270,7 @@ namespace TMVA {
       friend class PDEFoamKernelGauss;
 
       // ---------- ROOT class definition
-      ClassDef(PDEFoam,7) // Tree of PDEFoamCells
+      ClassDefOverride(PDEFoam,7) // Tree of PDEFoamCells
          }; // end of PDEFoam
 
 }  // namespace TMVA

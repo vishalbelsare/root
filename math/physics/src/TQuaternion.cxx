@@ -3,6 +3,7 @@
 
 
 /** \class TQuaternion
+    \legacy{TQuaternion, Consider using instead ROOT::Math::Quaternion.}
     \ingroup Physics
  Quaternion is a 4-component mathematic object quite convenient when dealing with
 space rotation (or reference frame transformation).
@@ -93,12 +94,11 @@ http://en.wikipedia.org/wiki/Quaternion
 #include "TQuaternion.h"
 #include "TString.h"
 
-ClassImp(TQuaternion);
 
 /****************** CONSTRUCTORS ****************************************************/
 ////////////////////////////////////////////////////////////////////////////////
 
-TQuaternion::TQuaternion(const TQuaternion & q) : TObject(q),
+TQuaternion::TQuaternion(const TQuaternion & q) noexcept : TObject(q),
   fRealPart(q.fRealPart), fVectorPart(q.fVectorPart) {}
 
 TQuaternion::TQuaternion(const TVector3 & vect, Double_t real)
@@ -196,7 +196,7 @@ TQuaternion TQuaternion::operator+(Double_t real) const {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// substraction of real to quaternion
+/// subtraction of real to quaternion
 
 TQuaternion TQuaternion::operator-(Double_t real) const {
    return TQuaternion(fVectorPart, fRealPart - real);
@@ -238,7 +238,7 @@ TQuaternion TQuaternion::operator+(const TVector3 &vect) const {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// substraction of real to quaternion
+/// subtraction of real to quaternion
 
 TQuaternion TQuaternion::operator-(const TVector3 &vect) const {
    return TQuaternion(fVectorPart - vect, fRealPart);

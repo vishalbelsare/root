@@ -36,23 +36,31 @@ public:
   ~RooDerivative() override ;
 
   RooDerivative(const RooDerivative& other, const char* name = nullptr);
-  TObject* clone(const char* newname) const override { return new RooDerivative(*this, newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooDerivative(*this, newname); }
 
   Int_t order() const { return _order ; }
+
   double eps() const { return _eps ; }
+
+  RooArgSet const &getNset() const { return _nset; }
+
+  RooAbsReal const &getX() const { return *_x; }
+
+  RooAbsReal const &getFunc() const { return *_func; }
+
   void setEps(double e) { _eps = e ; }
 
   bool redirectServersHook(const RooAbsCollection& /*newServerList*/, bool /*mustReplaceAll*/, bool /*nameChange*/, bool /*isRecursive*/) override ;
 
 protected:
 
-  Int_t _order ;                                 ///< Derivation order
-  double _eps ;                                ///< Precision
-  RooSetProxy  _nset ;                           ///< Normalization set (optional)
-  RooRealProxy _func ;                           ///< Input function
-  RooRealProxy _x     ;                          ///< Observable
-  mutable RooFunctor*  _ftor ;                   ///<! Functor binding of RooAbsReal
-  mutable ROOT::Math::RichardsonDerivator *_rd ; ///<! Derivator
+  Int_t _order = 1;                                       ///< Derivation order
+  double _eps = 1e-7;                                     ///< Precision
+  RooSetProxy  _nset ;                                    ///< Normalization set (optional)
+  RooRealProxy _func ;                                    ///< Input function
+  RooRealProxy _x     ;                                   ///< Observable
+  mutable std::unique_ptr<RooFunctor> _ftor;                   ///<! Functor binding of RooAbsReal
+  mutable std::unique_ptr<ROOT::Math::RichardsonDerivator> _rd; ///<! Derivator
 
   double evaluate() const override;
 

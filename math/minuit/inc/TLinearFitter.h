@@ -60,7 +60,7 @@
 //
 // 2.Setting the formula
 //  2.1 The linear formula syntax:
-//      -Additive parts are separated by 2 plus signes "++"
+//      -Additive parts are separated by 2 plus signs "++"
 //       --for example "1 ++ x" - for fitting a straight line
 //      -All standard functions, undrestood by TFormula, can be used
 //       as additive parts
@@ -158,24 +158,24 @@ private:
    TVectorD     fTValues;        //T-Values of parameters
    TVectorD     fParSign;        //significance levels of parameters
    TMatrixDSym  fDesign;         //matrix AtA
-   TMatrixDSym  fDesignTemp;     //! temporary matrix, used for num.stability
-   TMatrixDSym  fDesignTemp2;    //!
-   TMatrixDSym  fDesignTemp3;    //!
+   TMatrixDSym  fDesignTemp;     ///<! temporary matrix, used for num.stability
+   TMatrixDSym  fDesignTemp2;    ///<!
+   TMatrixDSym  fDesignTemp3;    ///<!
 
    TVectorD     fAtb;            //vector Atb
-   TVectorD     fAtbTemp;        //! temporary vector, used for num.stability
-   TVectorD     fAtbTemp2;       //!
-   TVectorD     fAtbTemp3;       //!
+   TVectorD     fAtbTemp;        ///<! temporary vector, used for num.stability
+   TVectorD     fAtbTemp2;       ///<!
+   TVectorD     fAtbTemp3;       ///<!
 
-   static std::map<TString,TFormula*>   fgFormulaMap;  //! map of basis functions and formula
+   static std::map<TString,TFormula*>   fgFormulaMap;  ///<! map of basis functions and formula
    TObjArray    fFunctions;      //array of basis functions
    TVectorD     fY;              //the values being fit
    Double_t     fY2;             //sum of square of y, used for chisquare
-   Double_t     fY2Temp;         //! temporary variable used for num.stability
+   Double_t     fY2Temp;         ///<! temporary variable used for num.stability
    TMatrixD     fX;              //values of x
    TVectorD     fE;              //the errors if they are known
    TFormula     *fInputFunction; //the function being fit
-   Double_t     fVal[1000];      //! temporary
+   Double_t     fVal[1000];      ///<! temporary
 
    Int_t        fNpoints;        //number of points
    Int_t        fNfunctions;     //number of basis functions
@@ -210,15 +210,16 @@ private:
    Double_t  CStep(Int_t step, Int_t h, Double_t *residuals, Int_t *index, Int_t *subdat, Int_t start, Int_t end);
    Bool_t    Linf();
 
+   TLinearFitter(const TLinearFitter &) = delete;
+   TLinearFitter& operator=(const TLinearFitter &) = delete;
+
 public:
    TLinearFitter();
    TLinearFitter(Int_t ndim, const char *formula, Option_t *opt="D");
    TLinearFitter(Int_t ndim);
    TLinearFitter(TFormula *function, Option_t *opt="D");
-   TLinearFitter(const TLinearFitter& tlf);
    ~TLinearFitter() override;
 
-   TLinearFitter& operator=(const TLinearFitter& tlf);
    virtual void       Add(TLinearFitter *tlf);
    virtual void       AddPoint(Double_t *x, Double_t y, Double_t e=1);
    virtual void       AddTempMatrices();

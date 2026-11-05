@@ -29,27 +29,39 @@ Suitably stolen and modified from RooBCPEffDecay
 #include "RooBCPGenDecay.h"
 #include "RooRealIntegral.h"
 
-using namespace std;
 
-ClassImp(RooBCPGenDecay);
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor
+/// \brief Constructor for RooBCPGenDecay.
+///
+/// Creates an instance of RooBCPGenDecay with the specified parameters.
+///
+/// \param[in] name       The name of the PDF.
+/// \param[in] title      The title of the PDF.
+/// \param[in] t          The time variable.
+/// \param[in] tag        The CP state category.
+/// \param[in] tau        The decay time parameter.
+/// \param[in] dm         The mixing frequency parameter.
+/// \param[in] avgMistag  The average mistag rate parameter.
+/// \param[in] avgC       Coefficient of cos term.
+/// \param[in] avgS       Coefficient of sin term.
+/// \param[in] delMistag  Delta mistag rate parameter.
+/// \param[in] mu         Tag efficiency difference parameter.
+/// \param[in] model      The resolution model.
+/// \param[in] type       The decay type.
 
 RooBCPGenDecay::RooBCPGenDecay(const char *name, const char *title,
                 RooRealVar& t, RooAbsCategory& tag,
                 RooAbsReal& tau, RooAbsReal& dm,
                 RooAbsReal& avgMistag,
-                RooAbsReal& a, RooAbsReal& b,
+                RooAbsReal& avgC, RooAbsReal& avgS,
                 RooAbsReal& delMistag,
                                RooAbsReal& mu,
                 const RooResolutionModel& model, DecayType type) :
   RooAbsAnaConvPdf(name,title,model,t),
-  _avgC("C","Coefficient of cos term",this,a),
-  _avgS("S","Coefficient of sin term",this,b),
+  _avgC("C","Coefficient of cos term",this,avgC),
+  _avgS("S","Coefficient of sin term",this,avgS),
   _avgMistag("avgMistag","Average mistag rate",this,avgMistag),
   _delMistag("delMistag","Delta mistag rate",this,delMistag),
-  _mu("mu","Tagg efficiency difference",this,mu),
+  _mu("mu","Tag efficiency difference",this,mu),
   _t("t","time",this,t),
   _tau("tau","decay time",this,tau),
   _dm("dm","mixing frequency",this,dm),
@@ -95,13 +107,6 @@ RooBCPGenDecay::RooBCPGenDecay(const RooBCPGenDecay& other, const char* name) :
   _basisExp(other._basisExp),
   _basisSin(other._basisSin),
   _basisCos(other._basisCos)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooBCPGenDecay::~RooBCPGenDecay()
 {
 }
 
@@ -205,7 +210,7 @@ void RooBCPGenDecay::generateEvent(Int_t code)
   }
 
   // Generate delta-t dependent
-  while(1) {
+  while(true) {
     double rand = RooRandom::uniform() ;
     double tval(0) ;
 
@@ -224,7 +229,7 @@ void RooBCPGenDecay::generateEvent(Int_t code)
     // Accept event if T is in generated range
     double maxDil = 1.0 ;
 // 2 in next line is conservative and inefficient - allows for delMistag=1!
-    double maxAcceptProb = 2 + fabs(maxDil*_avgS) + fabs(maxDil*_avgC);
+    double maxAcceptProb = 2 + std::abs(maxDil*_avgS) + std::abs(maxDil*_avgC);
     double acceptProb    = (1-_tag*_delMistag + _mu*_tag*(1. - 2.*_avgMistag))
                            + (_tag*(1-2*_avgMistag) + _mu*(1. - _tag*_delMistag))*_avgS*sin(_dm*tval)
                            - (_tag*(1-2*_avgMistag) + _mu*(1. - _tag*_delMistag))*_avgC*cos(_dm*tval);

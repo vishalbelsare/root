@@ -19,34 +19,20 @@
 \class RooUniformBinning
 \ingroup Roofitcore
 
-RooUniformBinning is an implementation of RooAbsBinning that provides
+Implementation of RooAbsBinning that provides
 a uniform binning in 'n' bins between the range end points. A RooUniformBinning
 is 'elastic': if the range changes the binning will change accordingly, unlike
 e.g. the binning of class RooBinning.
 **/
 
-#include "RooUniformBinning.h"
-#include "RooMsgService.h"
+#include <RooUniformBinning.h>
 
-#include "Riostream.h"
+#include <RooFit/CodegenContext.h>
+#include <RooMsgService.h>
 
+#include <ostream>
 
-using namespace std;
-
-ClassImp(RooUniformBinning);
-;
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default Constructor
-/// coverity[UNINIT_CTOR]
-
-RooUniformBinning::RooUniformBinning(const char* name) :
-  RooAbsBinning(name)
-{
-  _array = 0 ;
-}
+using std::endl;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -54,35 +40,17 @@ RooUniformBinning::RooUniformBinning(const char* name) :
 
 RooUniformBinning::RooUniformBinning(double xlo, double xhi, Int_t nBins, const char* name) :
   RooAbsBinning(name),
-  _array(0),
   _nbins(nBins)
 {
   setRange(xlo,xhi) ;
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooUniformBinning::~RooUniformBinning()
-{
-  if (_array) delete[] _array ;
-}
-
-
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy constructor
 
-RooUniformBinning::RooUniformBinning(const RooUniformBinning& other, const char* name) :
-  RooAbsBinning(name)
+RooUniformBinning::RooUniformBinning(const RooUniformBinning &other, const char *name)
+   : RooAbsBinning(name), _xlo(other._xlo), _xhi(other._xhi), _nbins(other._nbins), _binw(other._binw)
 {
-  _array = 0 ;
-  _xlo   = other._xlo ;
-  _xhi   = other._xhi ;
-  _nbins = other._nbins ;
-  _binw  = other._binw ;
 }
 
 
@@ -94,19 +62,16 @@ RooUniformBinning::RooUniformBinning(const RooUniformBinning& other, const char*
 void RooUniformBinning::setRange(double xlo, double xhi)
 {
   if (xlo>xhi) {
-    coutE(InputArguments) << "RooUniformBinning::setRange: ERROR low bound > high bound" << endl ;
+    coutE(InputArguments) << "RooUniformBinning::setRange: ERROR low bound > high bound" << std::endl ;
     return ;
   }
 
   _xlo = xlo ;
   _xhi = xhi ;
-  _binw = (xhi-xlo)/_nbins ;
+  _binw = _nbins>0 ? (xhi-xlo)/_nbins : 0.0 ;
 
   // Delete any out-of-date boundary arrays at this point
-  if (_array) {
-    delete[] _array ;
-    _array = 0 ;
-  }
+  _array.clear();
 }
 
 
@@ -132,7 +97,7 @@ double RooUniformBinning::binCenter(Int_t i) const
 {
   if (i<0 || i>=_nbins) {
     coutE(InputArguments) << "RooUniformBinning::binCenter ERROR: bin index " << i
-           << " is out of range (0," << _nbins-1 << ")" << endl ;
+           << " is out of range (0," << _nbins-1 << ")" << std::endl ;
     return 0 ;
   }
 
@@ -159,7 +124,7 @@ double RooUniformBinning::binLow(Int_t i) const
 {
   if (i<0 || i>=_nbins) {
     coutE(InputArguments) << "RooUniformBinning::binLow ERROR: bin index " << i
-           << " is out of range (0," << _nbins-1 << ")" << endl ;
+           << " is out of range (0," << _nbins-1 << ")" << std::endl ;
     return 0 ;
   }
 
@@ -175,7 +140,7 @@ double RooUniformBinning::binHigh(Int_t i) const
 {
   if (i<0 || i>=_nbins) {
     coutE(InputArguments) << "RooUniformBinning::fitBinHigh ERROR: bin index " << i
-           << " is out of range (0," << _nbins-1 << ")" << endl ;
+           << " is out of range (0," << _nbins-1 << ")" << std::endl ;
     return 0 ;
   }
 
@@ -189,14 +154,17 @@ double RooUniformBinning::binHigh(Int_t i) const
 
 double* RooUniformBinning::array() const
 {
-  if (_array) delete[] _array ;
-  _array = new double[_nbins+1] ;
+  _array.resize(_nbins+1);
 
   Int_t i ;
   for (i=0 ; i<=_nbins ; i++) {
     _array[i] = _xlo + i*_binw ;
   }
-  return _array ;
+  return _array.data();
 }
 
-
+std::string
+RooUniformBinning::translateBinNumber(RooFit::Experimental::CodegenContext &ctx, RooAbsArg const &var, int coef) const
+{
+   return ctx.buildCall("RooFit::Detail::MathFuncs::uniformBinNumber", lowBound(), highBound(), var, numBins(), coef);
+}

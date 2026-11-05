@@ -90,6 +90,7 @@ private:
    Int_t             fOnFileClassVersion;///<!Class version identifier as stored on file.
    Int_t             fNumber;            ///<!Unique identifier
    Int_t             fSize;              ///<!size of the persistent class
+   size_t            fAlignment;         ///<!alignment of the memory representation of the class
    Int_t             fNdata;             ///<!number of optimized elements
    Int_t             fNfulldata;         ///<!number of elements
    Int_t             fNslots;            ///<!total number of slots in fComp.
@@ -136,52 +137,11 @@ public:
    /// See TVirtualStreamerInfo::EStatusBits for the values.
 
    /// EReadWrite Enumerator
-   /// | Enum Constant | Description   |
-   /// |-------------|--------------------|
-   /// | kBase       | Base class element |
-   /// | kOffsetL    | Fixed size array |
-   /// | kOffsetP    | Pointer to object |
-   /// | kCounter    | Counter for array size |
-   /// | kCharStar   | Pointer to array of char |
-   /// | kLegacyChar | Equal to TDataType's kchar |
-   /// | kBits       | TObject::fBits in case of a referenced object |
-   /// | kObject     | Class  derived from TObject, or for TStreamerSTL::fCtype non-pointer elements |
-   /// | kObjectp    | Class* derived from TObject and with    comment field //->Class, or for TStreamerSTL::fCtype: pointer elements |
-   /// | kObjectP    | Class* derived from TObject and with NO comment field //->Class |
-   /// | kAny        | Class  not derived from TObject |
-   /// | kAnyp       | Class* not derived from TObject with    comment field //->Class |
-   /// | kAnyP       | Class* not derived from TObject with NO comment field //->Class |
-   /// | kAnyPnoVT   | Class* not derived from TObject with NO comment field //->Class and Class has NO virtual table |
-   /// | kSTLp       | Pointer to STL container |
-   /// | kTString    | TString, special case |
-   /// | kTObject    | TObject, special case |
-   /// | kTNamed     | TNamed , special case |
-   /// | kCache      | Cache the value in memory than is not part of the object but is accessible via a SchemaRule |
-   enum EReadWrite {
-      kBase        =  0,  kOffsetL = 20,  kOffsetP = 40,  kCounter =  6,  kCharStar = 7,
-      kChar        =  1,  kShort   =  2,  kInt     =  3,  kLong    =  4,  kFloat    = 5,
-      kDouble      =  8,  kDouble32=  9,
-      kLegacyChar  = 10, /// Equal to TDataType's kchar
-      kUChar       = 11,  kUShort  = 12,  kUInt    = 13,  kULong   = 14,  kBits     = 15,
-      kLong64      = 16,  kULong64 = 17,  kBool    = 18,  kFloat16 = 19,
-      kObject      = 61,  kAny     = 62,  kObjectp = 63,  kObjectP = 64,  kTString  = 65,
-      kTObject     = 66,  kTNamed  = 67,  kAnyp    = 68,  kAnyP    = 69,  kAnyPnoVT = 70,
-      kSTLp        = 71,
-      kSkip        = 100, kSkipL = 120, kSkipP   = 140,
-      kConv        = 200, kConvL = 220, kConvP   = 240,
-      kSTL         = 300, kSTLstring = 365,
-      kStreamer    = 500, kStreamLoop = 501,
-      kCache       = 600,  /// Cache the value in memory than is not part of the object but is accessible via a SchemaRule
-      kArtificial  = 1000,
-      kCacheNew    = 1001,
-      kCacheDelete = 1002,
-      kNeedObjectForVirtualBaseClass = 99997,
-      kMissing     = 99999
-   };
+   /// See TVirtualStreamerInfo::EReadWrite for documentation and values.
 
    TStreamerInfo();
    TStreamerInfo(TClass *cl);
-   virtual            ~TStreamerInfo();
+              ~TStreamerInfo() override;
    void                Build(Bool_t isTransient = kFALSE) override;
    void                BuildCheck(TFile *file = nullptr, Bool_t load = kTRUE) override;
    void                BuildEmulated(TFile *file) override;
@@ -196,6 +156,7 @@ public:
    void                ForceWriteInfo(TFile *file, Bool_t force = kFALSE) override;
    Int_t               GenerateHeaderFile(const char *dirname, const TList *subClasses = nullptr, const TList *extrainfos = nullptr) override;
    TClass             *GetActualClass(const void *obj) const override;
+   size_t              GetClassAlignment() const override { return fAlignment; }
    TClass             *GetClass() const override { return fClass; }
    UInt_t              GetCheckSum() const override { return fCheckSum; }
    UInt_t              GetCheckSum(TClass::ECheckSum code) const;
@@ -292,7 +253,7 @@ public:
    Int_t               WriteBufferAux      (TBuffer &b, const T &arr, TCompInfo *const*const compinfo, Int_t first, Int_t last, Int_t narr,Int_t eoffset,Int_t mode);
 
    //WARNING this class version must be the same as TVirtualStreamerInfo
-   ClassDefOverride(TStreamerInfo,9)  //Streamer information for one class version
+   ClassDefOverride(TStreamerInfo, 10) // Streamer information for one class version
 };
 
 

@@ -46,7 +46,7 @@ namespace ROOT {
    TMinuitMinimizer class:
    ROOT::Math::Minimizer implementation based on TMinuit
 
-   @ingroup TMinuit
+   @ingroup MinuitOld
 */
 class TMinuitMinimizer  : public ROOT::Math::Minimizer {
 
@@ -67,26 +67,8 @@ public:
    */
    ~TMinuitMinimizer () override;
 
-private:
-   // usually copying is non trivial, so we make this unaccessible
-
-   /**
-      Copy constructor
-   */
-   TMinuitMinimizer(const TMinuitMinimizer &);
-
-   /**
-      Assignment operator
-   */
-   TMinuitMinimizer & operator = (const TMinuitMinimizer & rhs);
-
-public:
-
    /// set the function to minimize
    void SetFunction(const ROOT::Math::IMultiGenFunction & func) override;
-
-   /// set the function to minimize
-   void SetFunction(const ROOT::Math::IMultiGradFunction & func) override;
 
    /// set free variable
    bool SetVariable(unsigned int ivar, const std::string & name, double val, double step) override;
@@ -188,14 +170,14 @@ public:
    int CovMatrixStatus() const override;
 
    ///global correlation coefficient for variable i
-   double GlobalCC(unsigned int ) const override;
+   std::vector<double> GlobalCC() const override;
 
    /// minos error for variable i, return false if Minos failed
    bool GetMinosError(unsigned int i, double & errLow, double & errUp, int = 0) override;
 
    /// minos status code of last Minos run
    /// minos status = -1   : Minos is not run
-   ///              =  0   : last MINOS run was succesfull
+   ///              =  0   : last MINOS run was successful
    ///              >  0   : some problems encountered when running MINOS
    int MinosStatus() const override { return fMinosStatus; }
 
@@ -237,7 +219,7 @@ public:
    /// By default they are suppressed only when the printlevel is <= 0
    void SuppressMinuitWarnings(bool nowarn=true);
 
-   /// set debug mode. Return true if setting was successfull
+   /// set debug mode. Return true if setting was successful
    bool SetDebug(bool on = true);
 
 protected:

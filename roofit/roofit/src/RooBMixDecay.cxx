@@ -22,19 +22,28 @@ the decay of B mesons with the effects of B0/B0bar mixing.
 This function can be analytically convolved with any RooResolutionModel implementation
 **/
 
-#include "Riostream.h"
-#include "TMath.h"
 #include "RooRealVar.h"
 #include "RooBMixDecay.h"
 #include "RooRealIntegral.h"
 #include "RooRandom.h"
+#include "RooBatchCompute.h"
 
-using namespace std;
 
-ClassImp(RooBMixDecay);
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor
+/// \brief Constructor for RooBMixDecay.
+///
+/// Creates an instance of RooBMixDecay with the specified parameters.
+///
+/// \param[in] name         The name of the PDF.
+/// \param[in] title        The title of the PDF.
+/// \param[in] t            The time variable.
+/// \param[in] mixState     The mixing state category.
+/// \param[in] tagFlav      The flavour of tagged B0 category.
+/// \param[in] tau          The mixing life time parameter.
+/// \param[in] dm           The mixing frequency parameter.
+/// \param[in] mistag       The mistag rate parameter.
+/// \param[in] delMistag    The delta mistag rate parameter.
+/// \param[in] model        The resolution model.
+/// \param[in] type         The decay type.
 
 RooBMixDecay::RooBMixDecay(const char *name, const char *title,
             RooRealVar& t, RooAbsCategory& mixState,
@@ -92,13 +101,6 @@ RooBMixDecay::RooBMixDecay(const RooBMixDecay& other, const char* name) :
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooBMixDecay::~RooBMixDecay()
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
 /// Comp with tFit MC: must be (1 - tagFlav*...)
 
 double RooBMixDecay::coefficient(Int_t basisIndex) const
@@ -114,8 +116,15 @@ double RooBMixDecay::coefficient(Int_t basisIndex) const
   return 0 ;
 }
 
+void RooBMixDecay::doEval(RooFit::EvalContext &ctx) const
+{
+   RooBatchCompute::compute(ctx.config(this), RooBatchCompute::BMixDecay, ctx.output(),
+                            {ctx.at(&_convSet[0]), ctx.at(&_convSet[1]), ctx.at(_tagFlav),
+                             ctx.at(_delMistag), ctx.at(_mixState), ctx.at(_mistag)});
+}
+
 ////////////////////////////////////////////////////////////////////////////////
-///   cout << "RooBMixDecay::getCoefAI " ; allVars.Print("1") ;
+///   std::cout << "RooBMixDecay::getCoefAI " ; allVars.Print("1") ;
 
 Int_t RooBMixDecay::getCoefAnalyticalIntegral(Int_t /*code*/, RooArgSet& allVars, RooArgSet& analVars, const char* rangeName) const
 {
@@ -263,7 +272,7 @@ void RooBMixDecay::generateEvent(Int_t code)
   }
 
   // Generate delta-t dependent
-  while(1) {
+  while(true) {
     double rand = RooRandom::uniform() ;
     double tval(0) ;
 
@@ -281,7 +290,7 @@ void RooBMixDecay::generateEvent(Int_t code)
 
     // Accept event if T is in generated range
     double dil = 1-2.*_mistag ;
-    double maxAcceptProb = 1 + TMath::Abs(_delMistag) + TMath::Abs(dil) ;
+    double maxAcceptProb = 1 + std::abs(_delMistag) + std::abs(dil) ;
     double acceptProb = (1-_tagFlav*_delMistag) + _mixState*dil*cos(_dm*tval);
     bool mixAccept = maxAcceptProb*RooRandom::uniform() < acceptProb ? true : false ;
 

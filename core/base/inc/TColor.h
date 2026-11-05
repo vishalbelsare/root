@@ -14,6 +14,9 @@
 
 #include "TNamed.h"
 
+#include <array>
+#include <vector>
+
 class TArrayI;
 
 class TColor : public TNamed {
@@ -67,6 +70,7 @@ public:
    void          Print(Option_t *option="") const override;
    virtual void  SetAlpha(Float_t a) { fAlpha = a; }
    virtual void  SetRGB(Float_t r, Float_t g, Float_t b);
+   void          SetName(const char* name) override;
 
    static void    InitializeColors();
    static void    HLS2RGB(Float_t h, Float_t l, Float_t s, Float_t &r, Float_t &g, Float_t &b);
@@ -80,25 +84,32 @@ public:
                      { TColor::RGB2HLS(r, g, b, h, l, s); } // backward compatible
    static void    RGB2HSV(Float_t r, Float_t g, Float_t b, Float_t &h, Float_t &s, Float_t &v);
    static Int_t   GetColor(const char *hexcolor);
-   static Int_t   GetColor(Float_t r, Float_t g, Float_t b);
-   static Int_t   GetColor(Int_t r, Int_t g, Int_t b);
+   static Int_t   GetColor(Float_t r, Float_t g, Float_t b, Float_t a = 1.);
+   static Int_t   GetColor(Int_t r, Int_t g, Int_t b, Float_t a = 1.);
    static Int_t   GetColor(ULong_t pixel);
    static Int_t   GetColorBright(Int_t color);
    static Int_t   GetColorDark(Int_t color);
    static Int_t   GetColorTransparent(Int_t color, Float_t a);
+   static Int_t   GetColorByName(const char *colorname);
    static Int_t   GetFreeColorIndex();
+   static Int_t   GetFirstFreeColorIndex();
    static const TArrayI& GetPalette();
+   static Int_t   GetLinearGradient(Double_t angle, const std::vector<Int_t> &colors, const std::vector<Double_t> &positions = {});
+   static Int_t   GetRadialGradient(Double_t r, const std::vector<Int_t> &colors, const std::vector<Double_t> &positions = {});
    static ULong_t Number2Pixel(Int_t ci);
    static ULong_t RGB2Pixel(Int_t r, Int_t g, Int_t b);
    static ULong_t RGB2Pixel(Float_t r, Float_t g, Float_t b);
    static void    Pixel2RGB(ULong_t pixel, Int_t &r, Int_t &g, Int_t &b);
    static void    Pixel2RGB(ULong_t pixel, Float_t &r, Float_t &g, Float_t &b);
    static const char *PixelAsHexString(ULong_t pixel);
-   static void    SaveColor(std::ostream &out, Int_t ci);
+   static TString SavePrimitiveColor(Int_t ci);
+   static Bool_t  SaveColor(std::ostream &out, Int_t ci);
+   static void    SaveColorsPalette(std::ostream &out);
    static void    SetColorThreshold(Float_t t);
-   static Bool_t  DefinedColors();
+   static Bool_t  DefinedColors(Int_t set_always_on = 0);
    static void    InvertPalette();
    static Bool_t  IsGrayscale();
+   static void    ListColors(Int_t ci1=0, Int_t ci2 = 0, Bool_t showEmpty = kFALSE);
    static void    SetGrayscale(Bool_t set = kTRUE);
    static void    SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha=1.);
 
@@ -125,6 +136,23 @@ public:
                        kStarryNight=102,     kSunset=103,      kTemperatureMap=104,
                        kThermometer=105,     kValentine=106,   kVisibleSpectrum=107,
                        kWaterMelon=108,      kCool=109,        kCopper=110,
-                       kGistEarth=111,       kViridis=112,     kCividis=113};
+                       kGistEarth=111,       kViridis=112,     kCividis=113,
+                       kRainbow=kRainBow,    kDarkRainbow=kDarkRainBow};
+
+class TColorNumber {
+public:
+   TColorNumber(Int_t color) : fNumber{color} {}
+   TColorNumber(std::string const &color);
+   // We also require an overload for C-style strings. That's because the
+   // TColorNumber is designed to be constructed implicitly, and C++ won't do
+   // two user-defined conversions in a single implicit conversion chain.
+   inline TColorNumber(const char *color) : TColorNumber{std::string{color}} {}
+   TColorNumber(std::array<Float_t, 3> rgb);
+   Int_t number() const { return fNumber; }
+
+private:
+   Int_t fNumber; ///< Color number identifier
+};
+
 #endif
 

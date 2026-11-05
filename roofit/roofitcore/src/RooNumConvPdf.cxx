@@ -58,33 +58,22 @@ calls that MINUIT needs to fit your function as function of the
 convolution precision.
 **/
 
-#include "Riostream.h"
 #include "RooNumConvPdf.h"
-#include "RooArgList.h"
 #include "RooRealVar.h"
 #include "RooFormulaVar.h"
 #include "RooCustomizer.h"
 #include "RooConvIntegrandBinding.h"
-#include "RooNumIntFactory.h"
 #include "RooGenContext.h"
 #include "RooConvGenContext.h"
 
+#include <ostream>
 
-
-using namespace std;
-
-ClassImp(RooNumConvPdf);
-
-
+using std::ostream;
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-RooNumConvPdf::RooNumConvPdf() :
-  _init(false),
-  _conv(0)
-{
-}
+RooNumConvPdf::RooNumConvPdf() {}
 
 
 
@@ -92,8 +81,6 @@ RooNumConvPdf::RooNumConvPdf() :
 //_____________________________________________________________________________R
 RooNumConvPdf::RooNumConvPdf(const char *name, const char *title, RooRealVar& convVar, RooAbsPdf& inPdf, RooAbsPdf& resmodel) :
   RooAbsPdf(name,title),
-  _init(false),
-  _conv(0),
   _origVar("!origVar","Original Convolution variable",this,convVar),
   _origPdf("!origPdf","Original Input PDF",this,inPdf),
   _origModel("!origModel","Original Resolution model",this,resmodel)
@@ -102,7 +89,7 @@ RooNumConvPdf::RooNumConvPdf(const char *name, const char *title, RooRealVar& co
   //
   // convVar  :  convolution variable (on which both pdf and resmodel should depend)
   // pdf      :  input 'physics' pdf
-  // resmodel :  input 'resultion' pdf
+  // resmodel :  input 'resolution' pdf
   //
   // output is pdf(x) (X) resmodel(x) = Int [ pdf(x') resmodel (x-x') ] dx'
   //
@@ -115,7 +102,6 @@ RooNumConvPdf::RooNumConvPdf(const char *name, const char *title, RooRealVar& co
 
 RooNumConvPdf::RooNumConvPdf(const RooNumConvPdf& other, const char* name) :
   RooAbsPdf(other,name),
-  _init(false),
   _origVar("!origVar",this,other._origVar),
   _origPdf("!origPdf",this,other._origPdf),
   _origModel("!origModel",this,other._origModel)
@@ -124,9 +110,7 @@ RooNumConvPdf::RooNumConvPdf(const RooNumConvPdf& other, const char* name) :
   // This information will be propagated to a newly create convolution in a subsequent
   // call to initialize()
   if (other._conv) {
-    _conv = new RooNumConvolution(*other._conv,Form("%s_CONV",name?name:GetName())) ;
-  } else {
-    _conv = 0 ;
+    _conv = std::make_unique<RooNumConvolution>(*other._conv,Form("%s_CONV",name?name:GetName())) ;
   }
 }
 
@@ -135,12 +119,7 @@ RooNumConvPdf::RooNumConvPdf(const RooNumConvPdf& other, const char* name) :
 ////////////////////////////////////////////////////////////////////////////////
 /// Destructor
 
-RooNumConvPdf::~RooNumConvPdf()
-{
-  if (_init) {
-    delete _conv ;
-  }
-}
+RooNumConvPdf::~RooNumConvPdf() {}
 
 
 
@@ -163,15 +142,10 @@ void RooNumConvPdf::initialize() const
 {
   // Save pointer to any prototype convolution object (only present if this object is made through
   // a copy constructor)
-  RooNumConvolution* protoConv = _conv ;
+  RooNumConvolution* protoConv = _conv.get();
 
   // Optionally pass along configuration data from prototype object
-  _conv = new RooNumConvolution(Form("%s_CONV",GetName()),GetTitle(),var(),pdf(),model(),protoConv) ;
-
-  // Delete prototype object now
-  if (protoConv) {
-    delete protoConv ;
-  }
+  _conv = std::make_unique<RooNumConvolution>(Form("%s_CONV",GetName()),GetTitle(),var(),pdf(),model(),protoConv) ;
 
   _init = true ;
 }
@@ -190,16 +164,16 @@ RooAbsGenContext* RooNumConvPdf::genContext(const RooArgSet &vars, const RooData
   if (!_init) initialize() ;
 
   // Check if physics PDF and resolution model can both directly generate the convolution variable
-  RooArgSet* modelDep = _conv->model().getObservables(&vars) ;
-  modelDep->remove(_conv->var(),true,true) ;
-  Int_t numAddDep = modelDep->getSize() ;
-  delete modelDep ;
+  RooArgSet modelDep;
+  _conv->model().getObservables(&vars, modelDep);
+  modelDep.remove(_conv->var(),true,true) ;
+  Int_t numAddDep = modelDep.size() ;
 
   RooArgSet dummy ;
-  bool pdfCanDir = (((RooAbsPdf&)_conv->pdf()).getGenerator(_conv->var(),dummy) != 0 && \
-            ((RooAbsPdf&)_conv->pdf()).isDirectGenSafe(_conv->var())) ;
-  bool resCanDir = (((RooAbsPdf&)_conv->model()).getGenerator(_conv->var(),dummy) !=0  &&
-            ((RooAbsPdf&)_conv->model()).isDirectGenSafe(_conv->var())) ;
+  bool pdfCanDir = ((static_cast<RooAbsPdf&>(_conv->pdf())).getGenerator(_conv->var(),dummy) != 0 && \
+            (static_cast<RooAbsPdf&>(_conv->pdf())).isDirectGenSafe(_conv->var())) ;
+  bool resCanDir = ((static_cast<RooAbsPdf&>(_conv->model())).getGenerator(_conv->var(),dummy) !=0  &&
+            (static_cast<RooAbsPdf&>(_conv->model())).isDirectGenSafe(_conv->var())) ;
 
   if (numAddDep>0 || !pdfCanDir || !resCanDir) {
     // Any resolution model with more dependents than the convolution variable

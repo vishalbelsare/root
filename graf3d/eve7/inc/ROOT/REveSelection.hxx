@@ -90,8 +90,9 @@ protected:
    Color_t          fHiddenEdgeColor;  ///<!
 
    std::vector<int> fPickToSelect;     ///<!
-   Bool_t           fActive{kFALSE};   ///<!
-   Bool_t           fIsMaster{kFALSE}; ///<!
+   bool             fActive{true};     ///<!
+   bool             fIsMaster{false};  ///<!
+   bool             fIsHighlight{false}; ///<!
 
    SelMap_t         fMap;              ///<!
    
@@ -115,19 +116,19 @@ protected:
 public:
    REveSelection(const std::string &n = "REveSelection", const std::string &t = "",
                  Color_t col_visible = kViolet, Color_t col_hidden = kPink);
-   virtual ~REveSelection();
+   ~REveSelection() override;
 
    void   SetVisibleEdgeColorRGB(UChar_t r, UChar_t g, UChar_t b);
    void   SetHiddenEdgeColorRGB(UChar_t r, UChar_t g, UChar_t b);
-
-   void   SetHighlightMode();
 
    const std::vector<int>& RefPickToSelect()  const { return fPickToSelect; }
    void   ClearPickToSelect()     { fPickToSelect.clear(); }
    void   AddPickToSelect(int ps) { fPickToSelect.push_back(ps); }
 
-   Bool_t GetIsMaster()   const { return fIsMaster; }
-   void   SetIsMaster(Bool_t m) { fIsMaster = m; }
+   bool GetIsMaster() const { return fIsMaster; }
+   void SetIsMaster(bool m) { fIsMaster = m; }
+   bool GetIsHighlight() const { return fIsHighlight; }
+   void SetIsHighlight(bool m) { fIsHighlight = m; }
 
    std::shared_ptr<Deviator> GetDeviator() const { return fDeviator; }
    void   SetDeviator(std::shared_ptr<Deviator> d) { fDeviator = d; }

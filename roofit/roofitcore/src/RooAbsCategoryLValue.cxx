@@ -19,7 +19,7 @@
 \class RooAbsCategoryLValue
 \ingroup Roofitcore
 
-RooAbsCategoryLValue is the common abstract base class for objects that represent a
+Abstract base class for objects that represent a
 discrete value that can be set from the outside, i.e. that may appear on the left
 hand side of an assignment ("*lvalue*").
 
@@ -28,15 +28,12 @@ of the value. RooAbsCategoryLValue may be derived, but its functional relation
 to other RooAbsArgs must be invertible.
 */
 
-#include "RooAbsCategoryLValue.h"
+#include <RooAbsCategoryLValue.h>
 
-#include "RooArgSet.h"
-#include "RooRandom.h"
-#include "RooMsgService.h"
+#include <RooRandom.h>
+#include <RooMsgService.h>
 
-using namespace std;
 
-ClassImp(RooAbsCategoryLValue);
 
 
 
@@ -57,15 +54,6 @@ RooAbsCategoryLValue::RooAbsCategoryLValue(const char *name, const char *title) 
 
 RooAbsCategoryLValue::RooAbsCategoryLValue(const RooAbsCategoryLValue& other, const char* name) :
   RooAbsCategory(other, name), RooAbsLValue(other)
-{
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooAbsCategoryLValue::~RooAbsCategoryLValue()
 {
 }
 
@@ -127,7 +115,7 @@ bool RooAbsCategoryLValue::setOrdinal(UInt_t n)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy the cached value from given source and raise dirty flag.
-/// It is the callers responsability to ensure that the sources
+/// It is the callers responsibility to ensure that the sources
 /// cache is clean(valid) before this function is called, e.g. by
 /// calling syncCache() on the source.
 
@@ -176,22 +164,22 @@ void RooAbsCategoryLValue::setBin(Int_t ibin, const char* rangeName)
   // Check validity of ibin
   if (ibin<0 || ibin>=numBins(rangeName)) {
     coutE(InputArguments) << "RooAbsCategoryLValue::setBin(" << GetName() << ") ERROR: bin index " << ibin
-           << " is out of range (0," << numBins(rangeName)-1 << ")" << endl ;
+           << " is out of range (0," << numBins(rangeName)-1 << ")" << std::endl;
     return ;
   }
 
-  if (rangeName) {
+  if (rangeName && getBinningPtr(rangeName)) {
     coutF(InputArguments) << "RooAbsCategoryLValue::setBin(" << GetName() << ") ERROR: ranges not implemented"
         " for setting bins in categories." << std::endl;
     throw std::logic_error("Ranges not implemented for setting bins in categories.");
   }
 
   // Retrieve state corresponding to bin
-  const auto& type = getOrdinal(ibin);
-  assert(type.second != std::numeric_limits<value_type>::min());
+  value_type val = getOrdinal(ibin).second;
+  assert(val != std::numeric_limits<value_type>::min());
 
   // Set value to requested state
-  setIndex(type.second);
+  setIndex(val);
 }
 
 

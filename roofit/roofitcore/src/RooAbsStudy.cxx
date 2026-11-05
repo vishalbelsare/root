@@ -19,41 +19,36 @@
 \class RooAbsStudy
 \ingroup Roofitcore
 
-RooAbsStudy is an abstract base class for RooStudyManager modules
+Abstract base class for RooStudyManager modules
 
 **/
-
-#include "Riostream.h"
 
 #include "RooAbsStudy.h"
 #include "RooMsgService.h"
 #include "RooDataSet.h"
 #include "TList.h"
 
-using namespace std ;
+#include <ostream>
 
-ClassImp(RooAbsStudy);
-  ;
+using std::endl;
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor
 
-RooAbsStudy::RooAbsStudy(const char* name, const char* title) : TNamed(name,title), _storeDetails(0), _summaryData(0), _detailData(0), _ownDetailData(true)
-{
-}
-
-
+RooAbsStudy::RooAbsStudy(const char *name, const char *title) : TNamed(name, title) {}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy constructor
 
-RooAbsStudy::RooAbsStudy(const RooAbsStudy& other) : TNamed(other), _storeDetails(other._storeDetails), _summaryData(other._summaryData),
-                       _detailData(0), _ownDetailData(other._ownDetailData)
+RooAbsStudy::RooAbsStudy(const RooAbsStudy &other)
+   : TNamed(other),
+     _storeDetails(other._storeDetails),
+     _summaryData(other._summaryData),
+     _ownDetailData(other._ownDetailData)
 {
 }
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Destructor
@@ -75,13 +70,13 @@ RooAbsStudy::~RooAbsStudy()
 void RooAbsStudy::registerSummaryOutput(const RooArgSet& allVars, const RooArgSet& varsWithError, const RooArgSet& varsWithAsymError)
 {
   if (_summaryData) {
-    coutW(ObjectHandling) << "RooAbsStudy::registerSummaryOutput(" << GetName() << ") WARNING summary output already registered" << endl ;
+    coutW(ObjectHandling) << "RooAbsStudy::registerSummaryOutput(" << GetName() << ") WARNING summary output already registered" << std::endl ;
     return ;
   }
 
-  string name = Form("%s_summary_data",GetName()) ;
-  string title = Form("%s Summary Data",GetTitle()) ;
-  _summaryData = new RooDataSet(name.c_str(),title.c_str(),allVars,RooFit::StoreError(varsWithError),RooFit::StoreAsymError(varsWithAsymError)) ;
+  std::string name = std::string(GetName()) + "_summary_data";
+  std::string title = std::string(GetTitle()) + " Summary Data";
+  _summaryData = new RooDataSet(name,title,allVars,RooFit::StoreError(varsWithError),RooFit::StoreAsymError(varsWithAsymError)) ;
 }
 
 
@@ -90,7 +85,7 @@ void RooAbsStudy::registerSummaryOutput(const RooArgSet& allVars, const RooArgSe
 void RooAbsStudy::storeSummaryOutput(const RooArgSet& vars)
 {
   if (!_summaryData) {
-    coutE(ObjectHandling) << "RooAbsStudy::storeSummaryOutput(" << GetName() << ") ERROR: no summary output data configuration registered" << endl ;
+    coutE(ObjectHandling) << "RooAbsStudy::storeSummaryOutput(" << GetName() << ") ERROR: no summary output data configuration registered" << std::endl ;
     return ;
   }
   _summaryData->add(vars) ;
@@ -100,22 +95,19 @@ void RooAbsStudy::storeSummaryOutput(const RooArgSet& vars)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RooAbsStudy::storeDetailedOutput(TNamed& object)
+void RooAbsStudy::storeDetailedOutput(std::unique_ptr<TNamed> object)
 {
-  if (_storeDetails) {
+  if (!_storeDetails) return;
 
     if (!_detailData) {
       _detailData = new RooLinkedList ;
       _detailData->SetName(TString::Format("%s_detailed_data_list",GetName())) ;
-      //cout << "RooAbsStudy::ctor() detailData name = " << _detailData->GetName() << endl ;
+      //cout << "RooAbsStudy::ctor() detailData name = " << _detailData->GetName() << std::endl ;
     }
 
-    object.SetName(TString::Format("%s_detailed_data_%d",GetName(),_detailData->GetSize())) ;
-    //cout << "storing detailed data with name " << object.GetName() << endl ;
-    _detailData->Add(&object) ;
-  } else {
-    delete &object ;
-  }
+    object->SetName(TString::Format("%s_detailed_data_%d",GetName(),_detailData->GetSize())) ;
+    //cout << "storing detailed data with name " << object.GetName() << std::endl ;
+    _detailData->Add(object.release());
 }
 
 
@@ -128,14 +120,14 @@ void RooAbsStudy::aggregateSummaryOutput(TList* chunkList)
 
   for(TObject * obj : *chunkList) {
 
-    //cout << "RooAbsStudy::aggregateSummaryOutput(" << GetName() << ") processing object " << obj->GetName() << endl ;
+    //cout << "RooAbsStudy::aggregateSummaryOutput(" << GetName() << ") processing object " << obj->GetName() << std::endl ;
 
     RooDataSet* data = dynamic_cast<RooDataSet*>(obj) ;
     if (data) {
       if (TString(data->GetName()).BeginsWith(Form("%s_summary_data",GetName()))) {
-   //cout << "RooAbsStudy::aggregateSummaryOutput(" << GetName() << ") found summary block " << data->GetName() << endl ;
+   //cout << "RooAbsStudy::aggregateSummaryOutput(" << GetName() << ") found summary block " << data->GetName() << std::endl ;
    if (!_summaryData) {
-     _summaryData = (RooDataSet*) data->Clone(Form("%s_summary_data",GetName())) ;
+     _summaryData = static_cast<RooDataSet*>(data->Clone(Form("%s_summary_data",GetName()))) ;
    } else {
      _summaryData->append(*data) ;
    }
@@ -144,7 +136,7 @@ void RooAbsStudy::aggregateSummaryOutput(TList* chunkList)
 
     if (auto dlist = dynamic_cast<RooLinkedList*>(obj)) {
       if (TString(dlist->GetName()).BeginsWith(Form("%s_detailed_data",GetName()))) {
-        for(auto * dobj : static_range_cast<TNamed*>(*dlist)) storeDetailedOutput(*dobj) ;
+        for(auto * dobj : static_range_cast<TNamed*>(*dlist)) storeDetailedOutput(std::unique_ptr<TNamed>{dobj}) ;
       }
     }
   }

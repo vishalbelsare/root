@@ -49,13 +49,11 @@
 #include "TH1F.h"
 #include "TH2F.h"
 
-#include <fenv.h> // turn on or off exceptions for NaN and other numeric exceptions
+#include <cfenv> // turn on or off exceptions for NaN and other numeric exceptions
 
 
 namespace TMVA
 {
-
-  class IPythonInteractive;
 
    namespace DNN
    {
@@ -925,9 +923,9 @@ namespace TMVA
             {
             }
 
-         void startTrainCycle ();
-         void endTrainCycle (double /*error*/);
-         void testIteration () { if (fMonitoring) fMonitoring->ProcessEvents (); }
+         void startTrainCycle () override;
+         void endTrainCycle (double /*error*/) override;
+         void testIteration () override { if (fMonitoring) fMonitoring->ProcessEvents (); }
 
 
          /* void createHistograms () */
@@ -983,10 +981,10 @@ namespace TMVA
          /*     fMonitoring->ProcessEvents (); */
          /* } */
 
-         void testSample (double error, double output, double target, double weight);
+         void testSample (double error, double output, double target, double weight) override;
 
-         virtual void startTestCycle ();
-         virtual void endTestCycle ();
+         void startTestCycle () override;
+         void endTestCycle () override;
 
 
          void setWeightSums (double sumOfSigWeights, double sumOfBkgWeights);
@@ -1270,22 +1268,6 @@ namespace TMVA
          size_t m_sizeInput; ///< input size of this DNN
          size_t m_sizeOutput; ///< output size of this DNN
          std::vector<Layer> m_layers; ///< layer-structure-data
-
-      protected:
-         // variables for JsMVA (interactive training in jupyter notebook)
-         IPythonInteractive *fInteractive = nullptr;
-         bool * fExitFromTraining = nullptr;
-         UInt_t *fIPyMaxIter = nullptr, *fIPyCurrentIter = nullptr;
-
-      public:
-
-        // setup ipython interactive variables
-        void SetIpythonInteractive(IPythonInteractive* fI, bool* fE, UInt_t *M, UInt_t *C){
-          fInteractive = fI;
-          fExitFromTraining = fE;
-          fIPyMaxIter = M;
-          fIPyCurrentIter = C;
-        }
       };
 
 

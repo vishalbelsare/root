@@ -25,8 +25,7 @@ public:
   RooCachedReal(const char *name, const char *title, RooAbsReal& _func, const RooArgSet& cacheObs);
   RooCachedReal(const char *name, const char *title, RooAbsReal& _func);
   RooCachedReal(const RooCachedReal& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooCachedReal(*this,newname); }
-  ~RooCachedReal() override ;
+  TObject* clone(const char* newname=nullptr) const override { return new RooCachedReal(*this,newname); }
 
   /// If flag is true the RooHistFunc that represent the cache histogram
   /// will use special boundary conditions for use with cumulative distribution
@@ -49,8 +48,8 @@ protected:
   const char* inputBaseName() const override {
     return func.arg().GetName() ;
   } ;
-  RooArgSet* actualObservables(const RooArgSet& nset) const override ;
-  RooArgSet* actualParameters(const RooArgSet& nset) const override ;
+  RooFit::OwningPtr<RooArgSet> actualObservables(const RooArgSet& nset) const override ;
+  RooFit::OwningPtr<RooArgSet> actualParameters(const RooArgSet& nset) const override;
   void fillCacheObject(FuncCacheElem& cacheFunc) const override ;
   /// Dummy evaluate, it is never called
   double evaluate() const override {

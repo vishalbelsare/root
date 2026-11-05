@@ -21,6 +21,8 @@
 #include "THttpServer.h"
 #include "THttpWSEngine.h"
 #include "TUrl.h"
+#include "TSystem.h"
+#include "TError.h"
 
 //////////////////////////////////////////////////////////////////////////
 /// TCivetwebWSEngine
@@ -37,7 +39,7 @@ protected:
 public:
    TCivetwebWSEngine(struct mg_connection *conn) : THttpWSEngine(), fWSconn(conn) {}
 
-   virtual ~TCivetwebWSEngine() = default;
+   ~TCivetwebWSEngine() override = default;
 
    UInt_t GetId() const override { return TString::Hash((void *)&fWSconn, sizeof(void *)); }
 
@@ -74,6 +76,24 @@ public:
 };
 
 //////////////////////////////////////////////////////////////////////////
+/// Check if engine has enough threads to process connect to new websocket handle
+
+Bool_t CheckEngineThreads(TCivetweb *engine, const char *uri, Bool_t longpoll)
+{
+   Int_t num_avail = engine->GetNumAvailableThreads();
+   if (longpoll) num_avail++;
+
+   if ((num_avail <= 0.1 * engine->GetNumThreads()) || (num_avail <= 2)) {
+      const char *cfg = engine->IsWebGui() ? "WebGui.HttpThreads parameter in rootrc" : "thrds=N parameter in config URL";
+      const char *place = longpoll ? "TCivetweb::LongpollHandler" : "TCivetweb::WebSocketHandler";
+      ::Error(place, "Only %d threads are available, reject connection request for %s. Increase %s, now it is %d", num_avail, uri, cfg, engine->GetNumThreads());
+      return kFALSE;
+   }
+
+   return kTRUE;
+}
+
+//////////////////////////////////////////////////////////////////////////
 
 int websocket_connect_handler(const struct mg_connection *conn, void *)
 {
@@ -91,8 +111,12 @@ int websocket_connect_handler(const struct mg_connection *conn, void *)
    auto arg = std::make_shared<THttpCallArg>();
    arg->SetPathAndFileName(request_info->local_uri); // path and file name
    arg->SetQuery(request_info->query_string);        // query arguments
+   arg->SetTopName(engine->GetTopName());
    arg->SetWSId(TString::Hash((void *)&conn, sizeof(void *)));
    arg->SetMethod("WS_CONNECT");
+
+   if (!CheckEngineThreads(engine, arg->GetPathName(), kFALSE))
+      return 1;
 
    Bool_t execres = serv->ExecuteWS(arg, kTRUE, kTRUE);
 
@@ -112,9 +136,12 @@ void websocket_ready_handler(struct mg_connection *conn, void *)
    if (!serv)
       return;
 
+   engine->ChangeNumActiveThreads(1);
+
    auto arg = std::make_shared<THttpCallArg>();
    arg->SetPathAndFileName(request_info->local_uri); // path and file name
    arg->SetQuery(request_info->query_string);        // query arguments
+   arg->SetTopName(engine->GetTopName());
    arg->SetMethod("WS_READY");
 
    // delegate ownership to the arg, id will be automatically set
@@ -144,10 +171,13 @@ void websocket_close_handler(const struct mg_connection *conn, void *)
    auto arg = std::make_shared<THttpCallArg>();
    arg->SetPathAndFileName(request_info->local_uri); // path and file name
    arg->SetQuery(request_info->query_string);        // query arguments
+   arg->SetTopName(engine->GetTopName());
    arg->SetWSId(TString::Hash((void *)&conn, sizeof(void *)));
    arg->SetMethod("WS_CLOSE");
 
    serv->ExecuteWS(arg, kTRUE, kFALSE); // do not wait for result of execution
+
+   engine->ChangeNumActiveThreads(-1);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -208,6 +238,7 @@ int websocket_data_handler(struct mg_connection *conn, int code, char *data, siz
    auto arg = std::make_shared<THttpCallArg>();
    arg->SetPathAndFileName(request_info->local_uri); // path and file name
    arg->SetQuery(request_info->query_string);        // query arguments
+   arg->SetTopName(engine->GetTopName());
    arg->SetWSId(TString::Hash((void *)&conn, sizeof(void *)));
    arg->SetMethod("WS_DATA");
 
@@ -238,10 +269,38 @@ static int log_message_handler(const struct mg_connection *conn, const char *mes
       return engine->ProcessLog(message);
 
    // provide debug output
-   if ((gDebug > 0) || (strstr(message, "cannot bind to") != 0))
+   if ((gDebug > 0) || strstr(message, "cannot bind to"))
       fprintf(stderr, "Error in <TCivetweb::Log> %s\n", message);
 
    return 0;
+}
+
+struct TEngineHolder {
+   TCivetweb *fEngine{nullptr};
+   TEngineHolder(TCivetweb *engine)
+   {
+      fEngine = engine;
+      fEngine->ChangeNumActiveThreads(1);
+   }
+   ~TEngineHolder() { fEngine->ChangeNumActiveThreads(-1); }
+};
+
+//////////////////////////////////////////////////////////////////////////
+/// Returns kTRUE in case of longpoll connection request - or at least looks like that
+
+Bool_t IsBadLongPollConnect(TCivetweb *engine, const std::shared_ptr<THttpCallArg> &arg)
+{
+   if (strcmp(arg->GetFileName(), "root.longpoll") != 0)
+      return kFALSE;
+
+   const char *q = arg->GetQuery();
+   if (!q || !*q)
+      return kFALSE;
+
+   if ((strstr(q, "raw_connect") != q) && (strstr(q, "txt_connect") != q))
+      return kFALSE;
+
+   return !CheckEngineThreads(engine, arg->GetPathName(), kTRUE);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -256,6 +315,8 @@ static int begin_request_handler(struct mg_connection *conn, void *)
    THttpServer *serv = engine->GetServer();
    if (!serv)
       return 0;
+
+   TEngineHolder thrd_cnt_holder(engine);
 
    auto arg = std::make_shared<THttpCallArg>();
 
@@ -333,6 +394,9 @@ static int begin_request_handler(struct mg_connection *conn, void *)
 
          arg->SetContent(cont);
 
+      } else if (IsBadLongPollConnect(engine, arg)) {
+         execres = kFALSE;
+         arg->Set404();
       } else {
          execres = serv->ExecuteHttp(arg);
       }
@@ -402,7 +466,28 @@ static int begin_request_handler(struct mg_connection *conn, void *)
       std::string hdr = arg->FillHttpHeader("HTTP/1.1");
       mg_printf(conn, "%s", hdr.c_str());
 
-      if (arg->GetContentLength() > 0)
+      if (arg->IsChunked()) {
+         // send first portion
+
+         unsigned last_send = arg->GetContentLength();
+         mg_send_chunk(conn, (const char *)arg->GetContent(), last_send);
+
+         while (arg->IsChunked() && last_send) {
+            // loop
+            arg->SetContent("");
+
+            serv->ExecuteHttp(arg);
+
+            last_send = arg->GetContentLength();
+
+            mg_send_chunk(conn, (const char *)arg->GetContent(), last_send);
+         }
+
+         // to correctly complete chunk operation, send 0 buffer at the end
+         if (last_send)
+            mg_send_chunk(conn, "", 0);
+
+      } else if (arg->GetContentLength() > 0)
          mg_write(conn, arg->GetContent(), (size_t)arg->GetContentLength());
    }
 
@@ -412,12 +497,13 @@ static int begin_request_handler(struct mg_connection *conn, void *)
 }
 
 /** \class TCivetweb
-\ingroup http
 
 THttpEngine implementation, based on civetweb embedded server
 
 It is default kind of engine, created for THttpServer
-Currently v1.15 from https://github.com/civetweb/civetweb is used
+When `builtin_civetweb=ON` (default), the release is grabbed from https://github.com/civetweb/civetweb corresponding
+to the version defined in https://github.com/root-project/root/blob/master/builtins/civetweb/CMakeLists.txt
+Switching to `builtin_civetweb=OFF` in order to use system-packages only works if the package was compiled with ROOT-mandatory features active.
 
 Additional options can be specified:
 
@@ -461,6 +547,8 @@ TCivetweb::~TCivetweb()
 {
    if (fCtx && !fTerminating)
       mg_stop(fCtx);
+
+   mg_exit_library();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -468,11 +556,31 @@ TCivetweb::~TCivetweb()
 
 Int_t TCivetweb::ProcessLog(const char *message)
 {
-   if ((gDebug > 0) || (strstr(message, "cannot bind to") != 0))
+   if ((gDebug > 0) || strstr(message, "cannot bind to"))
       Error("Log", "%s", message);
 
    return 0;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Returns number of actively used threads
+
+Int_t TCivetweb::GetNumAvailableThreads()
+{
+   std::lock_guard<std::mutex> guard(fMutex);
+   return fNumThreads - fNumActiveThreads;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Returns number of actively used threads
+
+Int_t TCivetweb::ChangeNumActiveThreads(int cnt)
+{
+   std::lock_guard<std::mutex> guard(fMutex);
+   fNumActiveThreads += cnt;
+   return fNumActiveThreads;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Creates embedded civetweb server
@@ -480,12 +588,13 @@ Int_t TCivetweb::ProcessLog(const char *message)
 /// @param args string with civetweb server configuration
 ///
 /// As main argument, http port should be specified like "8090".
-/// Or one can provide combination of ipaddress and portnumber like 127.0.0.1:8090
+/// Or one can provide combination of ipaddress and portnumber like "127.0.0.1:8090"
+/// Or one can specify unix socket name like "x/tmp/root.socket"
 /// Extra parameters like in URL string could be specified after '?' mark:
 ///
 ///     thrds=N               - there N is number of threads used by the civetweb (default is 10)
 ///     top=name              - configure top name, visible in the web browser
-///     ssl_certificate=filename - SSL certificate, see docs/OpenSSL.md from civetweb
+///     ssl_cert=filename     - SSL certificate, see docs/OpenSSL.md from civetweb
 ///     auth_file=filename    - authentication file name, created with htdigets utility
 ///     auth_domain=domain    - authentication domain
 ///     websocket_timeout=tm  - set web sockets timeout in seconds (default 300)
@@ -495,6 +604,7 @@ Int_t TCivetweb::ProcessLog(const char *message)
 ///     debug                 - enable debug mode, server always returns html page with request info
 ///     log=filename          - configure civetweb log file
 ///     max_age=value         - configures "Cache-Control: max_age=value" http header for all file-related requests, default 3600
+///     socket_mode=value     - configures unix socket mode, default is 0700
 ///     nocache               - try to fully disable cache control for file requests
 ///     winsymlinks=no        - do not resolve symbolic links on file system (Windows only), default true
 ///     dirlisting=no         - enable/disable directory listing for browsing filesystem (default no)
@@ -510,7 +620,7 @@ Bool_t TCivetweb::Create(const char *args)
    // fCallbacks.begin_request = begin_request_handler;
    fCallbacks.log_message = log_message_handler;
    TString sport = IsSecured() ? "8480s" : "8080",
-           num_threads = "10",
+           num_threads,
            websocket_timeout = "300000",
            dir_listening = "no",
            auth_file,
@@ -518,16 +628,21 @@ Bool_t TCivetweb::Create(const char *args)
            log_file,
            ssl_cert,
            max_age;
-   Bool_t use_ws = kTRUE;
+   Int_t socket_mode = 0700;
+   bool use_ws = kTRUE, is_socket = false;
 
    // extract arguments
    if (args && *args) {
 
       // first extract port number
       sport = "";
-      while ((*args != 0) && (*args != '?') && (*args != '/'))
+
+      is_socket = *args == 'x';
+
+      while ((*args != 0) && (*args != '?') && (is_socket || (*args != '/')))
          sport.Append(*args++);
-      if (IsSecured() && (sport.Index("s")==kNPOS)) sport.Append("s");
+      if (IsSecured() && (sport.Index("s") == kNPOS) && !is_socket)
+         sport.Append("s");
 
       // than search for extra parameters
       while ((*args != 0) && (*args != '?'))
@@ -539,6 +654,8 @@ Bool_t TCivetweb::Create(const char *args)
          if (url.IsValid()) {
             url.ParseOptions();
 
+            fWebGui = url.HasOption("webgui");
+
             const char *top = url.GetValueFromOptions("top");
             if (top)
                fTopName = top;
@@ -549,7 +666,7 @@ Bool_t TCivetweb::Create(const char *args)
 
             Int_t thrds = url.GetIntValueFromOptions("thrds");
             if (thrds > 0)
-               num_threads.Form("%d", thrds);
+               fNumThreads = thrds;
 
             const char *afile = url.GetValueFromOptions("auth_file");
             if (afile)
@@ -559,7 +676,9 @@ Bool_t TCivetweb::Create(const char *args)
             if (adomain)
                auth_domain = adomain;
 
-            const char *sslc = url.GetValueFromOptions("ssl_cert");
+            const char *sslc = url.GetValueFromOptions("ssl_certificate");
+            if (!sslc)
+               sslc = url.GetValueFromOptions("ssl_cert");
             if (sslc)
                ssl_cert = sslc;
 
@@ -583,6 +702,10 @@ Bool_t TCivetweb::Create(const char *args)
             if (dls && (!strcmp(dls,"no") || !strcmp(dls,"yes")))
                dir_listening = dls;
 
+            const char *smode = url.GetValueFromOptions("socket_mode");
+            if (smode)
+               socket_mode = std::stoi(smode, nullptr, *smode=='0' ? 8 : 10);
+
             if (url.HasOption("loopback") && (sport.Index(":") == kNPOS))
                sport = TString("127.0.0.1:") + sport;
 
@@ -597,6 +720,11 @@ Bool_t TCivetweb::Create(const char *args)
                GetServer()->SetCors(cors && *cors ? cors : "*");
             }
 
+            if (GetServer() && url.HasOption("cred_cors")) {
+               const char *cred = url.GetValueFromOptions("cred_cors");
+               GetServer()->SetCorsCredentials(cred && *cred ? cred : "true");
+            }
+
             if (url.HasOption("nocache"))
                fMaxAge = 0;
 
@@ -608,7 +736,9 @@ Bool_t TCivetweb::Create(const char *args)
       }
    }
 
-   const char *options[25];
+   num_threads.Form("%d", fNumThreads);
+
+   const char *options[34];
    int op = 0;
 
    Info("Create", "Starting HTTP server on port %s", sport.Data());
@@ -650,10 +780,52 @@ Bool_t TCivetweb::Create(const char *args)
       options[op++] = max_age.Data();
    }
 
+   if (GetServer() && GetServer()->IsCors()) {
+      // also used for the file transfer
+      options[op++] = "access_control_allow_origin";
+      options[op++] = GetServer()->GetCors();
+   }
+
+   if (GetServer() && GetServer()->IsCorsCredentials()) {
+      options[op++] = "access_control_allow_credentials";
+      options[op++] = GetServer()->GetCorsCredentials();
+      options[op++] = "access_control_expose_headers";
+      options[op++] = "Content-Range, Content-Length, Date";
+      options[op++] = "access_control_allow_methods";
+      options[op++] = "GET, HEAD, OPTIONS";
+   }
+
    options[op++] = "enable_directory_listing";
    options[op++] = dir_listening.Data();
 
    options[op++] = nullptr;
+
+   if (is_socket && !mg_check_feature(MG_FEATURES_X_DOMAIN_SOCKET)) {
+      Error("Create", "civetweb compiled without sockets binding support");
+      return kFALSE;
+   }
+
+   if (IsSecured() && !mg_check_feature(MG_FEATURES_SSL)) {
+      Error("Create", "civetweb compiled without SSL support");
+      return kFALSE;
+   }
+
+   if (!mg_check_feature(MG_FEATURES_WEBSOCKET)) {
+      Error("Create", "civetweb compiled without websockets support");
+      return kFALSE;
+   }
+
+   if (IsSecured()) {
+		/* Initialize with SSL support */
+		mg_init_library(MG_FEATURES_TLS);
+	} else {
+		/* Initialize without SSL support */
+		mg_init_library(MG_FEATURES_DEFAULT);
+	}
+
+   // try to remove socket file - if any
+   if (is_socket && !sport.Contains(","))
+      gSystem->Unlink(sport.Data()+1);
 
    // Start the web server.
    fCtx = mg_start(&fCallbacks, this, options);
@@ -666,6 +838,10 @@ Bool_t TCivetweb::Create(const char *args)
    if (use_ws)
       mg_set_websocket_handler(fCtx, "**root.websocket$", websocket_connect_handler,
                                websocket_ready_handler, websocket_data_handler, websocket_close_handler, nullptr);
+
+   // try to remove socket file - if any
+   if (is_socket && !sport.Contains(","))
+      gSystem->Chmod(sport.Data()+1, socket_mode);
 
    return kTRUE;
 }

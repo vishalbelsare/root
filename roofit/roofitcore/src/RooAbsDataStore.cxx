@@ -19,8 +19,7 @@
 \class RooAbsDataStore
 \ingroup Roofitcore
 
-RooAbsDataStore is the abstract base class for data collection that
-use a TTree as internal storage mechanism
+Abstract base class for a data collection.
 **/
 
 #include "RooAbsDataStore.h"
@@ -51,18 +50,4 @@ void RooAbsDataStore::printMultiline(std::ostream& os, Int_t /*content*/, bool v
     os << indent << "  Observables: " << std::endl ;
     _vars.printStream(os,kName|kValue|kExtras|kTitle,kVerbose,indent+"  ") ;
   }
-
-  if(verbose && !_cachedVars.empty()) {
-    os << indent << "  Caches " << _cachedVars << std::endl ;
-  }
-}
-
-
-RooArgSet* RooAbsDataStore::addColumns(const RooArgList& varList)
-{
-  auto * holderSet = new RooArgSet{};
-  for(RooAbsArg * var : varList) {
-    holderSet->add(*addColumn(*var));
-  }
-  return holderSet;
 }

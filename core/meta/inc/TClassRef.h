@@ -24,16 +24,13 @@
 #include "TClass.h"
 
 #include <string>
+#include <atomic>
 
 class TClassRef {
 
 private:
-   std::string   fClassName; //Name of referenced class
-#ifdef __CINT__
-   TClass      **fClassPtr;  //! Ptr to the permanent TClass ptr/reference
-#else
-   TClass *const*fClassPtr;  //! Ptr to the permanent TClass ptr/reference
-#endif
+   std::string                 fClassName; //Name of referenced class
+   std::atomic<TClass *const*> fClassPtr;  ///<! Ptr to the permanent TClass ptr/reference
 
    friend class TClass;
 

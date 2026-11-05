@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : Tools                                                                 *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Global auxiliary applications and data treatment routines                 *
@@ -23,7 +23,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_Tools
@@ -224,7 +224,7 @@ namespace TMVA {
 
       // variables
       const TString fRegexp;
-      mutable MsgLogger*    fLogger;
+      mutable MsgLogger*    fLogger; ///<!
       MsgLogger& Log() const { return *fLogger; }
       static std::atomic<Tools*> fgTools;
 

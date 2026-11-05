@@ -23,8 +23,7 @@ public:
   RooCachedPdf(const char *name, const char *title, RooAbsPdf& _pdf, const RooArgSet& cacheObs);
   RooCachedPdf(const char *name, const char *title, RooAbsPdf& _pdf);
   RooCachedPdf(const RooCachedPdf& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooCachedPdf(*this,newname); }
-  ~RooCachedPdf() override ;
+  TObject* clone(const char* newname=nullptr) const override { return new RooCachedPdf(*this,newname); }
 
   void preferredObservableScanOrder(const RooArgSet& obs, RooArgSet& orderedObs) const override ;
 
@@ -34,8 +33,8 @@ protected:
   const char* inputBaseName() const override {
     return pdf.arg().GetName() ;
   } ;
-  RooArgSet* actualObservables(const RooArgSet& nset) const override ;
-  RooArgSet* actualParameters(const RooArgSet& nset) const override ;
+  RooFit::OwningPtr<RooArgSet> actualObservables(const RooArgSet& nset) const override;
+  RooFit::OwningPtr<RooArgSet> actualParameters(const RooArgSet& nset) const override ;
   void fillCacheObject(PdfCacheElem& cachePdf) const override ;
   double evaluate() const override {
     // Dummy evaluate, it is never called

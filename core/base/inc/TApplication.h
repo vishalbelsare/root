@@ -57,7 +57,7 @@ public:
 private:
    Int_t              fArgc;            //Number of com   mand line arguments
    char             **fArgv;            //Command line arguments
-   TApplicationImp   *fAppImp;          //!Window system specific application implementation
+   TApplicationImp   *fAppImp;          ///<!Window system specific application implementation
    std::atomic<bool>  fIsRunning;       //True when in event loop (Run() has been called)
    Bool_t             fReturnFromRun;   //When true return from Run()
    Bool_t             fNoLog;           //Do not process logon and logoff macros
@@ -84,6 +84,8 @@ protected:
    TApplication();
 
    virtual Longptr_t  ProcessRemote(const char *line, Int_t *error = nullptr);
+   virtual void       Forum(const char *line);
+   virtual void       GitHub(const char *line);
    virtual void       Help(const char *line);
    virtual void       LoadGraphicsLibs();
    virtual void       MakeBatch();
@@ -100,10 +102,13 @@ public:
                 void *options = nullptr, Int_t numOptions = 0);
    virtual ~TApplication();
 
-   void            InitializeGraphics();
+   void            InitializeGraphics(Bool_t only_web = kFALSE);
    virtual void    GetOptions(Int_t *argc, char **argv);
    TSignalHandler *GetSignalHandler() const { return fSigHandler; }
    virtual void    SetEchoMode(Bool_t mode);
+   TString GetSetup();
+   void OpenForumTopic(const TString & type);
+   void OpenGitHubIssue(const TString & type);
    void OpenInBrowser(const TString & url);
    void OpenReferenceGuideFor(const TString & strippedClass);
    virtual void    HandleException(Int_t sig);

@@ -23,7 +23,17 @@
 #include "RooFit/MultiProcess/ProcessManager.h" // ... JobManager::process_manager()
 #include "RooFit/MultiProcess/Queue.h"          // ... JobManager::queue()
 
+#include <ROOT/RVersion.hxx>
+
 #include "gtest/gtest.h"
+
+#if ROOT_VERSION_CODE < ROOT_VERSION(6, 32, 99)
+// Backward compatibility for gtest version < 1.10.0
+#ifndef INSTANTIATE_TEST_SUITE_P
+#define INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_CASE_P
+#endif
+#endif
+
 #include "utils.h"
 
 class xSquaredPlusBVectorSerial {
@@ -66,7 +76,7 @@ public:
          // master fills queue with tasks
          for (std::size_t task_id = 0; task_id < serial_->x_.size(); ++task_id) {
             RooFit::MultiProcess::JobTask job_task{id_, state_id_, task_id};
-            get_manager()->queue().add(job_task);
+            get_manager()->queue()->add(job_task);
             ++N_tasks_at_workers_;
          }
 
@@ -107,12 +117,12 @@ public:
    void send_back_task_result_from_worker(std::size_t task) override
    {
       task_result_t task_result{id_, task, serial_->result_[task]};
-      zmq::message_t message(sizeof(task_result_t));
+      RooFit::MultiProcess::Message message(sizeof(task_result_t));
       memcpy(message.data(), &task_result, sizeof(task_result_t));
       get_manager()->messenger().send_from_worker_to_master(std::move(message));
    }
 
-   bool receive_task_result_on_master(const zmq::message_t &message) override
+   bool receive_task_result_on_master(const RooFit::MultiProcess::Message &message) override
    {
       auto result = message.data<task_result_t>();
       serial_->result_[result->task_id] = result->value;

@@ -112,27 +112,53 @@ public:
 
 
    /// clone the function (need to return Base for Windows)
-   virtual BaseFunction * Clone() const { return new  PoissonLikelihoodFCN(*this); }
+   BaseFunction * Clone() const override { return new  PoissonLikelihoodFCN(*this); }
 
    // effective points used in the fit
    virtual unsigned int NFitPoints() const { return fNEffPoints; }
 
    /// i-th likelihood element and its gradient
-   virtual double DataElement(const double * x, unsigned int i, double * g) const {
+   double DataElement(const double * x, unsigned int i, double * g, double * h, bool fullHessian) const override {
       if (i==0) this->UpdateNCalls();
-      return FitUtil::Evaluate<typename BaseFCN::T>::EvalPoissonBinPdf(BaseFCN::ModelFunction(), BaseFCN::Data(), x, i, g, BaseFCN::IsAGradFCN());
+      return FitUtil::Evaluate<T>::EvalPoissonBinPdf(BaseFCN::ModelFunction(), BaseFCN::Data(), x, i, g, h, BaseFCN::IsAGradFCN(), fullHessian);
    }
 
    /// evaluate gradient
-   virtual void Gradient(const double *x, double *g) const
+   void Gradient(const double *x, double *g) const override
    {
       // evaluate the Poisson gradient
       FitUtil::Evaluate<typename BaseFCN::T>::EvalPoissonLogLGradient(BaseFCN::ModelFunction(), BaseFCN::Data(), x, g,
                                                                       fNEffPoints, fExecutionPolicy);
    }
 
+   /**
+    * Computes the full Hessian. Return false if Hessian is not supported
+    */
+   // virtual bool Hessian(const double * x, double * hess) const {
+   //    //return full Hessian
+   //    unsigned int np = NPoints();
+   //    unsigned int ndim = NDim();
+   //    unsigned int nh = ndim*(ndim+1)/2;
+   //    for (unsigned int k = 0; k < nh;  ++k) {
+   //       hess[k] = 0;
+   //    }
+   //    std::vector<double> g(np);  // gradient of the residual (y-f)/sigma
+   //    std::vector<double> h(nh);  // hessian of residual
+   //    for (unsigned int i = 0; i < np; i++) {
+   //       double f = DataElement(x,i,g,h,true);
+   //       if (f == std::numeric_limits<double>::quiet_NaN() ) return false;
+   //       for (unsigned int j = 0; j < np; j++) {
+   //          for (unsigned int k = 0; k <=j; k++) {
+   //             unsigned int index = j + k * (k + 1) / 2;
+   //             h[index] += 2. * ( g[j]*g[k] + f * h[index]*h[index] );
+   //          }
+   //       }
+   //    }
+   //    return true;
+   // }
+
    /// get type of fit method function
-   virtual  typename BaseObjFunction::Type_t Type() const { return BaseObjFunction::kLogLikelihood; }
+   typename BaseObjFunction::Type_t Type() const override { return BaseObjFunction::kPoissonLikelihood; }
 
    bool IsWeighted() const { return (fWeight != 0); }
 
@@ -159,14 +185,14 @@ private:
    /**
       Evaluation of the  function (required by interface)
     */
-   virtual double DoEval (const double * x) const {
+   double DoEval(const double * x) const override {
       this->UpdateNCalls();
       return FitUtil::Evaluate<T>::EvalPoissonLogL(BaseFCN::ModelFunction(), BaseFCN::Data(), x, fWeight, fIsExtended,
                                                    fNEffPoints, fExecutionPolicy);
    }
 
    // for derivatives
-   virtual double  DoDerivative(const double * x, unsigned int icoord ) const {
+   double DoDerivative(const double * x, unsigned int icoord) const override {
       Gradient(x, &fGrad[0]);
       return fGrad[icoord];
    }

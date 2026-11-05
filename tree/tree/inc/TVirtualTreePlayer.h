@@ -45,8 +45,8 @@ public:
    static constexpr Long64_t kMaxEntries = std::numeric_limits<Long64_t>::max();
 
    TVirtualTreePlayer() { }
-   virtual ~TVirtualTreePlayer();
-   virtual TVirtualIndex *BuildIndex(const TTree *T, const char *majorname, const char *minorname) = 0;
+   ~TVirtualTreePlayer() override;
+   virtual TVirtualIndex *BuildIndex(const TTree *T, const char *majorname, const char *minorname, bool long64major = false, bool long64minor = false) = 0;
    virtual TTree         *CopyTree(const char *selection, Option_t *option=""
                                    ,Long64_t nentries=kMaxEntries, Long64_t firstentry=0) = 0;
    virtual Long64_t       DrawScript(const char *wrapperPrefix,

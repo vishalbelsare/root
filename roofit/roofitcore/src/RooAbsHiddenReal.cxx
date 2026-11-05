@@ -19,26 +19,23 @@
 \class RooAbsHiddenReal
 \ingroup Roofitcore
 
-RooAbsHiddenReal is a base class for objects that want to hide
+Base class for objects that want to hide
 their return value from interactive use, e.g. for implementations
 of parameter unblinding functions. This class overrides all
 printing methods with versions that do not reveal the objects value
 and it has a protected version of getVal()
 **/
 
-#include "Riostream.h"
-
-#include "RooArgSet.h"
 #include "RooAbsHiddenReal.h"
 #include "RooCategory.h"
 #include "RooMsgService.h"
 
-using namespace std;
+#include <ostream>
 
-ClassImp(RooAbsHiddenReal);
-;
+using std::ostream, std::istream, std::endl;
 
-RooCategory* RooAbsHiddenReal::_dummyBlindState = 0;
+
+RooCategory* RooAbsHiddenReal::_dummyBlindState = nullptr;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -73,16 +70,6 @@ RooAbsHiddenReal::RooAbsHiddenReal(const RooAbsHiddenReal& other, const char* na
 }
 
 
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooAbsHiddenReal::~RooAbsHiddenReal()
-{
-}
-
-
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Special version of printValue that doesn't reveal the objects value
 
@@ -100,7 +87,7 @@ bool RooAbsHiddenReal::readFromStream(istream& is, bool compact, bool verbose)
 {
   if (isHidden()) {
     // No-op version of readFromStream
-    coutE(InputArguments) << "RooAbsHiddenReal::readFromStream(" << GetName() << "): not allowed" << endl ;
+    coutE(InputArguments) << "RooAbsHiddenReal::readFromStream(" << GetName() << "): not allowed" << std::endl ;
     return true ;
   } else {
     return readFromStream(is,compact,verbose) ;
@@ -116,7 +103,7 @@ void RooAbsHiddenReal::writeToStream(ostream& os, bool compact) const
 {
   if (isHidden()) {
     // No-op version of writeToStream
-    coutE(InputArguments) << "RooAbsHiddenReal::writeToStream(" << GetName() << "): not allowed" << endl ;
+    coutE(InputArguments) << "RooAbsHiddenReal::writeToStream(" << GetName() << "): not allowed" << std::endl ;
   } else {
     RooAbsReal::writeToStream(os,compact) ;
   }

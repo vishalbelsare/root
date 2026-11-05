@@ -16,11 +16,12 @@
 #ifndef ROO_ABS_CATEGORY_LVALUE
 #define ROO_ABS_CATEGORY_LVALUE
 
-#include "RooAbsCategory.h"
-#include "RooAbsLValue.h"
+#include <RooAbsCategory.h>
+#include <RooAbsLValue.h>
+
 #include <list>
 #include <string>
-#include <utility>
+#include <utility> // for std::pair
 
 class RooAbsCategoryLValue : public RooAbsCategory, public RooAbsLValue {
 public:
@@ -30,7 +31,6 @@ public:
   }
   RooAbsCategoryLValue(const char *name, const char *title);
   RooAbsCategoryLValue(const RooAbsCategoryLValue& other, const char* name=nullptr) ;
-  ~RooAbsCategoryLValue() override;
 
   // Value modifiers
   ////////////////////////////////////////////////////////////////////////////////
@@ -94,7 +94,7 @@ public:
 
   const RooAbsBinning* getBinningPtr(const char* /*rangeName*/) const override { return nullptr ; }
   std::list<std::string> getBinningNames() const override { return std::list<std::string>(1, "") ; }
-  Int_t getBin(const RooAbsBinning* /*ptr*/) const override { return getBin((const char*)0) ; }
+  Int_t getBin(const RooAbsBinning* /*ptr*/) const override { return getBin((const char*)nullptr) ; }
 
 
   inline void setConstant(bool value= true) {

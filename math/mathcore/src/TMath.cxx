@@ -748,7 +748,7 @@ Double_t TMath::KolmogorovProb(Double_t z)
 ///   functions. The for-loop handles 3 cases: when the next points to be
 ///   evaluated satisfy a>b, a<b, or a=b:
 ///
-/// ~~~ {cpp}
+/// ~~~ {.cpp}
 ///      for (Int_t i=0;i<na+nb;i++) {
 ///         if (a[ia-1] < b[ib-1]) {
 ///            rdiff -= sa;
@@ -782,7 +782,7 @@ Double_t TMath::KolmogorovProb(Double_t z)
 ///   The solution is to just add while-loops into the equality-case handling to
 ///   perform the tally:
 ///
-/// ~~~ {cpp}
+/// ~~~ {.cpp}
 ///         } else {
 ///            double x = a[ia-1];
 ///            while(a[ia-1] == x && ia <= na) {
@@ -885,7 +885,7 @@ Double_t TMath::KolmogorovTest(Int_t na, const Double_t *a, Int_t nb, const Doub
 /// The Voigt function is known to be the real part of Faddeeva function also
 /// called complex error function [2].
 ///
-/// The algoritm was developed by J. Humlicek [1].
+/// The algorithm was developed by J. Humlicek [1].
 /// This code is based on fortran code presented by R. J. Wells [2].
 /// Translated and adapted by Miha D. Puc
 ///
@@ -1211,7 +1211,7 @@ void TMath::Quantiles(Int_t n, Int_t nprob, Double_t *x, Double_t *quantiles, Do
       printf("illegal value of type\n");
       return;
    }
-   Int_t *ind = 0;
+   Int_t *ind = nullptr;
    Bool_t isAllocated = kFALSE;
    if (!isSorted){
       if (index) ind = index;
@@ -2062,7 +2062,7 @@ Double_t TMath::BetaCf(Double_t x, Double_t a, Double_t b)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Computes the probability density function of the Beta distribution
-/// (the distribution function is computed in BetaDistI).
+/// (the cumulative distribution function is computed in BetaDistI).
 /// The first argument is the point, where the function will be
 /// computed, second and third are the function parameters.
 /// Since the Beta distribution is bounded on both sides, it's often
@@ -2080,7 +2080,8 @@ Double_t TMath::BetaDist(Double_t x, Double_t p, Double_t q)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Computes the distribution function of the Beta distribution.
+/// Computes the cumulative distribution function of the Beta distribution,
+/// i.e. the lower tail integral of TMath::BetaDist
 /// The first argument is the point, where the function will be
 /// computed, second and third are the function parameters.
 /// Since the Beta distribution is bounded on both sides, it's often
@@ -2106,17 +2107,20 @@ Double_t TMath::BetaIncomplete(Double_t x, Double_t a, Double_t b)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Calculates the binomial coefficient n over k.
+/// \return the coefficient; or NaN if n < 0 or k < 0 or n < k; or 1 if k = 0 or n = k
 
-Double_t TMath::Binomial(Int_t n,Int_t k)
+Double_t TMath::Binomial(Int_t n, Int_t k)
 {
-   if (n<0 || k<0 || n<k) return TMath::SignalingNaN();
-   if (k==0 || n==k) return 1;
+   if (n < 0 || k < 0 || n < k)
+      return TMath::SignalingNaN();
+   if (k == 0 || n == k)
+      return 1;
 
-   Int_t k1=TMath::Min(k,n-k);
-   Int_t k2=n-k1;
-   Double_t fact=k2+1;
-   for (Double_t i=k1;i>1.;--i)
-      fact *= (k2+i)/i;
+   Int_t k1 = TMath::Min(k, n - k);
+   auto k2 = static_cast<UInt_t>(n - k1);
+   Double_t fact = k2 + 1;
+   for (auto i = static_cast<UInt_t>(k1); i > 1; --i)
+      fact *= (k2 + i) / static_cast<Double_t>(i);
    return fact;
 }
 
@@ -2131,6 +2135,9 @@ Double_t TMath::Binomial(Int_t n,Int_t k)
 /// For _n_ larger than 12 BetaIncomplete is a much better way
 /// to evaluate the sum than would be the straightforward sum calculation
 /// for _n_ smaller than 12 either method is acceptable ("Numerical Recipes")
+///
+/// Note this function is not exactly implementing the cumulative or the complement of the cumulative of the
+/// Binomial distribution. It is equivalent to ROOT::Math::binomial_cdf_c(k-1,p,n)
 ///
 /// \author Anna Kreshuk
 
@@ -2265,7 +2272,7 @@ Double_t TMath::ChisquareQuantile(Double_t p, Double_t ndf)
 /// F-distribution arises in testing whether two random samples
 /// have the same variance. It is the ratio of two chi-square
 /// distributions, with N and M degrees of freedom respectively,
-/// where each chi-square is first divided by it's number of degrees
+/// where each chi-square is first divided by its number of degrees
 /// of freedom.
 ///
 /// \author Anna Kreshuk
@@ -2276,8 +2283,9 @@ Double_t TMath::FDist(Double_t F, Double_t N, Double_t M)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Calculates the cumulative distribution function of F-distribution,
-/// this function occurs in the statistical test of whether two observed
+/// Calculates the cumulative distribution function of F-distribution
+/// (see ROOT::Math::fdistribution_cdf).
+/// This function occurs in the statistical test of whether two observed
 /// samples have the same variance. For this test a certain statistic F,
 /// the ratio of observed dispersion of the first sample to that of the
 /// second sample, is calculated. N and M stand for numbers of degrees
@@ -2330,7 +2338,7 @@ Double_t TMath::FDistI(Double_t F, Double_t N, Double_t M)
 ///   gdist->SetLineColor(6);
 ///   TF1 *gdist4 = gdist->DrawCopy("LSAME");
 ///
-///   legend = new TLegend(0.15, 0.15, 0.5, 0.35);
+///   auto legend = new TLegend(0.15, 0.15, 0.5, 0.35);
 ///   legend->AddEntry(gdist1, "gamma = 0.5, mu = 0, beta = 1", "L");
 ///   legend->AddEntry(gdist2, "gamma = 1.0, mu = 0, beta = 1", "L");
 ///   legend->AddEntry(gdist3, "gamma = 2.0, mu = 0, beta = 1", "L");
@@ -2365,8 +2373,8 @@ Double_t TMath::LaplaceDist(Double_t x, Double_t alpha, Double_t beta)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Computes the distribution function of Laplace distribution
-/// at point x, with location parameter alpha and shape parameter beta.
+/// Computes the cumulative distribution function (lower tail integral)
+/// of Laplace distribution at point x, with location parameter alpha and shape parameter beta.
 /// By default, alpha=0, beta=1
 /// This distribution is known under different names, most common is
 /// double exponential distribution, but it also appears as
@@ -2420,7 +2428,7 @@ Double_t TMath::LaplaceDistI(Double_t x, Double_t alpha, Double_t beta)
 ///   logn->SetLineColor(6);
 ///   TF1 *logn4 = logn->DrawCopy("LSAME");
 ///
-///   legend = new TLegend(0.15, 0.15, 0.5, 0.35);
+///   auto legend = new TLegend(0.15, 0.15, 0.5, 0.35);
 ///   legend->AddEntry(logn1, "sigma = 0.5, theta = 0, m = 1", "L");
 ///   legend->AddEntry(logn2, "sigma = 1.0, theta = 0, m = 1", "L");
 ///   legend->AddEntry(logn3, "sigma = 2.0, theta = 0, m = 1", "L");
@@ -2588,11 +2596,10 @@ Bool_t TMath::Permute(Int_t n, Int_t *a)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Computes density function for Student's t- distribution
-/// (the probability function (integral of density) is computed in StudentI).
-///
-/// First parameter stands for x - the actual variable of the
-/// density function p(x) and the point at which the density is calculated.
-/// Second parameter stands for number of degrees of freedom.
+/// \f[ p_{n}(x) = \frac{\Gamma(\frac{n+1}{2})}{\sqrt{n \pi}\Gamma(\frac{n}{2})} \left( 1+\frac{x^2}{n}\right)^{-(n+1)/2}  \f]
+/// for \f$n \geq 0\f$, at point x for n (ndf) degrees of freedom. 
+/// This is equivalent to ROOT::Math::tdistribution_pdf(x,ndf)
+/// The probability function (integral of density) is computed in StudentI.
 ///
 /// About Student distribution:
 /// Student's t-distribution is used for many significance tests, for example,
@@ -2634,6 +2641,7 @@ Double_t TMath::Student(Double_t T, Double_t ndf)
 /// not for the number of samples
 /// if x has Student's t-distribution, the function returns the probability of
 /// x being less than T.
+/// This is equivalent to ROOT::Math::tdistribution_cdf(T,ndf)
 ///
 /// \author Anna Kreshuk
 
@@ -2718,7 +2726,7 @@ Double_t TMath::StudentQuantile(Double_t p, Double_t ndf, Bool_t lower_tail)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns the value of the Vavilov density function
+/// Returns the value of the Vavilov probability density function
 ///
 /// \param[in] x      the point were the density function is evaluated
 /// \param[in] kappa  value of kappa (distribution parameter)
@@ -2734,6 +2742,9 @@ Double_t TMath::StudentQuantile(Double_t p, Double_t ndf, Bool_t lower_tail)
 /// density function computed numerically in an accurate way: our approximation
 /// shows a difference of less than 3% around the peak of the density function, slowly
 /// increasing going towards the extreme tails to the right and to the left"
+///
+/// For a more accurate implementation see the documentation in the Vavilov class and
+/// ROOT::Math::vavilov_accurate_pdf
 ///
 /// Begin_Macro
 /// {
@@ -2757,7 +2768,7 @@ Double_t TMath::StudentQuantile(Double_t p, Double_t ndf, Bool_t lower_tail)
 ///   vavilov->SetLineColor(6);
 ///   TF1 *vavilov4 = vavilov->DrawCopy("LSAME");
 ///
-///   legend = new TLegend(0.5, 0.65, 0.85, 0.85);
+///   auto legend = new TLegend(0.5, 0.65, 0.85, 0.85);
 ///   legend->AddEntry(vavilov1, "kappa = 0.5, beta2 = 0", "L");
 ///   legend->AddEntry(vavilov2, "kappa = 0.3, beta2 = 0", "L");
 ///   legend->AddEntry(vavilov3, "kappa = 0.2, beta2 = 0", "L");
@@ -2773,7 +2784,7 @@ Double_t TMath::Vavilov(Double_t x, Double_t kappa, Double_t beta2)
 
    Int_t itype;
    Int_t npt;
-   TMath::VavilovSet(kappa, beta2, 0, 0, ac, hc, itype, npt);
+   TMath::VavilovSet(kappa, beta2, false, nullptr, ac, hc, itype, npt);
    Double_t v =  TMath::VavilovDenEval(x, ac, hc, itype);
    delete [] ac;
    delete [] hc;
@@ -2781,7 +2792,8 @@ Double_t TMath::Vavilov(Double_t x, Double_t kappa, Double_t beta2)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns the value of the Vavilov distribution function
+/// Returns the value of the Vavilov cumulative distribution function
+/// (lower tail integral of the probability distribution function)
 ///
 /// \param[in] x      the point were the density function is evaluated
 /// \param[in] kappa  value of kappa (distribution parameter)
@@ -2798,6 +2810,9 @@ Double_t TMath::Vavilov(Double_t x, Double_t kappa, Double_t beta2)
 /// density function computed numerically in an accurate way: our approximation
 /// shows a difference of less than 3% around the peak of the density function, slowly
 /// increasing going towards the extreme tails to the right and to the left"
+///
+/// For a more accurate implementation see the documentation of the Vavilov class and the cumulative
+/// ROOT::Math::vavilov_accurate_cdf
 
 Double_t TMath::VavilovI(Double_t x, Double_t kappa, Double_t beta2)
 {
@@ -2808,7 +2823,7 @@ Double_t TMath::VavilovI(Double_t x, Double_t kappa, Double_t beta2)
    Int_t npt;
    Int_t k;
    Double_t xx, v;
-   TMath::VavilovSet(kappa, beta2, 1, wcm, ac, hc, itype, npt);
+   TMath::VavilovSet(kappa, beta2, true, wcm, ac, hc, itype, npt);
    if (x < ac[0]) v = 0;
    else if (x >=ac[8]) v = 1;
    else {
@@ -2823,7 +2838,8 @@ Double_t TMath::VavilovI(Double_t x, Double_t kappa, Double_t beta2)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns the value of the Landau distribution function at point x.
+/// Returns the cumulative (lower tail integral) of the Landau distribution function at point x.
+/// (see ROOT::Math::landau_cdf)
 /// The algorithm was taken from the Cernlib function dislan(G110)
 /// Reference: K.S.Kolbig and B.Schorr, "A program package for the Landau
 /// distribution", Computer Phys.Comm., 31(1984), 97-111
@@ -3179,19 +3195,84 @@ Double_t TMath::VavilovDenEval(Double_t rlam, Double_t *AC, Double_t *HC, Int_t 
    return v;
 }
 
+/// \brief Computes a 1D k-nearest neighbor density estimate for a set of query points.
+///
+/// For each query point, this function estimates the local density based on
+/// the distance to the k-th nearest neighbor. A minimum distance threshold
+/// `dmin` is used to avoid division by zero and numerical instability when a
+/// query point coincides with an observation or neighbors are extremely close.
+///
+/// \param observations Data points used for density estimation.
+/// \param queries Points at which to estimate the density.
+/// \param result Output for the density estimates. Must have the same size as `queries`.
+/// \param k Number of nearest neighbors to consider. If k >= number of observations,
+///          it is automatically reduced to n-1.
+/// \param dmin Minimum allowed neighbor distance to prevent division by zero. Default is zero.
+///
+/// The density estimate for each query point x is:
+///
+/// \f[
+/// \hat{p}(x) = \frac{n}{2(n+1)} \frac{k_{\text{actual}}}{d_\(k_{\text{actual}}\)(x)},
+/// \f]
+///
+/// where \(d_\(k_{\text{actual}}\)(x)\) is the distance and \(k_{\text{actual}}\) may be different from \(k\)
+/// when it needs to be greater than \(k\) to keep the \(d > d_{\text{min}} constraint.
+/// If no neighbor is outside `dmin`, the minimum allowed distance will be used as the distance itself.
+///
+/// \note This function implements the math of the former `TH1K` class. There are some differences:
+///
+///   1. The `TH1K` class additionally multiplied all density estimates with the bin width.
+///   2. If the `k` parameter was not specified by the user, the `TH1K` class used the bin width as `dmin`.
+///   3. If the `k` parameter was explicitly specified, the `dmin` parameter was set to 1.e-6.
+void TMath::KNNDensity(std::span<const double> observations, std::span<const double> queries, std::span<double> result,
+                       int k, double dmin)
+{
+   int n = observations.size();
+   if (k < 0) {
+      Error("KNNDensity", "k must be positive");
+      return;
+   }
+   if (k >= static_cast<int>(n))
+      k = static_cast<int>(n - 1);
 
-//explicitly instantiate template functions from VecCore
-#ifdef R__HAS_VECCORE
-#include <Math/Types.h>
-template ROOT::Double_v vecCore::math::Sin(const ROOT::Double_v & x);
-template ROOT::Double_v vecCore::math::Cos(const ROOT::Double_v & x);
-template ROOT::Double_v vecCore::math::ASin(const ROOT::Double_v & x);
-template ROOT::Double_v vecCore::math::ATan(const ROOT::Double_v & x);
-template ROOT::Double_v vecCore::math::ATan2(const ROOT::Double_v & x,const ROOT::Double_v & y);
-// missing in veccore
-// template ROOT::Double_v vecCore::math::ACos(const ROOT::Double_v & x);
-// template ROOT::Double_v vecCore::math::Sinh(const ROOT::Double_v & x);
-// template ROOT::Double_v vecCore::math::Cosh(const ROOT::Double_v & x);
-// template ROOT::Double_v vecCore::math::Tanh(const ROOT::Double_v & x);
-// template ROOT::Double_v vecCore::math::Cbrt(const ROOT::Double_v & x);
-#endif
+   if (result.size() != queries.size()) {
+      Error("KNNDensity", "Result span size must match query span size");
+      return;
+   }
+
+   // Make a sorted copy of the observations for binary search
+   std::vector<double> sorted_obs(observations.begin(), observations.end());
+   std::sort(sorted_obs.begin(), sorted_obs.end());
+
+   // constant factor in the output
+   const double factor = n * 0.5 / (n + 1.0);
+
+   for (std::size_t i = 0; i < queries.size(); ++i) {
+      double x = queries[i];
+
+      // Find index in sorted_obs
+      int jr = std::distance(sorted_obs.begin(), std::lower_bound(sorted_obs.begin(), sorted_obs.end(), x));
+      int jl = jr - 1;
+
+      double ff = 0.0;
+      int k_actual = 0;
+
+      for (; k_actual + 1 <= k || ff <= dmin; ++k_actual) {
+
+         double fl = (jl >= 0) ? std::abs(sorted_obs[jl] - x) : std::numeric_limits<double>::max();
+         double fr = (jr < n) ? std::abs(sorted_obs[jr] - x) : std::numeric_limits<double>::max();
+
+         if (jl < 0 && jr >= n)
+            break;
+
+         ff = std::min(fl, fr);
+         fl < fr ? --jl : ++jr;
+      }
+
+      if (ff == 0.0)
+         ff = dmin; // avoid division by zero
+
+      // Modified kNN density formula
+      result[i] = factor == 0.0 ? 0.0 : factor * k_actual / ff;
+   }
+}

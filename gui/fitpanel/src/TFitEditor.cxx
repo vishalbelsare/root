@@ -319,7 +319,6 @@ void GetTreeVarsAndCuts(TGComboBox* dataSet, TString& variablesStr, TString& cut
 }
 
 
-ClassImp(TFitEditor);
 
 TFitEditor *TFitEditor::fgFitDialog = 0;
 
@@ -1257,7 +1256,8 @@ void TFitEditor::CloseWindow()
 
 void TFitEditor::Terminate()
 {
-   TQObject::Disconnect("TCanvas", "Closed()");
+   if (HasConnection("DoNoSelection()"))
+      TQObject::Disconnect("TCanvas", "Closed()");
    delete fgFitDialog;
    fgFitDialog = 0;
 }
@@ -1665,11 +1665,21 @@ void TFitEditor::FillFunctionList(Int_t)
 
       // Select Gaus2D by default
       fFuncList->Select(kFP_XYGAUS);
+   } else if (fTypeFit->GetSelected() == kFP_PRED3D && fDim == 3) {
+      fFuncList->AddEntry("xyzgaus", kFP_XYZGAUS);
+
+      // Need to be setted this way, otherwise when the functions
+      // are removed, the list doesn't show them.x
+      TGListBox *lb = fFuncList->GetListBox();
+      lb->Resize(lb->GetWidth(), 200);
+
+      // Select Gaus3D by default
+      fFuncList->Select(kFP_XYZGAUS);
    }
    // Case for user defined functions. References to these functions
    // are kept by the fitpanel, so the information is gathered from
    // there.
-   else if ( fTypeFit->GetSelected() == kFP_UFUNC ) {
+   else if (fTypeFit->GetSelected() == kFP_UFUNC) {
       Int_t newid = kFP_ALTFUNC;
 
       // Add system functions
@@ -1702,7 +1712,7 @@ void TFitEditor::FillFunctionList(Int_t)
       }
    }
    // Case for previously used functions.
-   else if ( fTypeFit->GetSelected() == kFP_PREVFIT ) {
+   else if (fTypeFit->GetSelected() == kFP_PREVFIT) {
       Int_t newid = kFP_ALTFUNC;
 
       // Look only for those functions used in the selected object
@@ -2495,7 +2505,7 @@ void TFitEditor::DoFunction(Int_t selected)
    }
    else if (fConv->GetState() == kButtonDown)
    {
-      // If the normadd button is down don't replace the fEnteredFunc text
+      // If the conv button is down don't replace the fEnteredFunc text
       Int_t np = 0;
       TString s = "";
       if (!strcmp(fEnteredFunc->GetText(), ""))
@@ -2536,8 +2546,12 @@ void TFitEditor::DoFunction(Int_t selected)
    TF1* fitFunc = GetFitFunction();
    //std::cout << "TFitEditor::DoFunction - using function " << fitFunc->GetName() << "  " << fitFunc << std::endl;
 
-   if ( fitFunc && (unsigned int) fitFunc->GetNpar() != fFuncPars.size() )
-      fFuncPars.clear();
+   if ( fitFunc && (unsigned int) fitFunc->GetNpar() != fFuncPars.size() ) {
+      if (fAdd->GetState() == kButtonDown || fNormAdd->GetState() == kButtonDown || fConv->GetState() == kButtonDown)
+         fFuncPars.resize(fitFunc->GetNpar());
+      else
+         fFuncPars.clear();
+   }
    if ( fitFunc ) {
       //std::cout << "TFitEditor::DoFunction - deleting function " << fitFunc->GetName() << "  " << fitFunc << std::endl;
       delete fitFunc;
@@ -2848,7 +2862,7 @@ void TFitEditor::DrawSelection(bool restore)
    px2 = gPad->XtoAbsPixel(xright);
    py2 = gPad->YtoAbsPixel(ymax);
 
-   if (gPad->GetCanvas()) gPad->GetCanvas()->FeedbackMode(kTRUE);
+   gPad->FeedbackMode(kTRUE);
    gPad->SetLineWidth(1);
    gPad->SetLineColor(2);
 #ifndef R__HAS_COCOA

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis        *
  * Package: TMVA                                                                   *
  * Class  : MethodPDERS                                                            *
- * Web    : http://tmva.sourceforge.net                                            *
+ *                                              *
  *                                                                                 *
  * Description:                                                                    *
  *      Implementation                                                             *
@@ -26,7 +26,7 @@
  *                                                                                 *
  * Redistribution and use in source and binary forms, with or without              *
  * modification, are permitted according to the terms listed in LICENSE            *
- * (http://tmva.sourceforge.net/LICENSE)                                           *
+ * (see tmva/doc/LICENSE)                                           *
  ***********************************************************************************/
 
 /*! \class TMVA::MethodPDERS
@@ -92,7 +92,6 @@ namespace TMVA {
 
 REGISTER_METHOD(PDERS)
 
-ClassImp(TMVA::MethodPDERS);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// standard constructor for the PDERS method
@@ -223,7 +222,7 @@ TMVA::MethodPDERS::~MethodPDERS( void )
 ///    - Unscaled
 ///    - RMS
 ///    - kNN
-///    - Adaptive <default>
+///    - Adaptive `<default>`
 ///
 ///  - KernelEstimator   `<string>`  Kernel estimation function
 ///    available values are:
@@ -360,7 +359,6 @@ void TMVA::MethodPDERS::Train( void )
    SetVolumeElement();
 
    fInitializedVolumeEle = kTRUE;
-   ExitFromTraining();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

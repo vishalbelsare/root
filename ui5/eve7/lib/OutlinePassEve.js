@@ -150,25 +150,17 @@ class OutlinePassEve extends THREE.Pass {
 				//for (let w = 0; w < groups[z].length; ++w)
 
 				const w = 0; // check only the first element of the group!
-				{
-					let pass = (object.type === "Points") ? (groups[z][w].material.size === object.material.size) : true;
+				let pass = (object.type === "Points") ? (groups[z][w].material.size === object.material.size) : true;
 
-					if (pass) {
-						// final check
-						if (groups[z][w]["vertShader"] === object["vertShader"] &&
+				// final check
+				if (pass &&	groups[z][w]["vertShader"] === object["vertShader"] &&
 							groups[z][w]["fragShader"] === object["fragShader"] &&
 							groups[z][w].visibleEdgeColor === object.visibleEdgeColor &&
-							groups[z][w].hiddenEdgeColor === object.hiddenEdgeColor
-						) {
-							groups[z].push(object);
-							found = true;
-							break;
-						}
-					}
-				}
-
-				if (found)
+							groups[z][w].hiddenEdgeColor === object.hiddenEdgeColor) {
+					groups[z].push(object);
+					found = true;
 					break;
+				}
 			}
 
 			if (!found) {
@@ -638,7 +630,9 @@ class OutlinePassEve extends THREE.Pass {
 			},
 
 			vertexShader:
-				`varying vec4 projTexCoord;
+				`#include <morphtarget_pars_vertex>
+            #include <skinning_pars_vertex>
+            varying vec4 projTexCoord;
 				varying vec4 vPosition;
 				uniform mat4 textureMatrix;
 				uniform float pointSize;
@@ -678,21 +672,21 @@ class OutlinePassEve extends THREE.Pass {
 			},
 
 			vertexShader:
-				"varying vec2 vUv;\n\
-				uniform float pointSize;\n\
-				void main() {\n\
-					vUv = uv;\n\
-					// gl_PointSize = pointSize;\n\
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\n\
-				}",
+				`varying vec2 vUv;
+				uniform float pointSize;
+				void main() {
+					vUv = uv;
+					// gl_PointSize = pointSize;
+					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+				}`,
 
 			fragmentShader:
-				`varying vec2 vUv;\
-				uniform sampler2D maskTexture;\
-				uniform vec2 texSize;\
-				uniform vec3 visibleEdgeColor;\
-				uniform vec3 hiddenEdgeColor;\
-				\
+				`varying vec2 vUv;
+				uniform sampler2D maskTexture;
+				uniform vec2 texSize;
+				uniform vec3 visibleEdgeColor;
+				uniform vec3 hiddenEdgeColor;
+
 				void main() {
 				#if 1
 					vec4 edge = texture2D( maskTexture, vUv);
@@ -744,41 +738,41 @@ class OutlinePassEve extends THREE.Pass {
 			},
 
 			vertexShader:
-				"varying vec2 vUv;\n\
-				uniform float pointSize;\n\
-				void main() {\n\
-					vUv = uv;\n\
-					// gl_PointSize = pointSize;\n\
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );\n\
-				}",
+				`varying vec2 vUv;
+				uniform float pointSize;
+				void main() {
+					vUv = uv;
+					// gl_PointSize = pointSize;
+					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+				}`,
 
 			fragmentShader:
-				"#include <common>\
-				varying vec2 vUv;\
-				uniform sampler2D colorTexture;\
-				uniform vec2 texSize;\
-				uniform vec2 direction;\
-				uniform float kernelRadius;\
-				\
-				float gaussianPdf(in float x, in float sigma) {\
-					return 0.39894 * exp( -0.5 * x * x/( sigma * sigma))/sigma;\
-				}\
-				void main() {\
-					vec2 invSize = 1.0 / texSize;\
-					float weightSum = gaussianPdf(0.0, kernelRadius);\
-					vec3 diffuseSum = texture2D( colorTexture, vUv).rgb * weightSum;\
-					vec2 delta = direction * invSize * kernelRadius/float(MAX_RADIUS);\
-					vec2 uvOffset = delta;\
-					for( int i = 1; i <= MAX_RADIUS; i ++ ) {\
-						float w = gaussianPdf(uvOffset.x, kernelRadius);\
-						vec3 sample1 = texture2D( colorTexture, vUv + uvOffset).rgb;\
-						vec3 sample2 = texture2D( colorTexture, vUv - uvOffset).rgb;\
-						diffuseSum += ((sample1 + sample2) * w);\
-						weightSum += (2.0 * w);\
-						uvOffset += delta;\
-					}\
-					gl_FragColor = vec4(diffuseSum/weightSum, 1.0);\
-				}"
+				`#include <common>
+				varying vec2 vUv;
+				uniform sampler2D colorTexture;
+				uniform vec2 texSize;
+				uniform vec2 direction;
+				uniform float kernelRadius;
+
+				float gaussianPdf(in float x, in float sigma) {
+					return 0.39894 * exp( -0.5 * x * x/( sigma * sigma))/sigma;
+				}
+				void main() {
+					vec2 invSize = 1.0 / texSize;
+					float weightSum = gaussianPdf(0.0, kernelRadius);
+					vec3 diffuseSum = texture2D( colorTexture, vUv).rgb * weightSum;
+					vec2 delta = direction * invSize * kernelRadius/float(MAX_RADIUS);
+					vec2 uvOffset = delta;
+					for( int i = 1; i <= MAX_RADIUS; i ++ ) {
+						float w = gaussianPdf(uvOffset.x, kernelRadius);
+						vec3 sample1 = texture2D( colorTexture, vUv + uvOffset).rgb;
+						vec3 sample2 = texture2D( colorTexture, vUv - uvOffset).rgb;
+						diffuseSum += ((sample1 + sample2) * w);
+						weightSum += (2.0 * w);
+						uvOffset += delta;
+					}
+					gl_FragColor = vec4(diffuseSum/weightSum, 1.0);
+				}`
 		} );
 
 	}

@@ -20,14 +20,11 @@ def _kwargs_to_roocmdargs(*args, **kwargs):
         # Parameters:
         # k: key of the kwarg
         # v: value of the kwarg
-
-        # We have to use ROOT here and not cppy.gbl, because the RooFit namespace is pythonized itself.
         import ROOT
-        import libcppyy
 
         func = getattr(ROOT.RooFit, k)
 
-        if isinstance(func, libcppyy.CPPOverload):
+        if isinstance(func, ROOT._cppyy.types.Function):
             # Pythonization for functions that don't pass any RooCmdArgs like ShiftToZero() and MoveToBack(). For Eg,
             # Default bindings: pdf.plotOn(frame, ROOT.RooFit.MoveToBack())
             # With pythonizations: pdf.plotOn(frame, MoveToBack=True)
@@ -46,7 +43,7 @@ def _kwargs_to_roocmdargs(*args, **kwargs):
                 return func(*v)
             elif isinstance(v, (dict,)):
                 return func(**v)
-        except:
+        except Exception:
             pass
 
         return func(v)
@@ -56,36 +53,38 @@ def _kwargs_to_roocmdargs(*args, **kwargs):
     return args, {}
 
 
-def _string_to_root_attribute(value, lookup_map):
-    """Helper function to pythonize arguments based on the matplotlib color/style conventions."""
-    # lookup_map for color and style defined in _rooglobalfunc.py have matplotlib conventions specified which enables
-    # the use of string values like "r" or ":" instead of using enums like ROOT.kRed or ROOT.kDotted for colors or styles. For Eg.
-    # Default bindings:  pdf.plotOn(frame, LineColor=ROOT.kOrange)
-    # With pythonizations: pdf.plotOn(frame, LineColor="kOrange")
+def _pack_cmd_args(*args, **kwargs):
+    # Pack command arguments passed into a RooLinkedList.
 
     import ROOT
 
-    if isinstance(value, str):
-        if value in lookup_map:
-            return getattr(ROOT, lookup_map[value])
-        else:
-            try:
-                # Here getattr(ROOT, value) would have less overhead, but it's
-                # also less convenient. With `eval`, the string that is passed
-                # by the user can also contain postfix operations on the enum
-                # value, which is often used for columns, e.g. `kGreen+1`.
-                return eval("ROOT." + value)
-            except:
-                raise ValueError(
-                    "Unsupported value passed. The value either has to be the name of an attribute of the ROOT module, or match with one of the following values that get translated to ROOT attributes: {}".format(
-                        lookup_map
-                    )
-                )
-    else:
-        return value
+    # If the second argument is already a RooLinkedList, do nothing
+    if len(kwargs) == 0 and len(args) == 1 and isinstance(args[0], ROOT.RooLinkedList):
+        return args[0]
+
+    # Transform keyword arguments to RooCmdArgs
+    args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
+
+    # All keyword arguments should be transformed now
+    assert len(kwargs) == 0
+
+    # Put RooCmdArgs in a RooLinkedList
+    cmd_list = ROOT.RooLinkedList()
+    for cmd in args:
+        if not isinstance(cmd, ROOT.RooCmdArg):
+            raise TypeError("This function only takes RooFit command arguments.")
+        cmd_list.Add(cmd)
+
+    # The RooLinkedList passed to functions like fitTo() is expected to be
+    # non-owning. To make sure that the RooCmdArgs live long enough, we attach
+    # them as an attribute of the output list, such that the Python reference
+    # counter doesn't hit zero.
+    cmd_list._owning_pylist = args
+
+    return cmd_list
 
 
-def _dict_to_std_map(arg_dict, allowed_val_dict):
+def _dict_to_flat_map(arg_dict, allowed_val_dict):
     """
     Helper function to convert python dict to std::map.
 
@@ -113,12 +112,12 @@ def _dict_to_std_map(arg_dict, allowed_val_dict):
         # otherwise try to get class from the ROOT namespace
         return getattr(ROOT, cpp_type_name)
 
-    def prettyprint_str_list(l):
-        if len(l) == 1:
-            return l[0]
-        if len(l) == 2:
-            return l[0] + " or " + l[1]
-        return ", ".join(l[:-1]) + ", or " + l[-1]
+    def prettyprint_str_list(l_in):
+        if len(l_in) == 1:
+            return l_in[0]
+        if len(l_in) == 2:
+            return l_in[0] + " or " + l_in[1]
+        return ", ".join(l_in[:-1]) + ", or " + l_in[-1]
 
     def get_template_args(import_dict):
 
@@ -132,7 +131,7 @@ def _dict_to_std_map(arg_dict, allowed_val_dict):
             if all_of_class(import_dict, get_python_class(key_typename), True):
                 key_type = key_typename
 
-                if type(allowed_val_dict[key_typename]) == str:
+                if isinstance(allowed_val_dict[key_typename], str):
                     allowed_val_dict[key_typename] = [allowed_val_dict[key_typename]]
 
                 for val_typename in allowed_val_dict[key_typename]:
@@ -157,15 +156,16 @@ def _dict_to_std_map(arg_dict, allowed_val_dict):
 
         return key_type + "," + value_type
 
-    # The std::map created by this function usually contains non-owning pointers as values.
+    # The map created by this function usually contains non-owning pointers as values.
     # This is not considered by Pythons reference counter. To ensure that the pointed-to objects
-    # live at least as long as the std::map, a python list containing references to these objects
-    # is added as an attribute to the std::map.
-    arg_map = ROOT.std.map[get_template_args(arg_dict)]()
+    # live at least as long as the map, a python list containing references to these objects
+    # is added as an attribute to the map.
+    arg_map = ROOT.RooFit.Detail.FlatMap[get_template_args(arg_dict)]()
     arg_map.keepalive = list()
-    for key, value in arg_dict.items():
-        arg_map.keepalive.append(value)
-        arg_map[key] = value
+    for key, val in arg_dict.items():
+        arg_map.keepalive.append(val)
+        arg_map.keys.push_back(key)
+        arg_map.vals.push_back(val)
 
     return arg_map
 
@@ -179,7 +179,7 @@ def _decaytype_string_to_enum(caller, kwargs):
         if isinstance(val, str):
             try:
                 kwargs[type_key] = getattr(caller.__class__, val)
-            except AttributeError as error:
+            except AttributeError:
                 raise ValueError(
                     "Unsupported decay type passed to "
                     + caller.__class__.__name__

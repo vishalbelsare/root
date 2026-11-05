@@ -34,8 +34,7 @@ public:
           DecayType type=DoubleSided) ;
 
   RooBMixDecay(const RooBMixDecay& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new RooBMixDecay(*this,newname) ; }
-  ~RooBMixDecay() override;
+  TObject* clone(const char* newname=nullptr) const override { return new RooBMixDecay(*this,newname) ; }
 
   double coefficient(Int_t basisIndex) const override ;
 
@@ -45,6 +44,9 @@ public:
   Int_t getGenerator(const RooArgSet& directVars, RooArgSet &generateVars, bool staticInitOK=true) const override;
   void initGenerator(Int_t code) override ;
   void generateEvent(Int_t code) override;
+
+  void doEval(RooFit::EvalContext &) const override;
+  inline bool canComputeBatchWithCuda() const override { return true; }
 
 protected:
 
@@ -59,10 +61,10 @@ protected:
   Int_t _basisExp ;
   Int_t _basisCos ;
 
-  double _genMixFrac ;   //! do not persist
-  double _genFlavFrac ;  //!
-  double _genFlavFracMix ;   //!
-  double _genFlavFracUnmix ; //!
+  double _genMixFrac ;   ///<! do not persist
+  double _genFlavFrac ;  ///<!
+  double _genFlavFracMix ;   ///<!
+  double _genFlavFracUnmix ; ///<!
 
   ClassDefOverride(RooBMixDecay,1) // B Mixing decay PDF
 };

@@ -27,7 +27,6 @@
 #include "TRegexp.h"
 #include "TPRegexp.h"
 #include "TException.h"
-#include "Demangle.h"
 #include "TEnv.h"
 #include "Getline.h"
 #include "TInterpreter.h"
@@ -36,8 +35,9 @@
 #include "TVirtualMutex.h"
 #include "ThreadLocalStorage.h"
 #include "TObjArray.h"
-#include "snprintf.h"
 #include "strlcpy.h"
+
+#include <cstdio>
 #include <iostream>
 #include <fstream>
 #include <map>
@@ -47,9 +47,9 @@
 //#define G__OLDEXPAND
 
 #include <unistd.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <sys/types.h>
-#if defined(R__SUN) || defined(R__AIX) || \
+#if defined(R__SUN) || \
     defined(R__LINUX) || defined(R__SOLARIS) || \
     defined(R__FBSD) || defined(R__OBSD) || \
     defined(R__MACOSX) || defined(R__HURD)
@@ -63,12 +63,12 @@
 #if defined(ULTRIX) || defined(R__SUN)
 #   include <sgtty.h>
 #endif
-#if defined(R__AIX) || defined(R__LINUX) || \
+#if defined(R__LINUX) || \
     defined(R__FBSD) || defined(R__OBSD) || \
     defined(R__LYNXOS) || defined(R__MACOSX) || defined(R__HURD)
 #   include <sys/ioctl.h>
 #endif
-#if defined(R__AIX) || defined(R__SOLARIS)
+#if defined(R__SOLARIS)
 #   include <sys/select.h>
 #endif
 #if defined(R__MACOSX)
@@ -80,6 +80,14 @@
 #elif defined(R__FBSD) || defined(R__OBSD)
 #   include <sys/param.h>
 #   include <sys/mount.h>
+# ifdef R__FBSD
+#   include <sys/user.h>
+#   include <sys/types.h>
+#   include <sys/param.h>
+#   include <sys/queue.h>
+#   include <libprocstat.h>
+#   include <libutil.h>
+# endif
 #else
 #   include <sys/statfs.h>
 #endif
@@ -87,31 +95,21 @@
 #include <utime.h>
 #include <syslog.h>
 #include <sys/stat.h>
-#include <setjmp.h>
-#include <signal.h>
+#include <csetjmp>
+#include <csignal>
 #include <sys/param.h>
 #include <pwd.h>
 #include <grp.h>
-#include <errno.h>
+#include <cerrno>
 #include <sys/resource.h>
 #include <sys/wait.h>
-#include <time.h>
+#include <ctime>
 #include <sys/time.h>
 #include <sys/file.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#if defined(R__AIX)
-#   define _XOPEN_EXTENDED_SOURCE
-#   include <arpa/inet.h>
-#   undef _XOPEN_EXTENDED_SOURCE
-#   if !defined(_AIX41) && !defined(_AIX43)
-    // AIX 3.2 doesn't have it
-#   define HASNOT_INETATON
-#   endif
-#else
-#   include <arpa/inet.h>
-#endif
+#include <arpa/inet.h>
 #include <sys/un.h>
 #include <netdb.h>
 #include <fcntl.h>
@@ -142,7 +140,7 @@
 #   endif
 #endif
 
-#if defined(R__AIX) || defined(R__FBSD) || \
+#if defined(R__FBSD) || \
     defined(R__OBSD) || defined(R__LYNXOS) || \
     (defined(R__MACOSX) && !defined(MAC_OS_X_VERSION_10_5))
 #   define UTMP_NO_ADDR
@@ -153,6 +151,14 @@ extern "C" {
    extern int putenv(const char *);
    extern int inet_aton(const char *, struct in_addr *);
 };
+#endif
+
+#if defined(R__ARC4_STDLIB)
+// do nothing, stdlib.h already included
+#elif defined(R__ARC4_BSDLIB)
+#include <bsd/stdlib.h>
+#elif defined(R__GETRANDOM_CLIB)
+#include <sys/random.h>
 #endif
 
 #ifdef HAVE_UTMPX_H
@@ -180,7 +186,7 @@ extern "C" {
 #   endif
 #   define HAVE_DLADDR
 #endif
-#if defined(R__MACOSX)
+#if defined(R__MACOSX) || defined(R__FBSD)
 #      define HAVE_BACKTRACE_SYMBOLS_FD
 #      define HAVE_DLADDR
 #endif
@@ -203,7 +209,7 @@ extern "C" {
 
 // FPE handling includes
 #if (defined(R__LINUX) && !defined(R__WINGCC))
-#include <fenv.h>
+#include <cfenv>
 #include <sys/prctl.h>    // for prctl() function used in StackTrace()
 #endif
 
@@ -214,11 +220,11 @@ extern "C" {
 #if defined(R__MACOSX) && !defined(__SSE2__) && !defined(__xlC__) && \
    !defined(__i386__) && !defined(__x86_64__) && !defined(__arm__) && \
    !defined(__arm64__)
-#include <fenv.h>
-#include <signal.h>
+#include <cfenv>
+#include <csignal>
 #include <ucontext.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <cstdio>
 #include <mach/thread_status.h>
 
 #define fegetenvd(x) asm volatile("mffs %0" : "=f" (x));
@@ -236,7 +242,7 @@ enum {
 
 #if defined(R__MACOSX) && !defined(__SSE2__) && \
     (defined(__i386__) || defined(__x86_64__) || defined(__arm__) || defined(__arm64__))
-#include <fenv.h>
+#include <cfenv>
 #endif
 // End FPE handling includes
 
@@ -404,7 +410,7 @@ static const char *GetExePath()
 #if defined(R__MACOSX)
       exepath = _dyld_get_image_name(0);
 #elif defined(R__LINUX) || defined(R__SOLARIS) || defined(R__FBSD)
-      char buf[kMAXPATHLEN];  // exe path name
+      char buf[kMAXPATHLEN]="";  // exe path name
 
       // get the name from the link in /proc
 #if defined(R__LINUX)
@@ -412,7 +418,16 @@ static const char *GetExePath()
 #elif defined(R__SOLARIS)
       int ret = readlink("/proc/self/path/a.out", buf, kMAXPATHLEN);
 #elif defined(R__FBSD)
-      int ret = readlink("/proc/curproc/file", buf, kMAXPATHLEN);
+      procstat* ps = procstat_open_sysctl();
+      kinfo_proc* kp = kinfo_getproc(getpid());
+
+      int ret{0};
+      if (kp!=NULL) {
+	procstat_getpathname(ps, kp, buf, sizeof(buf));
+      }
+      free(kp);
+      procstat_close(ps);
+      exepath = buf;
 #endif
       if (ret > 0 && ret < kMAXPATHLEN) {
          buf[ret] = 0;
@@ -544,7 +559,6 @@ static void DylibAdded(const struct mach_header *mh, intptr_t /* vmaddr_slide */
 }
 #endif
 
-ClassImp(TUnixSystem);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -680,7 +694,7 @@ void TUnixSystem::SetDisplay()
          }
       }
 #ifndef R__HAS_COCOA
-      if (!gROOT->IsBatch() && !getenv("DISPLAY")) {
+      if (!gROOT->IsBatch() && !std::getenv("DISPLAY")) {
          Error("SetDisplay", "Can't figure out DISPLAY, set it manually\n"
             "In case you run a remote ssh session, restart your ssh session with:\n"
             "=========>  ssh -Y");
@@ -698,7 +712,7 @@ const char *TUnixSystem::GetError()
    if (err == 0 && GetLastErrorString() != "")
       return GetLastErrorString();
 
-#if defined(R__SOLARIS) || defined (R__LINUX) || defined(R__AIX) || \
+#if defined(R__SOLARIS) || defined (R__LINUX) || \
     defined(R__FBSD) || defined(R__OBSD) || defined(R__HURD)
    return strerror(err);
 #else
@@ -740,11 +754,11 @@ void TUnixSystem::AddFileHandler(TFileHandler *h)
       int fd = h->GetFd();
       if (h->HasReadInterest()) {
          fReadmask->Set(fd);
-         fMaxrfd = TMath::Max(fMaxrfd, fd);
+         fMaxrfd = std::max(fMaxrfd, fd);
       }
       if (h->HasWriteInterest()) {
          fWritemask->Set(fd);
-         fMaxwfd = TMath::Max(fMaxwfd, fd);
+         fMaxwfd = std::max(fMaxwfd, fd);
       }
    }
 }
@@ -771,11 +785,11 @@ TFileHandler *TUnixSystem::RemoveFileHandler(TFileHandler *h)
          int fd = th->GetFd();
          if (th->HasReadInterest()) {
             fReadmask->Set(fd);
-            fMaxrfd = TMath::Max(fMaxrfd, fd);
+            fMaxrfd = std::max(fMaxrfd, fd);
          }
          if (th->HasWriteInterest()) {
             fWritemask->Set(fd);
-            fMaxwfd = TMath::Max(fMaxwfd, fd);
+            fMaxwfd = std::max(fMaxwfd, fd);
          }
       }
    }
@@ -1097,7 +1111,7 @@ void TUnixSystem::DispatchOneEvent(Bool_t pendingOnly)
       *fReadready  = *fReadmask;
       *fWriteready = *fWritemask;
 
-      int mxfd = TMath::Max(fMaxrfd, fMaxwfd);
+      int mxfd = std::max(fMaxrfd, fMaxwfd);
       mxfd++;
 
       // if nothing to select (socket or timer) return
@@ -1164,11 +1178,11 @@ Int_t TUnixSystem::Select(TList *act, Long_t to)
       if (fd > -1) {
          if (h->HasReadInterest()) {
             rd.Set(fd);
-            mxfd = TMath::Max(mxfd, fd);
+            mxfd = std::max(mxfd, fd);
          }
          if (h->HasWriteInterest()) {
             wr.Set(fd);
-            mxfd = TMath::Max(mxfd, fd);
+            mxfd = std::max(mxfd, fd);
          }
          h->ResetReadyMask();
       }
@@ -1465,20 +1479,23 @@ const char *TUnixSystem::TempDirectory() const
 /// Create a secure temporary file by appending a unique
 /// 6 letter string to base. The file will be created in
 /// a standard (system) directory or in the directory
-/// provided in dir. The full filename is returned in base
+/// provided in dir. Optionally one can provide suffix
+/// append to the final name - like extension ".txt" or ".html".
+/// The full filename is returned in base
 /// and a filepointer is returned for safely writing to the file
 /// (this avoids certain security problems). Returns 0 in case
 /// of error.
 
-FILE *TUnixSystem::TempFileName(TString &base, const char *dir)
+FILE *TUnixSystem::TempFileName(TString &base, const char *dir, const char *suffix)
 {
-   char *b = ConcatFileName(dir ? dir : TempDirectory(), base);
-   base = b;
+   PrependPathName(dir ? dir : TempDirectory(), base);
    base += "XXXXXX";
-   delete [] b;
+   const bool hasSuffix = suffix && *suffix;
+   if (hasSuffix)
+      base.Append(suffix);
 
    char *arg = StrDup(base);
-   int fd = mkstemp(arg);
+   int fd = hasSuffix ? mkstemps(arg, strlen(suffix)) : mkstemp(arg);
    base = arg;
    delete [] arg;
 
@@ -1641,11 +1658,7 @@ int TUnixSystem::Link(const char *from, const char *to)
 
 int TUnixSystem::Symlink(const char *from, const char *to)
 {
-#if defined(R__AIX)
-   return ::symlink((char*)from, (char*)to);
-#else
    return ::symlink(from, to);
-#endif
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1789,18 +1802,9 @@ needshell:
 
    // read first argument
    patbuf0 = "";
-   int cnt = 0;
-#if defined(R__AIX)
-again:
-#endif
    for (ch = fgetc(pf); ch != EOF && ch != ' ' && ch != '\n'; ch = fgetc(pf)) {
       patbuf0.Append(ch);
-      cnt++;
    }
-#if defined(R__AIX)
-   // Work around bug timing problem due to delay in forking a large program
-   if (cnt == 0 && ch == EOF) goto again;
-#endif
 
    // skip rest of pipe
    while (ch != EOF) {
@@ -1870,6 +1874,9 @@ int TUnixSystem::Utime(const char *file, Long_t modtime, Long_t actime)
 /// The search path is specified as a : separated list of directories.
 /// Return value is pointing to wfile for compatibility with
 /// Which(const char*,const char*,EAccessMode) version.
+/// \note This function does not support finding files in directories containing
+/// colons in their name. For that specific use case and if you know the filename,
+/// deploy instead TSystem::AccessPathName(dirName+fileName, kReadPermission)
 
 const char *TUnixSystem::FindFile(const char *search, TString& wfil, EAccessMode mode)
 {
@@ -2083,7 +2090,7 @@ void TUnixSystem::Setenv(const char *name, const char *value)
 
 const char *TUnixSystem::Getenv(const char *name)
 {
-   return ::getenv(name);
+   return std::getenv(name);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2295,11 +2302,6 @@ void TUnixSystem::StackTrace()
    delete [] gdb;
    return;
 
-#elif defined(R__AIX)
-   TString script = "procstack ";
-   script += GetPid();
-   Exec(script);
-   return;
 #elif defined(R__SOLARIS)
    char *cppfilt = Which(Getenv("PATH"), "c++filt", kExecutePermission);
    TString script = "pstack ";
@@ -2463,7 +2465,14 @@ void TUnixSystem::StackTrace()
                if (name[0] != '/') noPath = kTRUE;
                if (name.Contains(".so") || name.Contains(".sl")) noShare = kFALSE;
                if (noShare) offset = addr;
-               if (noPath)  name = "`which " + name + "`";
+               if (noPath) {
+                  char *fullpath = noShare ? Which(Getenv("PATH"), name, kExecutePermission)
+                                           : Which(GetDynamicPath(), name, kReadPermission);
+                  if (fullpath) {
+                     name = fullpath;
+                     delete [] fullpath;
+                  }
+               }
                snprintf(buffer, sizeof(buffer), "%s -e %s 0x%016lx", addr2line, name.Data(), offset);
 #endif
                if (FILE *pf = ::popen(buffer, "r")) {
@@ -2841,7 +2850,7 @@ const char *TUnixSystem::GetLinkedLibraries()
       ClosePipe(p);
    }
 #endif
-#elif defined(R__LINUX) || defined(R__SOLARIS) || defined(R__AIX)
+#elif defined(R__LINUX) || defined(R__SOLARIS)
 #if defined(R__WINGCC )
    const char *cLDD="cygcheck";
    const char *cSOEXT=".dll";
@@ -2859,13 +2868,8 @@ const char *TUnixSystem::GetLinkedLibraries()
    TRegexp sovers = "\\.so\\.[0-9]+";
 #else
    const char *cLDD="ldd";
-#if defined(R__AIX)
-   const char *cSOEXT=".a";
-   TRegexp sovers = "\\.a\\.[0-9]+";
-#else
    const char *cSOEXT=".so";
    TRegexp sovers = "\\.so\\.[0-9]+";
-#endif
 #endif
    FILE *p = OpenPipe(TString::Format("%s '%s'", cLDD, exe), "r");
    if (p) {
@@ -3186,17 +3190,17 @@ int TUnixSystem::OpenConnection(const char *server, int port, int tcpwindowsize,
 /// or -3 if listen() failed.
 
 int TUnixSystem::AnnounceTcpService(int port, Bool_t reuse, int backlog,
-                                    int tcpwindowsize)
+                                    int tcpwindowsize, ESocketBindOption socketBindOption)
 {
-   return UnixTcpService(port, reuse, backlog, tcpwindowsize);
+   return UnixTcpService(port, reuse, backlog, tcpwindowsize, socketBindOption);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Announce UDP service.
 
-int TUnixSystem::AnnounceUdpService(int port, int backlog)
+int TUnixSystem::AnnounceUdpService(int port, int backlog, ESocketBindOption socketBindOption)
 {
-   return UnixUdpService(port, backlog);
+   return UnixUdpService(port, backlog, socketBindOption);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3246,10 +3250,8 @@ void TUnixSystem::CloseConnection(int sock, Bool_t force)
 {
    if (sock < 0) return;
 
-#if !defined(R__AIX) || defined(_AIX41) || defined(_AIX43)
    if (force)
       ::shutdown(sock, 2);   // will also close connection of parent
-#endif
 
    while (::close(sock) == -1 && GetErrno() == EINTR)
       ResetErrno();
@@ -4238,11 +4240,13 @@ int TUnixSystem::UnixUnixConnect(const char *sockpath)
 /// Use tcpwindowsize to specify the size of the receive buffer, it has
 /// to be specified here to make sure the window scale option is set (for
 /// tcpwindowsize > 65KB and for platforms supporting window scaling).
+/// The socketBindOption parameter allows to specify how the socket will be
+/// bound. See the documentation of ESocketBindOption for the details.
 /// Returns socket fd or -1 if socket() failed, -2 if bind() failed
 /// or -3 if listen() failed.
 
 int TUnixSystem::UnixTcpService(int port, Bool_t reuse, int backlog,
-                                int tcpwindowsize)
+                                int tcpwindowsize, ESocketBindOption socketBindOption)
 {
    const short kSOCKET_MINPORT = 5000, kSOCKET_MAXPORT = 15000;
    short  sport, tryport = kSOCKET_MINPORT;
@@ -4276,7 +4280,7 @@ int TUnixSystem::UnixTcpService(int port, Bool_t reuse, int backlog,
    struct sockaddr_in inserver;
    memset(&inserver, 0, sizeof(inserver));
    inserver.sin_family = AF_INET;
-   inserver.sin_addr.s_addr = htonl(INADDR_ANY);
+   inserver.sin_addr.s_addr = socketBindOption == ESocketBindOption::kInaddrAny ? htonl(INADDR_ANY) : htonl(INADDR_LOOPBACK);
    inserver.sin_port = sport;
 
    // Bind socket
@@ -4316,8 +4320,10 @@ int TUnixSystem::UnixTcpService(int port, Bool_t reuse, int backlog,
 /// how many sockets can be waiting to be accepted. If port is 0 a port
 /// scan will be done to find a free port. This option is mutual exlusive
 /// with the reuse option.
+/// The socketBindOption parameter allows to specify how the socket will be
+/// bound. See the documentation of ESocketBindOption for the details.
 
-int TUnixSystem::UnixUdpService(int port, int backlog)
+int TUnixSystem::UnixUdpService(int port, int backlog, ESocketBindOption socketBindOption)
 {
    const short kSOCKET_MINPORT = 5000, kSOCKET_MAXPORT = 15000;
    short  sport, tryport = kSOCKET_MINPORT;
@@ -4338,7 +4344,7 @@ int TUnixSystem::UnixUdpService(int port, int backlog)
    struct sockaddr_in inserver;
    memset(&inserver, 0, sizeof(inserver));
    inserver.sin_family = AF_INET;
-   inserver.sin_addr.s_addr = htonl(INADDR_ANY);
+   inserver.sin_addr.s_addr = socketBindOption == ESocketBindOption::kInaddrAny ? htonl(INADDR_ANY) : htonl(INADDR_LOOPBACK);
    inserver.sin_port = sport;
 
    // Bind socket
@@ -4540,6 +4546,12 @@ int TUnixSystem::UnixSend(int sock, const void *buffer, int length, int flag)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Get shared library search path. Static utility function.
+///
+/// The runtime cost (syscalls) of this function can be shortened by injecting
+/// a pre-calculated result for the system library search path in form of
+/// `export ROOT_LDSYSPATH=$(LD_DEBUG=libs LD_PRELOAD=DOESNOTEXIST ls /tmp/DOESNOTEXIST 2>&1 | grep -m 1 "system search
+/// path" | sed 's/.*=//g' | awk '//{print $1}')` This might be useful in scenarios, where ROOT is instantiated many
+/// times.
 
 static const char *DynamicPath(const char *newpath = nullptr, Bool_t reset = kFALSE)
 {
@@ -4587,15 +4599,13 @@ static const char *DynamicPath(const char *newpath = nullptr, Bool_t reset = kFA
    if (reset || !initialized) {
 
       dynpath_envpart = gSystem->Getenv("ROOT_LIBRARY_PATH");
-      TString rdynpath = gEnv->GetValue("Root.DynamicPath", (char*)0);
+      TString rdynpath = gEnv->GetValue("Root.DynamicPath", nullptr);
       rdynpath.ReplaceAll(": ", ":");  // in case DynamicPath was extended
       if (rdynpath.IsNull()) {
          rdynpath = ".:"; rdynpath += TROOT::GetLibDir();
       }
       TString ldpath;
-   #if defined (R__AIX)
-      ldpath = gSystem->Getenv("LIBPATH");
-   #elif defined(R__MACOSX)
+   #if defined(R__MACOSX)
       ldpath = gSystem->Getenv("DYLD_LIBRARY_PATH");
       if (!ldpath.IsNull())
          ldpath += ":";
@@ -4625,23 +4635,34 @@ static const char *DynamicPath(const char *newpath = nullptr, Bool_t reset = kFA
       dynpath_syspart = "/usr/local/lib:/usr/X11R6/lib:/usr/lib:/lib:";
       dynpath_syspart += "/lib/x86_64-linux-gnu:/usr/local/lib64:/usr/lib64:/lib64:";
    #else
-      // trick to get the system search path
-      std::string cmd("LD_DEBUG=libs LD_PRELOAD=DOESNOTEXIST ls 2>&1");
-      FILE *pf = popen(cmd.c_str (), "r");
-      std::string result = "";
-      char buffer[128];
-      while (!feof(pf)) {
-         if (fgets(buffer, 128, pf) != NULL)
-            result += buffer;
-      }
-      pclose(pf);
-      std::size_t from = result.find("search path=", result.find("(LD_LIBRARY_PATH)"));
-      std::size_t to = result.find("(system search path)");
-      if (from != std::string::npos && to != std::string::npos) {
-         from += 12;
-         std::string sys_path = result.substr(from, to-from);
-         sys_path.erase(std::remove_if(sys_path.begin(), sys_path.end(), isspace), sys_path.end());
-         dynpath_syspart = sys_path.c_str();
+      // Obtain the system search path ...
+
+      // First of all, let's see if an outside entity gave us the system path.
+      // This is a power-user feature for users bringing up many executables with ROOT linked in.
+      // In this case, the system path could be cached in an environment variable ROOT_LDSYSPATH and prevent
+      // repeated sys-calls (popen) and to having to search through potentially long LD_LIBRARY_PATH strings.
+      const auto ldsyspath = std::getenv("ROOT_LDSYSPATH");
+      if (ldsyspath != nullptr) {
+         dynpath_syspart = ldsyspath;
+      } else {
+         // trick to get the system search path at runtime (default case)
+         std::string cmd("LD_DEBUG=libs LD_PRELOAD=DOESNOTEXIST ls 2>&1");
+         FILE *pf = popen(cmd.c_str(), "r");
+         std::string result = "";
+         char buffer[128];
+         while (!feof(pf)) {
+            if (fgets(buffer, 128, pf) != nullptr)
+               result += buffer;
+         }
+         pclose(pf);
+         std::size_t from = result.find("search path=", result.find("(LD_LIBRARY_PATH)"));
+         std::size_t to = result.find("(system search path)");
+         if (from != std::string::npos && to != std::string::npos) {
+            from += 12;
+            std::string sys_path = result.substr(from, to - from);
+            sys_path.erase(std::remove_if(sys_path.begin(), sys_path.end(), isspace), sys_path.end());
+            dynpath_syspart = sys_path.c_str();
+         }
       }
       dynpath_envpart.ReplaceAll("::", ":");
       dynpath_syspart.ReplaceAll("::", ":");
@@ -4755,6 +4776,38 @@ const char *TUnixSystem::FindDynamicLibrary(TString& sLib, Bool_t quiet)
 
 //---- System, CPU and Memory info ---------------------------------------------
 
+#if defined(R__FBSD)
+///////////////////////////////////////////////////////////////////////////////
+//// Get system info for FreeBSD
+
+static void GetFreeBSDSysInfo(SysInfo_t *sysinfo)
+{
+   // it probably would be better to get this information from syscalls
+   // this is possibly less error prone
+   FILE *p = gSystem->OpenPipe("sysctl -n kern.ostype hw.model hw.ncpu "
+                               "hw.realmem dev.cpu.0.freq", "r");
+   TString s;
+   s.Gets(p);
+   sysinfo->fOS = s;
+   s.Gets(p);
+   sysinfo->fCpuType = s;
+   s.Gets(p);
+   sysinfo->fCpus = s.Atoi();
+   s.Gets(p);
+   Long64_t t = s.Atoll();
+   sysinfo->fPhysRam = Int_t(t / 1024 / 1024);
+   s.Gets(p);
+   t = s.Atoll();
+   sysinfo->fCpuSpeed = Int_t(t);
+   gSystem->ClosePipe(p);
+}
+
+static void GetFreeBSDCpuInfo(CpuInfo_t*, Int_t)
+{
+   Error("ListSymbols", "not yet implemented");
+}
+#endif
+
 #if defined(R__MACOSX)
 #include <sys/resource.h>
 #include <mach/mach.h>
@@ -4861,15 +4914,10 @@ static void GetDarwinCpuInfo(CpuInfo_t *cpuinfo, Int_t sampleTime)
 static void GetDarwinMemInfo(MemInfo_t *meminfo)
 {
    static Int_t pshift = 0;
-   static DIR *dirp;
-   vm_statistics_data_t vm_info;
-   mach_msg_type_number_t count;
-   kern_return_t kr;
-   struct dirent *dp;
-   Long64_t total, used, free, swap_total, swap_used;
 
-   count = HOST_VM_INFO_COUNT;
-   kr = host_statistics(mach_host_self(), HOST_VM_INFO, (host_info_t)&vm_info, &count);
+   mach_msg_type_number_t count = HOST_VM_INFO_COUNT;
+   vm_statistics_data_t vm_info;
+   kern_return_t kr = host_statistics(mach_host_self(), HOST_VM_INFO, (host_info_t)&vm_info, &count);
    if (kr != KERN_SUCCESS) {
       ::Error("TUnixSystem::GetDarwinMemInfo", "host_statistics: %s", mach_error_string(kr));
       return;
@@ -4879,19 +4927,13 @@ static void GetDarwinMemInfo(MemInfo_t *meminfo)
          pshift++;
    }
 
-   used =  (Long64_t)(vm_info.active_count + vm_info.inactive_count + vm_info.wire_count) << pshift;
-   free =  (Long64_t)(vm_info.free_count) << pshift;
-   total = (Long64_t)(vm_info.active_count + vm_info.inactive_count + vm_info.free_count + vm_info.wire_count) << pshift;
-
-   // Swap is available at same time as mem, so grab values here.
-   swap_used = vm_info.pageouts << pshift;
-
    // Figure out total swap. This adds up the size of the swapfiles */
-   dirp = opendir("/private/var/vm");
+   DIR *dirp = opendir("/private/var/vm");
    if (!dirp)
        return;
 
-   swap_total = 0;
+   Long64_t swap_total = 0;
+   struct dirent *dp;
    while ((dp = readdir(dirp)) != 0) {
       struct stat sb;
       char fname [MAXNAMLEN];
@@ -4905,12 +4947,21 @@ static void GetDarwinMemInfo(MemInfo_t *meminfo)
    }
    closedir(dirp);
 
+   Long64_t used =  (Long64_t)(vm_info.active_count + vm_info.inactive_count + vm_info.wire_count) << pshift;
+   Long64_t free =  (Long64_t)(vm_info.free_count) << pshift;
+   Long64_t total = (Long64_t)(vm_info.active_count + vm_info.inactive_count + vm_info.free_count + vm_info.wire_count) << pshift;
+   Long64_t avail = (Long64_t)(vm_info.inactive_count + vm_info.free_count) << pshift;
+
+   // Swap is available at same time as mem, so grab values here.
+   Long64_t swap_used = vm_info.pageouts << pshift;
+
    meminfo->fMemTotal  = (Int_t) (total >> 20);       // divide by 1024 * 1024
    meminfo->fMemUsed   = (Int_t) (used >> 20);
    meminfo->fMemFree   = (Int_t) (free >> 20);
    meminfo->fSwapTotal = (Int_t) (swap_total >> 20);
    meminfo->fSwapUsed  = (Int_t) (swap_used >> 20);
    meminfo->fSwapFree  = meminfo->fSwapTotal - meminfo->fSwapUsed;
+   meminfo->fMemAvailable = (Int_t)(avail >> 20);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5021,6 +5072,19 @@ static void GetDarwinProcInfo(ProcInfo_t *procinfo)
 #endif
 
 #if defined(R__LINUX)
+
+namespace {
+bool parseLine(TString &s, const char *prefix, Int_t &field)
+{
+   if (s.BeginsWith(prefix)) {
+      TPRegexp{"^.+: *([^ ]+).*"}.Substitute(s, "$1");
+      field = (s.Atoi() / 1024);
+      return true;
+   }
+   return false;
+};
+} // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 /// Get system info for Linux. Only fBusSpeed is not set.
 
@@ -5034,17 +5098,9 @@ static void GetLinuxSysInfo(SysInfo_t *sysinfo)
             TPRegexp("^.+: *(.*$)").Substitute(s, "$1");
             sysinfo->fModel = s;
          }
-         if (s.BeginsWith("cpu MHz")) {
-            TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-            sysinfo->fCpuSpeed = s.Atoi();
-         }
-         if (s.BeginsWith("cache size")) {
-            TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-            sysinfo->fL2Cache = s.Atoi();
-         }
-         if (s.BeginsWith("processor")) {
-            TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-            sysinfo->fCpus = s.Atoi();
+         parseLine(s, "cpu MHz", sysinfo->fCpuSpeed);
+         parseLine(s, "cache size", sysinfo->fL2Cache);
+         if (parseLine(s, "processor", sysinfo->fCpus)) {
             sysinfo->fCpus++;
          }
       }
@@ -5054,9 +5110,7 @@ static void GetLinuxSysInfo(SysInfo_t *sysinfo)
    f = fopen("/proc/meminfo", "r");
    if (f) {
       while (s.Gets(f)) {
-         if (s.BeginsWith("MemTotal")) {
-            TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-            sysinfo->fPhysRam = (s.Atoi() / 1024);
+         if (parseLine(s, "MemTotal", sysinfo->fPhysRam)) {
             break;
          }
       }
@@ -5135,29 +5189,37 @@ static void GetLinuxMemInfo(MemInfo_t *meminfo)
 {
    TString s;
    FILE *f = fopen("/proc/meminfo", "r");
-   if (!f) return;
+   if (!f)
+      return;
+
    while (s.Gets(f)) {
-      if (s.BeginsWith("MemTotal")) {
-         TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-         meminfo->fMemTotal = (s.Atoi() / 1024);
-      }
-      if (s.BeginsWith("MemFree")) {
-         TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-         meminfo->fMemFree = (s.Atoi() / 1024);
-      }
-      if (s.BeginsWith("SwapTotal")) {
-         TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-         meminfo->fSwapTotal = (s.Atoi() / 1024);
-      }
-      if (s.BeginsWith("SwapFree")) {
-         TPRegexp("^.+: *([^ ]+).*").Substitute(s, "$1");
-         meminfo->fSwapFree = (s.Atoi() / 1024);
-      }
+      parseLine(s, "MemTotal", meminfo->fMemTotal);
+      parseLine(s, "MemFree", meminfo->fMemFree);
+      parseLine(s, "MemAvailable", meminfo->fMemAvailable);
+      parseLine(s, "Cached", meminfo->fMemCached);
+      parseLine(s, "Buffers", meminfo->fMemBuffer);
+      parseLine(s, "Shmem", meminfo->fMemShared);
+      parseLine(s, "SwapTotal", meminfo->fSwapTotal);
+      parseLine(s, "SwapFree", meminfo->fSwapFree);
+      parseLine(s, "SwapCached", meminfo->fSwapCached);
+      parseLine(s, "SReclaimable", meminfo->fSReclaimable);
    }
    fclose(f);
 
-   meminfo->fMemUsed  = meminfo->fMemTotal - meminfo->fMemFree;
-   meminfo->fSwapUsed = meminfo->fSwapTotal - meminfo->fSwapFree;
+   /*
+    * Compute memory partition like procps(free), see https://gitlab.com/procps-ng/procps/-/blob/master/proc/sysinfo.c
+    *
+    * fMemShared is a part of Cached (see https://lore.kernel.org/patchwork/patch/648763/), does not subtract twice from used
+    */
+
+   meminfo->fMemCached = meminfo->fMemCached + meminfo->fSReclaimable - meminfo->fMemShared;
+   const Int_t usedDiff = meminfo->fMemFree + meminfo->fMemCached + meminfo->fSReclaimable + meminfo->fMemBuffer;
+
+   meminfo->fMemUsed = (meminfo->fMemTotal >= usedDiff) ? meminfo->fMemTotal - usedDiff : meminfo->fMemTotal - meminfo->fMemFree;
+   meminfo->fMemAvailable = meminfo->fMemAvailable != 0 ? std::min(meminfo->fMemAvailable, meminfo->fMemTotal) : meminfo->fMemFree;
+
+   meminfo->fSwapUsed = meminfo->fSwapTotal - meminfo->fSwapFree - meminfo->fSwapCached;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5206,6 +5268,8 @@ int TUnixSystem::GetSysInfo(SysInfo_t *info) const
       GetDarwinSysInfo(&sysinfo);
 #elif defined(R__LINUX)
       GetLinuxSysInfo(&sysinfo);
+#elif defined(R__FBSD)
+      GetFreeBSDSysInfo(&sysinfo);
 #endif
    }
 
@@ -5227,6 +5291,8 @@ int TUnixSystem::GetCpuInfo(CpuInfo_t *info, Int_t sampleTime) const
    GetDarwinCpuInfo(info, sampleTime);
 #elif defined(R__LINUX)
    GetLinuxCpuInfo(info, sampleTime);
+#elif defined(R__FBSD)
+   GetFreeBSDCpuInfo(info, sampleTime);
 #endif
 
    return 0;

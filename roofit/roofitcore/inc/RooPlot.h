@@ -20,7 +20,7 @@
 #include "TNamed.h"
 
 #include <memory>
-#include <float.h>
+#include <cfloat>
 
 class TH1 ;
 
@@ -45,14 +45,14 @@ public:
   using Items = std::vector<std::pair<TObject*,std::string>>;
 
   RooPlot() ;
-  RooPlot(const char* name, const char* title, const RooAbsRealLValue &var, double xmin, double xmax, Int_t nBins) ;
   RooPlot(const RooAbsRealLValue &var, double xmin, double xmax, Int_t nBins);
-  RooPlot(double xmin, double xmax);
-  RooPlot(double xmin, double xmax, double ymin, double ymax);
+  RooPlot(double xmin, double xmax, int nBins=100);
   RooPlot(const RooAbsRealLValue &var1, const RooAbsRealLValue &var2);
   RooPlot(const RooAbsRealLValue &var1, const RooAbsRealLValue &var2,
      double xmin, double xmax, double ymin, double ymax);
   ~RooPlot() override;
+
+  RooPlot(const RooPlot& other) = delete; // cannot be copied
 
   static RooPlot* frame(const RooAbsRealLValue &var, double xmin, double xmax, Int_t nBins);
   static RooPlot* frameWithLabels(const RooAbsRealLValue &var);
@@ -108,7 +108,7 @@ public:
 
   // container management
   const char* nameOf(Int_t idx) const ;
-  TObject *findObject(const char *name, const TClass* clas=nullptr) const;
+  TObject *findObject(const char *name, const TClass* tClass=nullptr) const;
   TObject* getObject(Int_t idx) const ;
   Stat_t numItems() const {return _items.size();}
 
@@ -204,9 +204,12 @@ public:
 
   static void fillItemsFromTList(Items & items, TList const& tlist);
 
-protected:
+  void createInternalPlotVarClone();
 
-  RooPlot(const RooPlot& other) = delete; // cannot be copied
+  /// Accessor to the TH1 histogram that is the basis for drawing the content.
+  TH1 *hist() const { return _hist; }
+
+protected:
 
   class DrawOpt {
     public:
@@ -227,7 +230,7 @@ protected:
 
   void updateYAxis(double ymin, double ymax, const char *label= "");
   void updateFitRangeNorm(const TH1* hist);
-  void updateFitRangeNorm(const RooPlotable* rp, bool refeshNorm=false);
+  void updateFitRangeNorm(const RooPlotable* rp, bool refreshNorm=false);
 
   TH1* _hist = nullptr;      ///< Histogram that we uses as basis for drawing the content
   Items _items;  ///< A list of the items we contain.
@@ -237,8 +240,8 @@ protected:
   RooArgSet *_normVars = nullptr; ///< Variables that PDF plots should be normalized over
 
   const RooPlotable* _normObj = nullptr; ///<! Pointer to normalization object ;
-  double _normNumEvts;     ///< Number of events in histogram (for normalization)
-  double _normBinWidth;    ///< Histogram bin width (for normalization)
+  double _normNumEvts = 0;     ///< Number of events in histogram (for normalization)
+  double _normBinWidth = 0;    ///< Histogram bin width (for normalization)
 
   double _defYmin = 1e-5; ///< Default minimum for Yaxis (as calculated from contents)
   double _defYmax = 1.0;  ///< Default maximum for Yaxis (as calculated from contents)

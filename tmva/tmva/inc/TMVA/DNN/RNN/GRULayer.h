@@ -35,7 +35,9 @@
 #include <vector>
 
 #include "TMatrix.h"
+#include "TMVA/DNN/GeneralLayer.h"
 #include "TMVA/DNN/Functions.h"
+#include "TMVA/DNN/CNN/ContextHandles.h"
 
 namespace TMVA
 {
@@ -149,14 +151,14 @@ public:
 
    /*! Initialize the weights according to the given initialization
     **  method. */
-   virtual void Initialize();
+   void Initialize() override;
 
    /*! Initialize the hidden state and cell state method. */
    void InitState(DNN::EInitialization m = DNN::EInitialization::kZero);
 
    /*! Computes the next hidden state
     *  and next cell state with given input matrix. */
-   void Forward(Tensor_t &input, bool isTraining = true);
+   void Forward(Tensor_t &input, bool isTraining = true) override;
 
    /*! Forward for a single cell (time unit) */
    void CellForward(Matrix_t &updateGateValues, Matrix_t &candidateValues);
@@ -164,7 +166,7 @@ public:
    /*! Backpropagates the error. Must only be called directly at the corresponding
     *  call to Forward(...). */
    void Backward(Tensor_t &gradients_backward,
-                 const Tensor_t &activations_backward);
+                 const Tensor_t &activations_backward) override;
 
    /* Updates weights and biases, given the learning rate */
    void Update(const Scalar_t learningRate);
@@ -188,13 +190,13 @@ public:
    void CandidateValue(const Matrix_t &input, Matrix_t &dc);
 
    /*! Prints the info about the layer */
-   void Print() const;
+   void Print() const override;
 
    /*! Writes the information and the weights about the layer in an XML node. */
-   void AddWeightsXMLTo(void *parent);
+   void AddWeightsXMLTo(void *parent) override;
 
    /*! Read the information and the weights about the layer from XML node. */
-   void ReadWeightsFromXML(void *parent);
+   void ReadWeightsFromXML(void *parent) override;
 
    /*! Getters */
    size_t GetInputSize()               const { return this->GetInputWidth(); }
@@ -504,7 +506,8 @@ auto inline TBasicGRULayer<Architecture_t>::Forward(Tensor_t &input, bool isTrai
       Tensor_t &y = this->fY;
       Architecture_t::Rearrange(x, input);
 
-      const auto &weights = this->GetWeightsAt(0);
+      //const auto &weights = this->GetWeightsAt(0);
+      const auto &weights = this->GetWeightsTensor();
 
       auto &hx = this->fState;
       auto &cx = this->fCell;
@@ -512,8 +515,8 @@ auto inline TBasicGRULayer<Architecture_t>::Forward(Tensor_t &input, bool isTrai
       auto &hy = this->fState;
       auto &cy = this->fCell;
 
-      auto rnnDesc = static_cast<RNNDescriptors_t &>(*fDescriptors);
-      auto rnnWork = static_cast<RNNWorkspace_t &>(*fWorkspace);
+      auto & rnnDesc = static_cast<RNNDescriptors_t &>(*fDescriptors);
+      auto & rnnWork = static_cast<RNNWorkspace_t &>(*fWorkspace);
 
       Architecture_t::RNNForward(x, hx, cx, weights, y, hy, cy, rnnDesc, rnnWork, isTraining);
 
@@ -659,8 +662,8 @@ auto inline TBasicGRULayer<Architecture_t>::Backward(Tensor_t &gradients_backwar
       auto &dhx = hx;
       auto &dcx = cx;
 
-      auto rnnDesc = static_cast<RNNDescriptors_t &>(*fDescriptors);
-      auto rnnWork = static_cast<RNNWorkspace_t &>(*fWorkspace);
+      auto & rnnDesc = static_cast<RNNDescriptors_t &>(*fDescriptors);
+      auto & rnnWork = static_cast<RNNWorkspace_t &>(*fWorkspace);
 
       Architecture_t::RNNBackward(x, hx, cx, y, dy, dhy, dcy, weights, dx, dhx, dcx, weightGradients, rnnDesc, rnnWork);
 
@@ -847,7 +850,7 @@ template <typename Architecture_t>
 auto inline TBasicGRULayer<Architecture_t>::ReadWeightsFromXML(void *parent)
 -> void
 {
-	// Read weights and biases
+    // Read weights and biases
    this->ReadMatrixXML(parent, "ResetWeights", this->GetWeightsAt(0));
    this->ReadMatrixXML(parent, "ResetStateWeights", this->GetWeightsAt(1));
    this->ReadMatrixXML(parent, "ResetBiases", this->GetBiasesAt(0));

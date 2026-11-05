@@ -14,9 +14,9 @@
 #include "RooMinimizer.h"
 
 // including derived classes for factory method
-#ifdef R__HAS_ROOFIT_MULTIPROCESS
+#ifdef ROOFIT_MULTIPROCESS
 #include "LikelihoodGradientJob.h"
-#endif // R__HAS_ROOFIT_MULTIPROCESS
+#endif // ROOFIT_MULTIPROCESS
 
 namespace RooFit {
 namespace TestStatistics {
@@ -41,12 +41,13 @@ namespace TestStatistics {
  */
 LikelihoodGradientWrapper::LikelihoodGradientWrapper(std::shared_ptr<RooAbsL> likelihood,
                                                      std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean,
-                                                     std::size_t /*N_dim*/, RooMinimizer *minimizer)
-   : likelihood_(std::move(likelihood)), minimizer_(minimizer), calculation_is_clean_(std::move(calculation_is_clean))
+                                                     std::size_t /*N_dim*/, RooMinimizer *minimizer,
+                                                     SharedOffset offset)
+   : likelihood_(std::move(likelihood)),
+     minimizer_(minimizer),
+     calculation_is_clean_(std::move(calculation_is_clean)),
+     shared_offset_(std::move(offset))
 {
-   // Note to future maintainers: take care when storing the minimizer_fcn pointer. The
-   // RooAbsMinimizerFcn subclasses may get cloned inside MINUIT, which means the pointer
-   // should also somehow be updated in this class.
 }
 
 void LikelihoodGradientWrapper::synchronizeWithMinimizer(const ROOT::Math::MinimizerOptions & /*options*/) {}
@@ -54,7 +55,7 @@ void LikelihoodGradientWrapper::synchronizeWithMinimizer(const ROOT::Math::Minim
 void LikelihoodGradientWrapper::synchronizeParameterSettings(
    const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings)
 {
-   synchronizeParameterSettings(minimizer_->getMultiGenFcn(), parameter_settings);
+   synchronizeParameterSettingsImpl(parameter_settings);
 }
 
 void LikelihoodGradientWrapper::updateMinuitInternalParameterValues(const std::vector<double> & /*minuit_internal_x*/)
@@ -68,18 +69,19 @@ void LikelihoodGradientWrapper::updateMinuitExternalParameterValues(const std::v
 std::unique_ptr<LikelihoodGradientWrapper>
 LikelihoodGradientWrapper::create(LikelihoodGradientMode likelihoodGradientMode, std::shared_ptr<RooAbsL> likelihood,
                                   std::shared_ptr<WrapperCalculationCleanFlags> calculationIsClean, std::size_t nDim,
-                                  RooMinimizer *minimizer)
+                                  RooMinimizer *minimizer, SharedOffset offset)
 {
    switch (likelihoodGradientMode) {
    case LikelihoodGradientMode::multiprocess: {
-#ifdef R__HAS_ROOFIT_MULTIPROCESS
+#ifdef ROOFIT_MULTIPROCESS
       return std::make_unique<LikelihoodGradientJob>(std::move(likelihood), std::move(calculationIsClean), nDim,
-                                                     minimizer);
+                                                     minimizer, std::move(offset));
 #else
-      (void) likelihood;
-      (void) calculationIsClean;
-      (void) nDim;
-      (void) minimizer;
+      (void)likelihood;
+      (void)calculationIsClean;
+      (void)nDim;
+      (void)minimizer;
+      (void)offset;
       throw std::runtime_error("MinuitFcnGrad ctor with LikelihoodGradientMode::multiprocess is not available in this "
                                "build without RooFit::Multiprocess!");
 #endif

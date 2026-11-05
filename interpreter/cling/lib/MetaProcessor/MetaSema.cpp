@@ -31,9 +31,9 @@
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Basic/SourceManager.h"
 
-#include <cstdlib>
-#include <cctype>
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 
 namespace {
   ///\brief Make a valid C++ identifier, replacing illegal characters in `S'
@@ -75,7 +75,7 @@ namespace cling {
 
     std::string pathname(m_Interpreter.lookupFileOrLibrary(file));
     if (pathname.empty())
-      pathname = file;
+      pathname = file.str();
     if (m_Interpreter.loadFile(pathname, /*allowSharedLib=*/true, transaction)
         == Interpreter::kSuccess) {
       registerUnloadPoint(unloadPoint, pathname);
@@ -113,7 +113,7 @@ namespace cling {
 
   void MetaSema::actOnComment(llvm::StringRef comment) const {
     // Some of the comments are meaningful for the cling::Interpreter
-    m_Interpreter.declare(comment);
+    m_Interpreter.declare(comment.str());
   }
 
   MetaSema::ActionResult MetaSema::actOnxCommand(llvm::StringRef file,
@@ -141,14 +141,14 @@ namespace cling {
       return (m_Interpreter.echo(OS.str(), ret) == Interpreter::kSuccess)
               ? CR_Success : CR_Failure;
     };
-    
+
     cling::Transaction* T = nullptr;
     if (actOnLCommand(file, &T) != AR_Success || !T)
       return AR_Failure;
 
     // First, try function named after `file`; add any alternatives below.
     const std::string tryCallThese[] = {
-      makeValidCXXIdentifier(llvm::sys::path::stem(file)),
+      makeValidCXXIdentifier(llvm::sys::path::stem(file).str()),
       // FIXME: this provides an entry point that is independent from the macro
       // filename (and still works if file is renamed); should we enable this?
       //"__main__",
@@ -193,7 +193,7 @@ namespace cling {
     auto interpreterHasTransaction = [] (const Interpreter& Interp,
                                          const Transaction* T) {
       for (const Transaction* I = Interp.getFirstTransaction();
-           I != 0; I = I->getNext())
+           I != nullptr; I = I->getNext())
         if (I == T)
           return true;
       return false;
@@ -201,21 +201,35 @@ namespace cling {
     clang::FileManager& FM = m_Interpreter.getSema().getSourceManager().getFileManager();
 
     std::string pathname(m_Interpreter.lookupFileOrLibrary(file));
-    const auto FE = FM.getFile(pathname, /*OpenFile=*/false,
-                               /*CacheFailure=*/false);
-    auto TI = m_FEToTransaction.find(FE);
-    if (!FE || TI == m_FEToTransaction.end())
+    auto FE = FM.getFileRef(pathname, /*OpenFile=*/false,
+                            /*CacheFailure=*/false);
+    if (!FE) {
+      llvm::consumeError(FE.takeError());
+      return AR_Failure;
+    }
+
+    auto TI = m_FEToTransaction.find(*FE);
+    if (TI == m_FEToTransaction.end())
       return AR_Success;
 
     const Transaction* unloadPoint = (*TI).second;
+    // Erase the entry before reverting: as of now the file is no longer
+    // registered as loaded, whatever the outcome of the reversion.
+    m_FEToTransaction.erase(TI);
     if (interpreterHasTransaction(m_Interpreter, unloadPoint)) {
       // Revert all the transactions that came after `unloadPoint'.
       while (m_Interpreter.getLastTransaction() != unloadPoint) {
-        if (const auto ThisFE = m_TransactionToFE[m_Interpreter.getLastTransaction()]) {
-          auto I = m_FEToTransaction.find(ThisFE);
-          if (I != m_FEToTransaction.end())
-            m_FEToTransaction.erase(I);
-        }
+        const Transaction* T = m_Interpreter.getLastTransaction();
+        // Any file whose unload point is `T' can no longer be reverted: drop
+        // its registration. This must not be left behind: `T' is deallocated
+        // during the reversion and its address may be reused by a future
+        // transaction, which would alias the stale entry.
+        llvm::SmallVector<const clang::FileEntry*, 2> revertedFiles;
+        for (const auto &Entry : m_FEToTransaction)
+          if (Entry.second == T)
+            revertedFiles.push_back(Entry.first);
+        for (const clang::FileEntry* RFE : revertedFiles)
+          m_FEToTransaction.erase(RFE);
         m_Interpreter.unload(/*numberOfTransactions=*/1);
       }
 
@@ -226,7 +240,6 @@ namespace cling {
       m_MetaProcessor.getOuts() << "!!!ERROR: Transaction for file: " << file
                                 << " has already been unloaded\n";
     }
-    m_FEToTransaction.erase(TI);
     return AR_Success;
   }
 
@@ -247,23 +260,22 @@ namespace cling {
       m_Interpreter.enableRawInput(mode);
   }
 
-  void MetaSema::actOndebugCommand(llvm::Optional<int> mode) const {
-    constexpr clang::codegenoptions::DebugInfoKind DebugInfo[] = {
-      clang::codegenoptions::NoDebugInfo,
-      clang::codegenoptions::LocTrackingOnly,
-      clang::codegenoptions::DebugLineTablesOnly,
-      clang::codegenoptions::LimitedDebugInfo,
-      clang::codegenoptions::FullDebugInfo
-    };
+  void MetaSema::actOndebugCommand(std::optional<int> mode) const {
+    constexpr llvm::codegenoptions::DebugInfoKind DebugInfo[] = {
+        llvm::codegenoptions::NoDebugInfo,
+        llvm::codegenoptions::LocTrackingOnly,
+        llvm::codegenoptions::DebugLineTablesOnly,
+        llvm::codegenoptions::LimitedDebugInfo,
+        llvm::codegenoptions::FullDebugInfo};
     constexpr int N = (int)std::extent<decltype(DebugInfo)>::value;
 
     clang::CodeGenOptions& CGO = m_Interpreter.getCI()->getCodeGenOpts();
     if (!mode) {
-      bool flag = (CGO.getDebugInfo() == clang::codegenoptions::NoDebugInfo);
+      bool flag = (CGO.getDebugInfo() == llvm::codegenoptions::NoDebugInfo);
       if (flag)
-        CGO.setDebugInfo(clang::codegenoptions::LimitedDebugInfo);
+        CGO.setDebugInfo(llvm::codegenoptions::LimitedDebugInfo);
       else
-        CGO.setDebugInfo(clang::codegenoptions::NoDebugInfo);
+        CGO.setDebugInfo(llvm::codegenoptions::NoDebugInfo);
       m_MetaProcessor.getOuts() << (flag ? "G" : "Not g") << "enerating debug symbols\n";
     } else {
       mode = (*mode < 0) ? 0 : ((*mode >= N) ? N - 1 : *mode);
@@ -288,11 +300,11 @@ namespace cling {
   }
 
   void MetaSema::actOnstoreStateCommand(llvm::StringRef name) const {
-    m_Interpreter.storeInterpreterState(name);
+    m_Interpreter.storeInterpreterState(name.str());
   }
 
   void MetaSema::actOncompareStateCommand(llvm::StringRef name) const {
-    m_Interpreter.compareInterpreterState(name);
+    m_Interpreter.compareInterpreterState(name.str());
   }
 
   void MetaSema::actOnstatsCommand(llvm::StringRef name,
@@ -336,7 +348,9 @@ namespace cling {
       "   " << metaString << "U <filename>\t\t- Unloads the given file\n"
       "\n"
       "   " << metaString << "(I|include) [path]\t\t- Shows all include paths. If a path is given,"
-                             "\n\t\t\t\t  adds the path to the include paths.\n"
+                             "\n\t\t\t\t  adds the path to the include paths. Paths with double\n"
+                             "\n\t\t\t\t  slashes // are not supported since they are treated as\n"
+                             "\n\t\t\t\t  C++ comments; use AddIncludePath instead in that case.\n"
       "\n"
       "   " << metaString << "O <level>\t\t\t- Sets the optimization level (0-3)"
                              "\n\t\t\t\t  If no level is given, prints the current setting.\n"
@@ -403,16 +417,16 @@ namespace cling {
 
     for (clang::SourceManager::fileinfo_iterator I = SM.fileinfo_begin(),
            E = SM.fileinfo_end(); I != E; ++I) {
-      m_MetaProcessor.getOuts() << (*I).first->getName();
+      m_MetaProcessor.getOuts() << (*I).first.getName();
       m_MetaProcessor.getOuts() << "\n";
     }
 #if 0
     // Only available in clang's trunk:
-    clang::ASTReader* Reader = m_Interpreter.getCI()->getModuleManager();
-    const clang::serialization::ModuleManager& ModMan
-      = Reader->getModuleManager();
-    for (clang::serialization::ModuleManager::ModuleConstIterator I
-           = ModMan.begin(), E = ModMan.end(); I != E; ++I) {
+    clang::ASTReader* Reader = m_Interpreter.getCI()->getASTReader();
+    const clang::serialization::ASTReader& ASTRead
+      = Reader->getASTReader();
+    for (clang::serialization::ASTReader::ModuleConstIterator I
+           = ASTRead.begin(), E = ASTRead.end(); I != E; ++I) {
       typedef
         std::vector<llvm::PointerIntPair<const clang::FileEntry*, 1, bool> >
         InputFiles_t;
@@ -466,7 +480,7 @@ namespace cling {
       clang::ASTContext& Ctx = m_Interpreter.getCI()->getASTContext();
       if (result) {
         *result = Value(Ctx.IntTy, m_Interpreter);
-        result->getAs<long long>() = exitStatus;
+        result->setLongLong(exitStatus); // FIXME: This should assert.
       }
       return (exitStatus == 0) ? AR_Success : AR_Failure;
     }
@@ -479,14 +493,17 @@ namespace cling {
                                      llvm::StringRef filename) {
     std::string pathname(m_Interpreter.lookupFileOrLibrary(filename));
     if (pathname.empty())
-      pathname = filename;
+      pathname = filename.str();
 
     clang::FileManager& FM = m_Interpreter.getSema().getSourceManager().getFileManager();
-    const clang::FileEntry* FE = FM.getFile(pathname, /*OpenFile=*/false,
-                                            /*CacheFailure=*/false);
-    if (FE && !m_FEToTransaction[FE]) {
-      m_FEToTransaction[FE] = unloadPoint;
-      m_TransactionToFE[unloadPoint] = FE;
+    auto FE =
+        FM.getFileRef(pathname, /*OpenFile=*/false, /*CacheFailure=*/false);
+    if (!FE) {
+      llvm::consumeError(FE.takeError());
+      return;
     }
+
+    if (*FE && !m_FEToTransaction[*FE])
+      m_FEToTransaction[*FE] = unloadPoint;
   }
 } // end namespace cling

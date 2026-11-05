@@ -28,6 +28,20 @@
 class TH2D;
 class TProfile2D;
 
+#if defined R__B64 && defined __cpp_lib_atomic_ref
+// ROOT-20834 Atomic_ref on 32 bit can fail because of alignment problems
+#define TH3D_FILL_THREADSAFE
+#endif
+
+namespace ROOT::Internal {
+/// Entrypoint for thread-safe filling from RDataFrame.
+template <typename T, typename... Args>
+auto FillThreadSafe(T &histo, Args... args) -> decltype(histo.FillThreadSafe(args...), void())
+{
+   histo.FillThreadSafe(args...);
+}
+} // namespace ROOT::Internal
+
 class TH3 : public TH1, public TAtt3D {
 
 protected:
@@ -74,7 +88,14 @@ private:
    using TH1::IntegralAndError;
 
 public:
-   virtual ~TH3();
+   ~TH3() override;
+   using TH1::AddBinContent;
+           /// Increment 3D bin content by 1.
+           /// Passing an out-of-range bin leads to undefined behavior
+           void     AddBinContent(Int_t binx, Int_t biny, Int_t binz) { AddBinContent(GetBin(binx, biny, binz)); }
+           /// Increment 3D bin content by a weight w.
+           /// Passing an out-of-range bin leads to undefined behavior
+           void     AddBinContent(Int_t binx, Int_t biny, Int_t binz, Double_t w) { AddBinContent(GetBin(binx, biny, binz), w); }
            Int_t    BufferEmpty(Int_t action = 0) override;
            void     Copy(TObject &hnew) const override;
    virtual Int_t    Fill(Double_t x, Double_t y, Double_t z);
@@ -88,7 +109,8 @@ public:
    virtual Int_t    Fill(Double_t x, const char *namey, Double_t z, Double_t w);
    virtual Int_t    Fill(Double_t x, Double_t y, const char *namez, Double_t w);
 
-           void     FillRandom(const char *fname, Int_t ntimes=5000, TRandom *rng = nullptr) override;
+   using TH1::FillRandom;
+           void     FillRandom(TF1 *f1, Int_t ntimes=5000, TRandom *rng = nullptr) override;
            void     FillRandom(TH1 *h, Int_t ntimes=5000, TRandom *rng = nullptr) override;
    virtual void     FitSlicesZ(TF1 *f1 = nullptr, Int_t binminx = 1, Int_t binmaxx = 0, Int_t binminy = 1, Int_t binmaxy = 0,
                                Int_t cut = 0, Option_t *option = "QNR"); // *MENU*
@@ -102,7 +124,7 @@ public:
    virtual Double_t GetBinWithContent3(Double_t c, Int_t &binx, Int_t &biny, Int_t &binz, Int_t firstx=0, Int_t lastx=0,Int_t firsty=0, Int_t lasty=0, Int_t firstz=0, Int_t lastz=0, Double_t maxdiff=0) const;
    virtual Double_t GetCorrelationFactor(Int_t axis1=1,Int_t axis2=2) const;
    virtual Double_t GetCovariance(Int_t axis1=1,Int_t axis2=2) const;
-   virtual void     GetRandom3(Double_t &x, Double_t &y, Double_t &, TRandom * rng = nullptr);
+   virtual void     GetRandom3(Double_t &x, Double_t &y, Double_t &, TRandom * rng = nullptr, Option_t *option = "");
            void     GetStats(Double_t *stats) const override;
            Double_t Integral(Option_t *option="") const override;
    virtual Double_t Integral(Int_t binx1, Int_t binx2, Int_t biny1, Int_t biny2, Int_t binz1, Int_t binz2, Option_t *option="") const;
@@ -127,23 +149,24 @@ public:
            void     SetBinContent(Int_t bin, Int_t, Double_t content) override { SetBinContent(bin, content); }
            void     SetBinContent(Int_t binx, Int_t biny, Int_t binz, Double_t content) override { SetBinContent(GetBin(binx, biny, binz), content); }
    virtual void     SetShowProjection(const char *option="xy",Int_t nbins=1);   // *MENU*
+   virtual TH1     *ShowBackground3D(Int_t nIterX = 20, Int_t nIterY = 20, Int_t nIterZ = 20, Option_t *option = "same");
 
 protected:
 
    virtual TH1D    *DoProject1D(const char* name, const char * title, int imin1, int imax1, int imin2, int imax2,
                                 const TAxis* projAxis, const TAxis * axis1, const TAxis * axis2, Option_t * option) const;
    virtual TH1D    *DoProject1D(const char *name, const char *title, const TAxis *projAxis, const TAxis *axis1,
-                                const TAxis *axis2, bool computeErrors, bool originalRange, bool useUF, bool useOF) const;
+                                const TAxis *axis2, bool computeErrors, bool originalRange, bool useUF, bool useOF, bool useWidth) const;
    virtual TH2D    *DoProject2D(const char* name, const char * title, const TAxis* projX, const TAxis* projY,
-                                bool computeErrors, bool originalRange, bool useUF, bool useOF) const;
+                                bool computeErrors, bool originalRange, bool useUF, bool useOF, bool useWidth) const;
    virtual TProfile2D *DoProjectProfile2D(const char* name, const char * title, const TAxis* projX, const TAxis* projY,
-                                           bool originalRange, bool useUF, bool useOF) const;
+                                           bool originalRange, bool useUF, bool useOF, bool useWidth) const;
 
    // these functions are need to be used inside TProfile3D::DoProjectProfile2D
    static TH1D     *DoProject1D(const TH3 & h, const char* name, const char * title, const TAxis* projX,
-                                bool computeErrors, bool originalRange, bool useUF, bool useOF);
+                                bool computeErrors, bool originalRange, bool useUF, bool useOF, bool useWidth);
    static TH2D     *DoProject2D(const TH3 & h, const char* name, const char * title, const TAxis* projX, const TAxis* projY,
-                                bool computeErrors, bool originalRange, bool useUF, bool useOF);
+                                bool computeErrors, bool originalRange, bool useUF, bool useOF, bool useWidth);
 
    ClassDefOverride(TH3,6)  //3-Dim histogram base class
 };
@@ -163,21 +186,22 @@ public:
                                           ,Int_t nbinsy,const Double_t *ybins
                                           ,Int_t nbinsz,const Double_t *zbins);
    TH3C(const TH3C &h3c);
-   virtual ~TH3C();
+   ~TH3C() override;
 
            void      AddBinContent(Int_t bin) override;
            void      AddBinContent(Int_t bin, Double_t w) override;
+   using TH3::AddBinContent;
            void      Copy(TObject &hnew) const override;
            void      Reset(Option_t *option="") override;
            void      SetBinsLength(Int_t n=-1) override;
 
            TH3C&     operator=(const TH3C &h1);
-   friend  TH3C      operator*(Float_t c1, TH3C &h1);
-   friend  TH3C      operator*(TH3C &h1, Float_t c1) {return operator*(c1,h1);}
-   friend  TH3C      operator+(TH3C &h1, TH3C &h2);
-   friend  TH3C      operator-(TH3C &h1, TH3C &h2);
-   friend  TH3C      operator*(TH3C &h1, TH3C &h2);
-   friend  TH3C      operator/(TH3C &h1, TH3C &h2);
+   friend  TH3C      operator*(Float_t c1, TH3C const &h1);
+   friend TH3C operator*(TH3C const &h1, Float_t c1);
+   friend  TH3C      operator+(TH3C const &h1, TH3C const &h2);
+   friend  TH3C      operator-(TH3C const &h1, TH3C const &h2);
+   friend  TH3C      operator*(TH3C const &h1, TH3C const &h2);
+   friend  TH3C      operator/(TH3C const &h1, TH3C const &h2);
 
 protected:
            Double_t RetrieveBinContent(Int_t bin) const override { return Double_t (fArray[bin]); }
@@ -186,6 +210,15 @@ protected:
    ClassDefOverride(TH3C,4)  //3-Dim histograms (one char per channel)
 };
 
+TH3C operator*(Float_t c1, TH3C const &h1);
+inline TH3C operator*(TH3C const &h1, Float_t c1)
+{
+   return operator*(c1, h1);
+}
+TH3C operator+(TH3C const &h1, TH3C const &h2);
+TH3C operator-(TH3C const &h1, TH3C const &h2);
+TH3C operator*(TH3C const &h1, TH3C const &h2);
+TH3C operator/(TH3C const &h1, TH3C const &h2);
 //________________________________________________________________________
 
 class TH3S : public TH3, public TArrayS {
@@ -201,21 +234,22 @@ public:
                                           ,Int_t nbinsy,const Double_t *ybins
                                           ,Int_t nbinsz,const Double_t *zbins);
    TH3S(const TH3S &h3s);
-   virtual ~TH3S();
+   ~TH3S() override;
 
            void      AddBinContent(Int_t bin) override;
            void      AddBinContent(Int_t bin, Double_t w) override;
+   using TH3::AddBinContent;
            void      Copy(TObject &hnew) const override;
            void      Reset(Option_t *option="") override;
            void      SetBinsLength(Int_t n=-1) override;
 
            TH3S&     operator=(const TH3S &h1);
-   friend  TH3S      operator*(Float_t c1, TH3S &h1);
-   friend  TH3S      operator*(TH3S &h1, Float_t c1) {return operator*(c1,h1);}
-   friend  TH3S      operator+(TH3S &h1, TH3S &h2);
-   friend  TH3S      operator-(TH3S &h1, TH3S &h2);
-   friend  TH3S      operator*(TH3S &h1, TH3S &h2);
-   friend  TH3S      operator/(TH3S &h1, TH3S &h2);
+   friend  TH3S      operator*(Float_t c1, TH3S const &h1);
+   friend TH3S operator*(TH3S const &h1, Float_t c1);
+   friend  TH3S      operator+(TH3S const &h1, TH3S const &h2);
+   friend  TH3S      operator-(TH3S const &h1, TH3S const &h2);
+   friend  TH3S      operator*(TH3S const &h1, TH3S const &h2);
+   friend  TH3S      operator/(TH3S const &h1, TH3S const &h2);
 
 protected:
            Double_t RetrieveBinContent(Int_t bin) const override { return Double_t (fArray[bin]); }
@@ -223,6 +257,16 @@ protected:
 
    ClassDefOverride(TH3S,4)  //3-Dim histograms (one short per channel)
 };
+
+TH3S operator*(Float_t c1, TH3S const &h1);
+inline TH3S operator*(TH3S const &h1, Float_t c1)
+{
+   return operator*(c1, h1);
+}
+TH3S operator+(TH3S const &h1, TH3S const &h2);
+TH3S operator-(TH3S const &h1, TH3S const &h2);
+TH3S operator*(TH3S const &h1, TH3S const &h2);
+TH3S operator/(TH3S const &h1, TH3S const &h2);
 
 //________________________________________________________________________
 
@@ -239,29 +283,86 @@ public:
                                           ,Int_t nbinsy,const Double_t *ybins
                                           ,Int_t nbinsz,const Double_t *zbins);
    TH3I(const TH3I &h3i);
-   virtual ~TH3I();
+   ~TH3I() override;
 
            void      AddBinContent(Int_t bin) override;
            void      AddBinContent(Int_t bin, Double_t w) override;
+   using TH3::AddBinContent;
            void      Copy(TObject &hnew) const override;
            void      Reset(Option_t *option="") override;
            void      SetBinsLength(Int_t n=-1) override;
 
            TH3I&     operator=(const TH3I &h1);
-   friend  TH3I      operator*(Float_t c1, TH3I &h1);
-   friend  TH3I      operator*(TH3I &h1, Float_t c1) {return operator*(c1,h1);}
-   friend  TH3I      operator+(TH3I &h1, TH3I &h2);
-   friend  TH3I      operator-(TH3I &h1, TH3I &h2);
-   friend  TH3I      operator*(TH3I &h1, TH3I &h2);
-   friend  TH3I      operator/(TH3I &h1, TH3I &h2);
+   friend  TH3I      operator*(Float_t c1, TH3I const &h1);
+   friend TH3I operator*(TH3I const &h1, Float_t c1);
+   friend  TH3I      operator+(TH3I const &h1, TH3I const &h2);
+   friend  TH3I      operator-(TH3I const &h1, TH3I const &h2);
+   friend  TH3I      operator*(TH3I const &h1, TH3I const &h2);
+   friend  TH3I      operator/(TH3I const &h1, TH3I const &h2);
 
 protected:
            Double_t RetrieveBinContent(Int_t bin) const override { return Double_t (fArray[bin]); }
            void     UpdateBinContent(Int_t bin, Double_t content) override { fArray[bin] = Int_t (content); }
 
-   ClassDefOverride(TH3I,4)  //3-Dim histograms (one 32 bits integer per channel)
+   ClassDefOverride(TH3I,4)  //3-Dim histograms (one 32 bit integer per channel)
 };
 
+TH3I operator*(Float_t c1, TH3I const &h1);
+inline TH3I operator*(TH3I const &h1, Float_t c1)
+{
+   return operator*(c1, h1);
+}
+TH3I operator+(TH3I const &h1, TH3I const &h2);
+TH3I operator-(TH3I const &h1, TH3I const &h2);
+TH3I operator*(TH3I const &h1, TH3I const &h2);
+TH3I operator/(TH3I const &h1, TH3I const &h2);
+
+//________________________________________________________________________
+
+class TH3L : public TH3, public TArrayL64 {
+public:
+   TH3L();
+   TH3L(const char *name,const char *title,Int_t nbinsx,Double_t xlow,Double_t xup
+                                  ,Int_t nbinsy,Double_t ylow,Double_t yup
+                                  ,Int_t nbinsz,Double_t zlow,Double_t zup);
+   TH3L(const char *name,const char *title,Int_t nbinsx,const Float_t *xbins
+                                          ,Int_t nbinsy,const Float_t *ybins
+                                          ,Int_t nbinsz,const Float_t *zbins);
+   TH3L(const char *name,const char *title,Int_t nbinsx,const Double_t *xbins
+                                          ,Int_t nbinsy,const Double_t *ybins
+                                          ,Int_t nbinsz,const Double_t *zbins);
+   TH3L(const TH3L &h3l);
+   ~TH3L() override;
+   void      AddBinContent(Int_t bin) override;
+   void      AddBinContent(Int_t bin, Double_t w) override;
+   using TH3::AddBinContent;
+   void      Copy(TObject &hnew) const override;
+   void      Reset(Option_t *option="") override;
+   void      SetBinsLength(Int_t n=-1) override;
+           TH3L&     operator=(const TH3L &h1);
+   friend  TH3L      operator*(Float_t c1, TH3L const &h1);
+   friend TH3L operator*(TH3L const &h1, Float_t c1);
+   friend  TH3L      operator+(TH3L const &h1, TH3L const &h2);
+   friend  TH3L      operator-(TH3L const &h1, TH3L const &h2);
+   friend  TH3L      operator*(TH3L const &h1, TH3L const &h2);
+   friend  TH3L      operator/(TH3L const &h1, TH3L const &h2);
+
+protected:
+   Double_t RetrieveBinContent(Int_t bin) const override { return Double_t (fArray[bin]); }
+   void     UpdateBinContent(Int_t bin, Double_t content) override { fArray[bin] = Long64_t (content); }
+
+   ClassDefOverride(TH3L,0)  //3-Dim histograms (one 64 bit integer per channel)
+};
+
+TH3L operator*(Float_t c1, TH3L const &h1);
+inline TH3L operator*(TH3L const &h1, Float_t c1)
+{
+   return operator*(c1, h1);
+}
+TH3L operator+(TH3L const &h1, TH3L const &h2);
+TH3L operator-(TH3L const &h1, TH3L const &h2);
+TH3L operator*(TH3L const &h1, TH3L const &h2);
+TH3L operator/(TH3L const &h1, TH3L const &h2);
 
 //________________________________________________________________________
 
@@ -278,22 +379,28 @@ public:
                                           ,Int_t nbinsy,const Double_t *ybins
                                           ,Int_t nbinsz,const Double_t *zbins);
    TH3F(const TH3F &h3f);
-   virtual ~TH3F();
+   ~TH3F() override;
 
+           /// Increment bin content by 1.
+           /// Passing an out-of-range bin leads to undefined behavior
            void      AddBinContent(Int_t bin) override {++fArray[bin];}
+           /// Increment bin content by a weight w.
+           /// \warning The value of w is cast to `Float_t` before being added.
+           /// Passing an out-of-range bin leads to undefined behavior
            void      AddBinContent(Int_t bin, Double_t w) override
                                  {fArray[bin] += Float_t (w);}
+   using TH3::AddBinContent;
            void      Copy(TObject &hnew) const override;
            void      Reset(Option_t *option="") override;
            void      SetBinsLength(Int_t n=-1) override;
 
            TH3F&     operator=(const TH3F &h1);
-   friend  TH3F      operator*(Float_t c1, TH3F &h1);
-   friend  TH3F      operator*(TH3F &h1, Float_t c1) {return operator*(c1,h1);}
-   friend  TH3F      operator+(TH3F &h1, TH3F &h2);
-   friend  TH3F      operator-(TH3F &h1, TH3F &h2);
-   friend  TH3F      operator*(TH3F &h1, TH3F &h2);
-   friend  TH3F      operator/(TH3F &h1, TH3F &h2);
+   friend  TH3F      operator*(Float_t c1, TH3F const &h1);
+   friend TH3F operator*(TH3F const &h1, Float_t c1);
+   friend  TH3F      operator+(TH3F const &h1, TH3F const &h2);
+   friend  TH3F      operator-(TH3F const &h1, TH3F const &h2);
+   friend  TH3F      operator*(TH3F const &h1, TH3F const &h2);
+   friend  TH3F      operator/(TH3F const &h1, TH3F const &h2);
 
 protected:
            Double_t RetrieveBinContent(Int_t bin) const override { return Double_t (fArray[bin]); }
@@ -301,6 +408,16 @@ protected:
 
    ClassDefOverride(TH3F,4)  //3-Dim histograms (one float per channel)
 };
+
+TH3F operator*(Float_t c1, TH3F const &h1);
+inline TH3F operator*(TH3F const &h1, Float_t c1)
+{
+   return operator*(c1, h1);
+}
+TH3F operator+(TH3F const &h1, TH3F const &h2);
+TH3F operator-(TH3F const &h1, TH3F const &h2);
+TH3F operator*(TH3F const &h1, TH3F const &h2);
+TH3F operator/(TH3F const &h1, TH3F const &h2);
 
 //________________________________________________________________________
 
@@ -317,28 +434,50 @@ public:
                                           ,Int_t nbinsy,const Double_t *ybins
                                           ,Int_t nbinsz,const Double_t *zbins);
    TH3D(const TH3D &h3d);
-   virtual ~TH3D();
+   ~TH3D() override;
 
+           /// Increment bin content by 1.
+           /// Passing an out-of-range bin leads to undefined behavior
            void      AddBinContent(Int_t bin) override {++fArray[bin];}
+           /// Increment bin content by a weight w
+           /// Passing an out-of-range bin leads to undefined behavior
            void      AddBinContent(Int_t bin, Double_t w) override
                                  {fArray[bin] += Double_t (w);}
+   using TH3::AddBinContent;
            void      Copy(TObject &hnew) const override;
            void      Reset(Option_t *option="") override;
            void      SetBinsLength(Int_t n=-1) override;
 
            TH3D&     operator=(const TH3D &h1);
-   friend  TH3D      operator*(Float_t c1, TH3D &h1);
-   friend  TH3D      operator*(TH3D &h1, Float_t c1) {return operator*(c1,h1);}
-   friend  TH3D      operator+(TH3D &h1, TH3D &h2);
-   friend  TH3D      operator-(TH3D &h1, TH3D &h2);
-   friend  TH3D      operator*(TH3D &h1, TH3D &h2);
-   friend  TH3D      operator/(TH3D &h1, TH3D &h2);
+   friend  TH3D      operator*(Float_t c1, TH3D const &h1);
+   friend TH3D operator*(TH3D const &h1, Float_t c1);
+   friend  TH3D      operator+(TH3D const &h1, TH3D const &h2);
+   friend  TH3D      operator-(TH3D const &h1, TH3D const &h2);
+   friend  TH3D      operator*(TH3D const &h1, TH3D const &h2);
+   friend  TH3D      operator/(TH3D const &h1, TH3D const &h2);
 
 protected:
            Double_t RetrieveBinContent(Int_t bin) const override { return fArray[bin]; }
            void     UpdateBinContent(Int_t bin, Double_t content) override { fArray[bin] = content; }
+private:
+#ifdef TH3D_FILL_THREADSAFE
+           void FillThreadSafe(Double_t x, Double_t y, Double_t z, Double_t w = 1.);
+           template <typename T, typename... Args>
+           friend auto ROOT::Internal::FillThreadSafe(T &histo, Args... args)
+              -> decltype(histo.FillThreadSafe(args...), void());
+#endif
 
    ClassDefOverride(TH3D,4)  //3-Dim histograms (one double per channel)
 };
+
+TH3D operator*(Float_t c1, TH3D const &h1);
+inline TH3D operator*(TH3D const &h1, Float_t c1)
+{
+   return operator*(c1, h1);
+}
+TH3D operator+(TH3D const &h1, TH3D const &h2);
+TH3D operator-(TH3D const &h1, TH3D const &h2);
+TH3D operator*(TH3D const &h1, TH3D const &h2);
+TH3D operator/(TH3D const &h1, TH3D const &h2);
 
 #endif

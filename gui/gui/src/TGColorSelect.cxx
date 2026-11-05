@@ -75,10 +75,6 @@ and the signal:
 
 #include <iostream>
 
-ClassImp(TGColorFrame);
-ClassImp(TG16ColorSelector);
-ClassImp(TGColorPopup);
-ClassImp(TGColorSelect);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -231,6 +227,7 @@ TGColorPopup::TGColorPopup(const TGWindow *p, const TGWindow *m, Pixel_t color) 
    wattr.fOverrideRedirect = kTRUE;
    //wattr.fSaveUnder = kTRUE;
    gVirtualX->ChangeWindowAttributes(fId, &wattr);
+   gVirtualX->SetWindowHint(fId, TVirtualX::kHintTooltip);
 
    AddInput(kStructureNotifyMask);
 
@@ -676,30 +673,24 @@ void TGColorSelect::SetAlphaColor(ULong_t color, Bool_t emit)
 
 void TGColorSelect::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   char quote = '"';
    static Int_t nn = 1;
-   TString cvar = TString::Format("ColPar%d",nn);
+   TString cvar = TString::Format("ColPar%d",nn++);
 
    ULong_t color = GetColor();
    const char *colorname = TColor::PixelAsHexString(color);
    gClient->GetColorByName(colorname, color);
 
-   out << std::endl << "   // color select widget" << std::endl;
-   out << "   ULong_t " << cvar.Data() << ";" << std::endl;
-   out << "   gClient->GetColorByName(" << quote << colorname << quote
-       << ", " << cvar.Data() << ");" << std::endl;
+   out << "\n   // color select widget\n";
+   out << "   ULong_t " << cvar << ";\n";
+   out << "   gClient->GetColorByName(\"" << colorname << "\", " << cvar << ");\n";
 
-   out <<"   TGColorSelect *";
-   out << GetName() << " = new TGColorSelect(" << fParent->GetName()
-       << ", " << cvar.Data() << ", " << WidgetId() << ");" << std::endl;
-   nn++;
+   out <<"   TGColorSelect *" << GetName() << " = new TGColorSelect(" << fParent->GetName()
+       << ", " << cvar << ", " << WidgetId() << ");\n";
 
    if (option && strstr(option, "keep_names"))
-      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");" << std::endl;
+      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");\n";
 
-   if (!IsEnabled()) {
-      out << "   " << GetName() << "->Disable();" << std::endl;
-   }
-   out << std::endl;
+   if (!IsEnabled())
+      out << "   " << GetName() << "->Disable();\n";
 }
 

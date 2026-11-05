@@ -43,7 +43,7 @@ using namespace ROOT::Math;
 
 
 
-#ifdef __CINT__
+#ifdef __CLING__
 #define INF 1.7E308
 #else
 #define INF std::numeric_limits<double>::infinity()
@@ -108,7 +108,6 @@ int compare( std::string name, double v1, double v2, double scale = 2.0) {
 }
 
 // typedef for a free function like gamma(double x, double a, double b)
-// (dont have blank spaces between for not confusing CINT parser)
 typedef double (*FreeFunc3)(double, double, double );
 typedef double (*FreeFunc4)(double, double, double, double );
 
@@ -469,10 +468,12 @@ int testGammaFunction(int n = 100) {
       PrintStatus(ret);
       iret |= ret;
 
+#if !defined(_MSC_VER) || !defined(__CLING__) || defined(R__ENABLE_BROKEN_WIN_TESTS)
       PrintTest("\t test inverse with Steffenson algo");
       ret = dist.TestInverse2(RootFinder::kGSL_STEFFENSON);
       PrintStatus(ret);
       iret |= ret;
+#endif
 
       PrintTest("\t test inverse with Brent method");
       ret = dist.TestInverse1(RootFinder::kBRENT);
@@ -534,12 +535,14 @@ int testBetaFunction(int n = 100) {
       PrintStatus(ret);
       iret |= ret;
 
+#if !defined(_MSC_VER) || !defined(__CLING__) || defined(R__ENABLE_BROKEN_WIN_TESTS)
       if (i < 5) {  // test failed for k=5
          PrintTest("\t test inverse with Steffenson algo");
          ret = dist.TestInverse2(RootFinder::kGSL_STEFFENSON);
          PrintStatus(ret);
          iret |= ret;
       }
+#endif
    }
 
    return iret;
@@ -550,7 +553,7 @@ int stressMathMore(double nscale = 1) {
 
    int iret = 0;
 
-#ifdef __CINT__
+#ifdef __CLING__
    std::cout << "Test must be run in compile mode - please use ACLIC !!" << std::endl;
    return 0;
 #endif

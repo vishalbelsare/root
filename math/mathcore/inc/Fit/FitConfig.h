@@ -42,6 +42,8 @@ namespace ROOT {
    Class describing the configuration of the fit, options and parameter settings
    using the ROOT::Fit::ParameterSettings class
 
+   @see ROOT::Math::MinimizerOptions::SetDefaultMinimizer
+
    @ingroup FitMain
 */
 class FitConfig {
@@ -167,16 +169,16 @@ public:
    ROOT::Math::MinimizerOptions & MinimizerOptions()  { return fMinimizerOpts; }
 
 
-#ifndef __CINT__   // this method fails on Windows
    /**
-      set all the minimizer options using class MinimizerOptions
+      set all the minimizer options using class ROOT::Math::MinimizerOptions
+      @see ROOT::Math::MinimizerOptions::SetDefaultMinimizer
     */
    void SetMinimizerOptions(const ROOT::Math::MinimizerOptions & minopt);
-#endif
 
 
    /**
-      set minimizer type
+      set minimizer type and algorithm
+      @see ROOT::Math::MinimizerOptions::SetDefaultMinimizer
    */
    void SetMinimizer(const char *type, const char *algo = nullptr) {
       if (type) fMinimizerOpts.SetMinimizerType(type);
@@ -224,10 +226,10 @@ public:
    */
    void SetNormErrors(bool on = true) { fNormErrors= on; }
 
-   ///set parabolic erros
+   ///set parabolic errors
    void SetParabErrors(bool on = true) { fParabErrors = on; }
 
-   ///set Minos erros computation to be performed after fitting
+   ///set Minos errors computation to be performed after fitting
    void SetMinosErrors(bool on = true) { fMinosErrors = on; }
 
    ///apply the weight correction for error matrix computation

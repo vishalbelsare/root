@@ -16,13 +16,12 @@
 #include "RooCategory.h"
 #include "RooSimultaneous.h"
 #include "RooWorkspace.h"
+#include "RooFit/ModelConfig.h"
 
-#include "RooStats/ModelConfig.h"
 #include "RooStats/HistFactory/HistFactoryNavigation.h"
 #include "RooStats/HistFactory/HistFactoryException.h"
 
 
-ClassImp(RooStats::HistFactory::HistFactoryNavigation);
 
 
 namespace RooStats {
@@ -88,7 +87,7 @@ namespace RooStats {
       }
 
       // Get the workspace
-      RooWorkspace* wspace = (RooWorkspace*) file->Get(WorkspaceName.c_str());
+      RooWorkspace* wspace = static_cast<RooWorkspace*>(file->Get(WorkspaceName.c_str()));
       if( !wspace ) {
    std::cout << "Error: Failed to get workspace: " << WorkspaceName
         << " from file: " << FileName << std::endl;
@@ -96,7 +95,7 @@ namespace RooStats {
       }
 
       // Get the ModelConfig
-      ModelConfig* mc = (ModelConfig*) wspace->obj(ModelConfigName);
+      ModelConfig* mc = static_cast<ModelConfig*>(wspace->obj(ModelConfigName));
       if( !mc ) {
    std::cout << "Error: Failed to find ModelConfig: " << ModelConfigName
         << " from workspace: " << WorkspaceName
@@ -230,7 +229,7 @@ namespace RooStats {
       for( std::map< std::string, RooAbsReal*>::iterator itr = SampleFunctionMap.begin();
       itr != SampleFunctionMap.end(); ++itr) {
    std::string sample_name = itr->first;
-   label_print_width = TMath::Max(label_print_width, (int)sample_name.size()+2);
+   label_print_width = std::max(label_print_width, (int)sample_name.size()+2);
       }
       */
 
@@ -253,7 +252,7 @@ namespace RooStats {
 
       // Make the line break as a set of "===============" ...
       std::string line_break;
-      int high_bin = _maxBinToPrint==-1 ? num_bins : TMath::Min(_maxBinToPrint, (int)num_bins);
+      int high_bin = _maxBinToPrint==-1 ? num_bins : std::min(_maxBinToPrint, (int)num_bins);
       int low_bin = _minBinToPrint==-1 ? 1 : _minBinToPrint;
       int break_length = (high_bin - low_bin + 1) * _bin_print_width;
       break_length += _label_print_width;
@@ -291,10 +290,10 @@ namespace RooStats {
       for( std::map< std::string, RooAbsReal*>::iterator itr = SampleFunctionMap.begin();
       itr != SampleFunctionMap.end(); ++itr) {
    std::string sample_name = itr->first;
-   _label_print_width = TMath::Max(_label_print_width, (int)sample_name.size()+2);
+   _label_print_width = std::max(_label_print_width, (int)sample_name.size()+2);
       }
 
-      _label_print_width = TMath::Max( _label_print_width, (int)channel.size() + 7);
+      _label_print_width = std::max( _label_print_width, (int)channel.size() + 7);
     }
 
 
@@ -324,7 +323,7 @@ namespace RooStats {
    std::string channel_name = fChannelNameVec.at(i_chan);
 
    // If we pass a channel string, we only print that one channel
-   if( channel_to_print != "" && channel_name != channel_to_print) continue;
+   if( !channel_to_print.empty() && channel_name != channel_to_print) continue;
 
    std::unique_ptr<TH1> data_hist{GetDataHist(data, channel_name, channel_name+"_tmp")};
    std::cout << std::setw(_label_print_width) << channel_name + " (data)";
@@ -354,7 +353,8 @@ namespace RooStats {
     void HistFactoryNavigation::PrintParameters(bool IncludeConstantParams) {
 
       // Get the list of parameters
-      RooArgSet* params = fModel->getParameters(*fObservables);
+      RooArgSet params;
+      fModel->getParameters(fObservables, params);
 
       std::cout << std::endl;
 
@@ -366,7 +366,7 @@ namespace RooStats {
       << std::endl;
 
       // Loop over the parameters and print their values, etc
-      for (auto const *param : static_range_cast<RooRealVar *>(*params)) {
+      for (auto const *param : static_range_cast<RooRealVar *>(params)) {
         if( !IncludeConstantParams && param->isConstant() ) continue;
 
         std::cout << std::setw(30) << param->GetName();
@@ -383,7 +383,8 @@ namespace RooStats {
                          bool IncludeConstantParams) {
 
       // Get the list of parameters
-      RooArgSet* params = fModel->getParameters(*fObservables);
+      RooArgSet params;
+      fModel->getParameters(fObservables, params);
 
       // Get the pdf for this channel
       RooAbsPdf* channel_pdf = GetChannelPdf(channel);
@@ -398,7 +399,7 @@ namespace RooStats {
       << std::endl;
 
       // Loop over the parameters and print their values, etc
-      for (auto const *param : static_range_cast<RooRealVar *>(*params)) {
+      for (auto const *param : static_range_cast<RooRealVar *>(params)) {
         if( !IncludeConstantParams && param->isConstant() ) continue;
         if( findChild(param->GetName(), channel_pdf)==nullptr ) continue;
         std::cout << std::setw(30) << param->GetName();
@@ -417,7 +418,8 @@ namespace RooStats {
                         bool IncludeConstantParams) {
 
       // Get the list of parameters
-      RooArgSet* params = fModel->getParameters(*fObservables);
+      RooArgSet params;
+      fModel->getParameters(fObservables, params);
 
       // Get the pdf for this channel
       RooAbsReal* sample_func = SampleFunction(channel, sample);
@@ -432,7 +434,7 @@ namespace RooStats {
       << std::endl;
 
       // Loop over the parameters and print their values, etc
-      for (auto const *param : static_range_cast<RooRealVar *>(*params)) {
+      for (auto const *param : static_range_cast<RooRealVar *>(params)) {
         if( !IncludeConstantParams && param->isConstant() ) continue;
         if( findChild(param->GetName(), sample_func)==nullptr ) continue;
         std::cout << std::setw(30) << param->GetName();
@@ -452,7 +454,7 @@ namespace RooStats {
       // (Could be optimized, it uses an intermediate histogram for now...)
 
       // Get the histogram, fetch the bin content, and return
-      std::unique_ptr<TH1> channel_hist_tmp{GetChannelHist(channel, (channel+"_tmp").c_str())};
+      std::unique_ptr<TH1> channel_hist_tmp{GetChannelHist(channel, channel+"_tmp")};
       return channel_hist_tmp->GetBinContent(bin);
     }
 
@@ -464,7 +466,7 @@ namespace RooStats {
       //  Could be optimized, it uses an intermediate histogram for now...)
 
       // Get the histogram, fetch the bin content, and return
-      std::unique_ptr<TH1> sample_hist_tmp{GetSampleHist(channel, sample,  (channel+"_tmp").c_str())};
+      std::unique_ptr<TH1> sample_hist_tmp{GetSampleHist(channel, sample,  channel+"_tmp")};
       return sample_hist_tmp->GetBinContent(bin);
     }
 
@@ -485,7 +487,7 @@ namespace RooStats {
 
 
     RooAbsReal* HistFactoryNavigation::SampleFunction(const std::string& channel, const std::string& sample){
-      // Return the function object pointer cooresponding
+      // Return the function object pointer corresponding
       // to a particular sample in a particular channel
 
       std::map< std::string, std::map< std::string, RooAbsReal*> >::iterator channel_itr;
@@ -532,7 +534,7 @@ namespace RooStats {
       RooArgList observable_list( *GetObservableSet(channel) );
 
       std::string name = hist_name;
-      if(hist_name=="") name = channel + "_" + sample + "_hist";
+      if(hist_name.empty()) name = channel + "_" + sample + "_hist";
 
       RooAbsReal* sample_function = SampleFunction(channel, sample);
 
@@ -559,7 +561,7 @@ namespace RooStats {
    RooAbsReal* sample_function = itr->second;
    std::unique_ptr<TH1> sample_hist{MakeHistFromRooFunction(sample_function, observable_list,
                      tmp_hist_name)};
-   total_hist = (TH1*) sample_hist->Clone("TotalHist");
+   total_hist = static_cast<TH1*>(sample_hist->Clone("TotalHist"));
    break;
       }
       if (!total_hist)
@@ -579,7 +581,7 @@ namespace RooStats {
    total_hist->Add(sample_hist.get());
       }
 
-      if(hist_name=="") total_hist->SetName(hist_name.c_str());
+      if(hist_name.empty()) total_hist->SetName(hist_name.c_str());
       else total_hist->SetName( (channel + "_hist").c_str() );
 
       return total_hist;
@@ -592,7 +594,7 @@ namespace RooStats {
       std::vector<std::string> sample_list;
 
       std::map< std::string, RooAbsReal*> sample_map = fChannelSampleFunctionMap[channel];
-      std::map< std::string, RooAbsReal*>::iterator itr = sample_map.begin();;
+      std::map< std::string, RooAbsReal*>::iterator itr = sample_map.begin();
       for( ; itr != sample_map.end(); ++itr) {
    sample_list.push_back( itr->first );
       }
@@ -631,48 +633,46 @@ namespace RooStats {
       // MAKE IT WORK FOR MULTI-DIMENSIONAL
       //
 
-      std::unique_ptr<TList> dataset_list;
-
       // If the dataset covers multiple categories,
       // Split the dataset based on the categories
       if(strcmp(fModel->ClassName(),"RooSimultaneous")==0){
 
    // If so, get a list of the component pdf's:
-   RooSimultaneous* simPdf = (RooSimultaneous*) fModel;
-   RooCategory* channelCat = (RooCategory*) (&simPdf->indexCat());
+   RooSimultaneous* simPdf = static_cast<RooSimultaneous*>(fModel);
+   auto channelCat = static_cast<RooCategory const*>(&simPdf->indexCat());
 
-   dataset_list.reset(data->split(*channelCat));
+   std::vector<std::unique_ptr<RooAbsData>> dataset_list{data->split(*channelCat)};
 
-   data = dynamic_cast<RooDataSet*>( dataset_list->FindObject(channel.c_str()) );
+   auto found = std::find_if(dataset_list.begin(), dataset_list.end(), [&](auto const &item) {
+     return channel == item->GetName();
+   });
+   data = found != dataset_list.end() ? dynamic_cast<RooDataSet*>(found->get()) : nullptr;
 
       }
 
       RooArgList vars( *GetObservableSet(channel) );
 
-      int dim = vars.getSize();
+      int dim = vars.size();
 
       TH1* hist = nullptr;
 
       if (!data) {
    std::cout << "Error: To Create Histogram from RooDataSet" << std::endl;
-   if (dataset_list) {
-      dataset_list.reset();
-   }
         throw hf_exc();
       } else if( dim==1 ) {
-   RooRealVar* varX = (RooRealVar*) vars.at(0);
+   RooRealVar* varX = static_cast<RooRealVar*>(vars.at(0));
    hist = data->createHistogram( name.c_str(),*varX, RooFit::Binning(varX->getBinning()) );
       }
       else if( dim==2 ) {
-   RooRealVar* varX = (RooRealVar*) vars.at(0);
-   RooRealVar* varY = (RooRealVar*) vars.at(1);
+   RooRealVar* varX = static_cast<RooRealVar*>(vars.at(0));
+   RooRealVar* varY = static_cast<RooRealVar*>(vars.at(1));
    hist = data->createHistogram( name.c_str(),*varX, RooFit::Binning(varX->getBinning()),
                   RooFit::YVar(*varY, RooFit::Binning(varY->getBinning())) );
       }
       else if( dim==3 ) {
-   RooRealVar* varX = (RooRealVar*) vars.at(0);
-   RooRealVar* varY = (RooRealVar*) vars.at(1);
-   RooRealVar* varZ = (RooRealVar*) vars.at(2);
+   RooRealVar* varX = static_cast<RooRealVar*>(vars.at(0));
+   RooRealVar* varY = static_cast<RooRealVar*>(vars.at(1));
+   RooRealVar* varZ = static_cast<RooRealVar*>(vars.at(2));
    hist = data->createHistogram( name.c_str(),*varX, RooFit::Binning(varX->getBinning()),
                   RooFit::YVar(*varY, RooFit::Binning(varY->getBinning())),
                   RooFit::YVar(*varZ, RooFit::Binning(varZ->getBinning())) );
@@ -681,17 +681,8 @@ namespace RooStats {
    std::cout << "Error: To Create Histogram from RooDataSet, Dimension must be 1, 2, or 3" << std::endl;
    std::cout << "Observables: " << std::endl;
    vars.Print("V");
-   if (dataset_list) {
-      dataset_list->Delete();
-      dataset_list.reset();
-   }
    throw hf_exc();
       }
-
-   if (dataset_list) {
-      dataset_list->Delete();
-      dataset_list.reset();
-   }
 
       return hist;
 
@@ -746,11 +737,6 @@ namespace RooStats {
       //RooAbsPdf* modelPdf = mc->GetPdf();
       //RooArgSet* observables = mc->GetObservables();
 
-      // Create vectors to hold the channel pdf's
-      // as well as the set of observables for each channel
-      //std::map< std::string, RooAbsPdf* >  channelPdfMap;
-      //std::map< std::string, RooArgSet* >  channelObservMap;
-
       // Check if it is a simultaneous pdf or not
       // (if it's an individual channel, it won't be, if it's
       // combined, it's simultaneous)
@@ -760,8 +746,8 @@ namespace RooStats {
       if(strcmp(modelPdf->ClassName(),"RooSimultaneous")==0){
 
    // If so, get a list of the component pdf's:
-   RooSimultaneous* simPdf = (RooSimultaneous*) modelPdf;
-   RooCategory* channelCat = (RooCategory*) (&simPdf->indexCat());
+   auto simPdf = static_cast<RooSimultaneous*>(modelPdf);
+   auto channelCat = static_cast<RooCategory const*>(&simPdf->indexCat());
 
    // Iterate over the categories and get the
    // pdf and observables for each category
@@ -769,13 +755,13 @@ namespace RooStats {
      const std::string& ChannelName = nameIdx.first;
      fChannelNameVec.push_back( ChannelName );
      RooAbsPdf* pdftmp = simPdf->getPdf(ChannelName.c_str()) ;
-     RooArgSet* obstmp = pdftmp->getObservables(*observables) ;
+     RooArgSet* obstmp = std::unique_ptr<RooArgSet>{pdftmp->getObservables(*observables)}.release();
      fChannelPdfMap[ChannelName] = pdftmp;
      fChannelObservMap[ChannelName] =  obstmp;
    }
 
       } else {
-   RooArgSet* obstmp = modelPdf->getObservables(*observables) ;
+   RooArgSet* obstmp = std::unique_ptr<RooArgSet>{modelPdf->getObservables(*observables)}.release();
    // The channel name is model_CHANNEL
    std::string ChannelName = modelPdf->GetName();
    ChannelName = ChannelName.replace(0, 6, "");
@@ -800,7 +786,8 @@ namespace RooStats {
    // the (one) that is a RooRealSumPdf
    // Based on the mode, we assume that node is
    // the "unconstrained" pdf node for that channel
-    for (auto *arg : *pdf->getComponents()) {
+   std::unique_ptr<RooArgSet> comps{pdf->getComponents()};
+    for (auto *arg : *comps) {
       std::string ClassName = arg->ClassName();
       if( ClassName == "RooRealSumPdf" ) {
          fChannelSumNodeMap[ChannelName] = static_cast <RooRealSumPdf*>(arg);
@@ -836,8 +823,8 @@ namespace RooStats {
       size_t index = SampleName.find("L_x_");
       SampleName.replace( index, 4, "" );
     }
-    if( SampleName.find(ChannelName.c_str()) != std::string::npos ) {
-      size_t index = SampleName.find(ChannelName.c_str());
+    if( SampleName.find(ChannelName) != std::string::npos ) {
+      size_t index = SampleName.find(ChannelName);
       SampleName = SampleName.substr(0, index-1);
     }
 
@@ -861,7 +848,8 @@ namespace RooStats {
 
       // Check if it is a "component",
       // ie a sub node:
-      for (auto arg : *parent->getComponents()) {
+      std::unique_ptr<RooArgSet> comps{parent->getComponents()};
+      for (auto arg : *comps) {
          std::string ArgName = arg->GetName();
          if (ArgName == name) {
             term = arg;
@@ -875,7 +863,8 @@ namespace RooStats {
       // Check if it's a Parameter
       // (ie a RooRealVar)
       RooArgSet args;
-      for (auto *param : *parent->getParameters(&args)) {
+      std::unique_ptr<RooArgSet> parameters{parent->getParameters(&args)};
+      for (auto *param : *parameters) {
         std::string ParamName = param->GetName();
         if( ParamName == name ) {
             term = param;
@@ -947,7 +936,7 @@ namespace RooStats {
       // Find its value
       double sigma = 0.0;
 
-      if( ConstraintType == "" ) {
+      if( ConstraintType.empty() ) {
    std::cout << "Error: Constraint type is an empty string."
         << " This simply should not be." << std::endl;
    throw hf_exc();
@@ -961,9 +950,9 @@ namespace RooStats {
    // For alpha's, the sigma points to a global RooConstVar
    // with the name "1"
    // For gamma_stat_*, the sigma is named *_sigma
-   std::string sigmaName = "";
+   std::string sigmaName;
    if( parameter.find("alpha_")!=std::string::npos ) {
-     sigmaName = "1";;
+     sigmaName = "1";
    }
    else if( parameter.find("gamma_stat_")!=std::string::npos ) {
      sigmaName = parameter + "_sigma";
@@ -982,14 +971,14 @@ namespace RooStats {
       else if( ConstraintType == "RooPoisson" ){
    // Poisson errors are given by inverting: tau = 1 / (sigma*sigma)
    std::string tauName = "nom_" + parameter;
-   RooAbsReal* tauVar = dynamic_cast<RooAbsReal*>( constraintTerm->findServer(tauName.c_str()) );
+   RooAbsReal* tauVar = dynamic_cast<RooAbsReal*>(constraintTerm->findServer(tauName.c_str()) );
    if( tauVar==nullptr ) {
      std::cout << "Error: Failed to find the nominal 'tau' node: " << tauName
           << " for the RooPoisson: " << constraintTerm->GetName() << std::endl;
      throw hf_exc();
    }
    double tau_val = tauVar->getVal();
-   sigma = 1.0 / TMath::Sqrt( tau_val );
+   sigma = 1.0 / std::sqrt( tau_val );
       }
       else {
    std::cout << "Error: Encountered unknown constraint type for Stat Uncertainties: "
@@ -1012,6 +1001,12 @@ namespace RooStats {
         throw hf_exc();
       }
 
+
+      const std::string attrib = "ORIGNAME:" + ToReplace;
+      const bool oldAttrib = ReplaceWith->getAttribute(attrib.c_str());
+      ReplaceWith->setAttribute(attrib.c_str());
+      RooArgSet newServerSet{*ReplaceWith};
+
       // Now that we have the node we want to replace, we have to
       // get its parent node
 
@@ -1025,13 +1020,14 @@ namespace RooStats {
         if( findChild(client->GetName(), fModel) == nullptr) continue;
 
         // Now, do the replacement:
-        bool valueProp=false;
-        bool shapeProp=false;
-        client->replaceServer( *nodeToReplace, *ReplaceWith, valueProp, shapeProp );
+        client->redirectServers(newServerSet);
         std::cout << "Replaced: " << ToReplace << " with: " << ReplaceWith->GetName()
                 << " in node: " << client->GetName() << std::endl;
 
       }
+
+      // reset temporary attribute for server redirection
+      ReplaceWith->setAttribute(attrib.c_str(), oldAttrib);
 
       return;
 
@@ -1069,7 +1065,7 @@ namespace RooStats {
       {
         for (auto *component : static_range_cast<RooAbsReal*>(components)) {
           std::string NodeName = component->GetName();
-          label_print_width = TMath::Max(label_print_width, static_cast<int>(NodeName.size())+2);
+          label_print_width = std::max(label_print_width, static_cast<int>(NodeName.size())+2);
         }
       }
 
@@ -1096,12 +1092,7 @@ namespace RooStats {
         RooFit::MsgLevel levelBefore = RooMsgService::instance().globalKillBelow();
         RooMsgService::instance().setGlobalKillBelow(RooFit::FATAL);
         std::unique_ptr<TH1> hist;
-        try {
-          hist.reset(MakeHistFromRooFunction( component, observable_list, NodeName+"_tmp"));
-        } catch(...) {
-        RooMsgService::instance().setGlobalKillBelow(levelBefore);
-        throw;
-        }
+        hist.reset(MakeHistFromRooFunction( component, observable_list, NodeName+"_tmp"));
         RooMsgService::instance().setGlobalKillBelow(levelBefore);
 
         // Print the hist
@@ -1112,7 +1103,7 @@ namespace RooStats {
       }
       /////
       std::string line_break;
-      int high_bin = _maxBinToPrint==-1 ? num_bins : TMath::Min(_maxBinToPrint, (int)num_bins);
+      int high_bin = _maxBinToPrint==-1 ? num_bins : std::min(_maxBinToPrint, (int)num_bins);
       int low_bin = _minBinToPrint==-1 ? 1 : _minBinToPrint;
       int break_length = (high_bin - low_bin + 1) * bin_print_width;
       break_length += label_print_width;
@@ -1142,24 +1133,24 @@ namespace RooStats {
       // Cone and empty the template
       //      TH1* hist = (TH1*) histTemplate.Clone( name.c_str() );
 
-      int dim = vars.getSize();
+      int dim = vars.size();
 
       TH1* hist=nullptr;
 
       if( dim==1 ) {
-   RooRealVar* varX = (RooRealVar*) vars.at(0);
+   RooRealVar* varX = static_cast<RooRealVar*>(vars.at(0));
    hist = func->createHistogram( name.c_str(),*varX, RooFit::Binning(varX->getBinning()), RooFit::Scaling(false) );
       }
       else if( dim==2 ) {
-   RooRealVar* varX = (RooRealVar*) vars.at(0);
-   RooRealVar* varY = (RooRealVar*) vars.at(1);
+   RooRealVar* varX = static_cast<RooRealVar*>(vars.at(0));
+   RooRealVar* varY = static_cast<RooRealVar*>(vars.at(1));
    hist = func->createHistogram( name.c_str(),*varX, RooFit::Binning(varX->getBinning()), RooFit::Scaling(false),
                   RooFit::YVar(*varY, RooFit::Binning(varY->getBinning())) );
       }
       else if( dim==3 ) {
-   RooRealVar* varX = (RooRealVar*) vars.at(0);
-   RooRealVar* varY = (RooRealVar*) vars.at(1);
-   RooRealVar* varZ = (RooRealVar*) vars.at(2);
+   RooRealVar* varX = static_cast<RooRealVar*>(vars.at(0));
+   RooRealVar* varY = static_cast<RooRealVar*>(vars.at(1));
+   RooRealVar* varZ = static_cast<RooRealVar*>(vars.at(2));
    hist = func->createHistogram( name.c_str(),*varX, RooFit::Binning(varX->getBinning()), RooFit::Scaling(false),
                   RooFit::YVar(*varY, RooFit::Binning(varY->getBinning())),
                   RooFit::YVar(*varZ, RooFit::Binning(varZ->getBinning())) );
@@ -1191,7 +1182,8 @@ namespace RooStats {
       // set the constant as
 
       // Get the list of parameters
-      RooArgSet* params = fModel->getParameters(*fObservables);
+      RooArgSet params;
+      fModel->getParameters(fObservables, params);
 
       std::cout << std::endl;
 
@@ -1203,7 +1195,7 @@ namespace RooStats {
       << std::endl;
 
       // Loop over the parameters and print their values, etc
-      for (auto *param : static_range_cast<RooRealVar *>(*params)) {
+      for (auto *param : static_range_cast<RooRealVar *>(params)) {
 
           std::string ParamName = param->GetName();
           TString ParamNameTString(ParamName);

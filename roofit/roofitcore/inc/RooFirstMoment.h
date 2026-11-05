@@ -22,18 +22,16 @@
 
 
 class RooRealVar;
-class RooArgList ;
 
 class RooFirstMoment : public RooAbsMoment {
 public:
 
-  RooFirstMoment() ;
+  RooFirstMoment() = default;
   RooFirstMoment(const char *name, const char *title, RooAbsReal& func, RooRealVar& x) ;
   RooFirstMoment(const char *name, const char *title, RooAbsReal& func, RooRealVar& x, const RooArgSet& nset, bool intNSet=false) ;
-  ~RooFirstMoment() override ;
 
   RooFirstMoment(const RooFirstMoment& other, const char* name = nullptr);
-  TObject* clone(const char* newname) const override { return new RooFirstMoment(*this, newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooFirstMoment(*this, newname); }
 
   const RooAbsReal& xF() { return _xf.arg() ; }
   const RooAbsReal& ixF() { return _ixf.arg() ; }

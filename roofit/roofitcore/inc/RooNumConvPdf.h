@@ -33,7 +33,7 @@ public:
 
   RooNumConvPdf(const RooNumConvPdf& other, const char* name=nullptr) ;
 
-  TObject* clone(const char* newname) const override { return new RooNumConvPdf(*this,newname) ; }
+  TObject* clone(const char* newname=nullptr) const override { return new RooNumConvPdf(*this,newname) ; }
   ~RooNumConvPdf() override ;
 
   double evaluate() const override ;
@@ -58,13 +58,13 @@ public:
 protected:
 
   // WVE Store all properties of RooNumConvolution here so that can be take
-  // along in the copy ctor.
+  // along in the copy constructor.
 
   RooNumConvolution& conv() const { if (!_init) initialize() ; return *_conv ; }
 
-  mutable bool _init ; ///<! do not persist
+  mutable bool _init = false; ///<! do not persist
   void initialize() const ;
-  mutable RooNumConvolution* _conv ; ///<! Actual convolution calculation
+  mutable std::unique_ptr<RooNumConvolution> _conv ; ///<! Actual convolution calculation
 
   RooRealProxy _origVar ;         ///< Original convolution variable
   RooRealProxy _origPdf ;         ///< Original input PDF

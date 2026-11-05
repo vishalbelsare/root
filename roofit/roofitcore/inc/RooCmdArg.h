@@ -23,7 +23,7 @@
 
 class RooArgSet ;
 
-class RooCmdArg final : public TNamed {
+class RooCmdArg : public TNamed {
 public:
 
   RooCmdArg();
@@ -39,6 +39,7 @@ public:
             const char* s1=nullptr, const char* s2=nullptr,
             const TObject* o1=nullptr, const TObject* o2=nullptr, const RooCmdArg* ca=nullptr, const char* s3=nullptr,
             const RooArgSet* c1=nullptr, const RooArgSet* c2=nullptr) ;
+
   RooCmdArg(const RooCmdArg& other) ;
   RooCmdArg& operator=(const RooCmdArg& other) ;
   void addArg(const RooCmdArg& arg) ;
@@ -93,7 +94,7 @@ public:
   }
   /// Return string stored in slot idx
   const char* getString(Int_t idx) const {
-      return (_s[idx].size()>0) ? _s[idx].c_str() : nullptr ;
+      return (!_s[idx].empty()) ? _s[idx].c_str() : nullptr ;
   }
   /// Return TObject stored in slot idx
   const TObject* getObject(Int_t idx) const {
@@ -107,6 +108,8 @@ public:
   bool procSubArgs() const { return _procSubArgs; }
   bool prefixSubArgs() const { return _prefixSubArgs; }
 
+  std::string constructorCode() const;
+
 private:
 
   static const RooCmdArg _none  ; ///< Static instance of null object
@@ -116,10 +119,10 @@ private:
   Int_t _i[2] ;            ///< Payload integers
   std::string _s[3] ;      ///< Payload strings
   TObject* _o[2] ;         ///< Payload objects
-  bool _procSubArgs ;    ///< If true argument requires recursive processing
-  RooArgSet* _c ;          ///< Payload RooArgSets
+  bool _procSubArgs = false; ///< If true argument requires recursive processing
+  RooArgSet *_c = nullptr;   ///< Payload RooArgSets
   RooLinkedList _argList ; ///< Payload sub-arguments
-  bool _prefixSubArgs ;  ///< Prefix sub-arguments with container name?
+  bool _prefixSubArgs = true; ///< Prefix sub-arguments with container name?
 
   ClassDefOverride(RooCmdArg,0) // Generic named argument container
 };

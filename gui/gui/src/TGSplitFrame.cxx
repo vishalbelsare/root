@@ -23,8 +23,8 @@
 #include "TClass.h"
 #include "TList.h"
 #include "TVirtualX.h"
-#include "snprintf.h"
 
+#include <cstdio>
 #include <iostream>
 
 /** \class TGSplitFrame
@@ -39,8 +39,6 @@ A split frame tool tip.
 */
 
 
-ClassImp(TGSplitTool);
-ClassImp(TGSplitFrame);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a split frame tool tip. P is the tool tips parent window (normally
@@ -751,39 +749,25 @@ void TGSplitFrame::UnSplit(const char *which)
 
 void TGSplitFrame::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   if (fBackground != GetDefaultFrameBackground()) SaveUserColor(out, option);
+   // save options and color if not default
+   auto extra_args = SaveCtorArgs(out);
 
-   out << std::endl << "   // splittable frame" << std::endl;
-   out << "   TGSplitFrame *";
-   out << GetName() << " = new TGSplitFrame(" << fParent->GetName()
-       << "," << GetWidth() << "," << GetHeight();
+   out << "\n   // splittable frame\n";
+   out << "   TGSplitFrame *" << GetName() << " = new TGSplitFrame(" << fParent->GetName() << "," << GetWidth() << ","
+       << GetHeight() << extra_args << ");\n";
 
-   if (fBackground == GetDefaultFrameBackground()) {
-      if (!GetOptions()) {
-         out << ");" << std::endl;
-      } else {
-         out << "," << GetOptionString() <<");" << std::endl;
-      }
-   } else {
-      out << "," << GetOptionString() << ",ucolor);" << std::endl;
-   }
    if (option && strstr(option, "keep_names"))
-      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");" << std::endl;
+      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");\n";
 
    // setting layout manager if it differs from the main frame type
    // coverity[returned_null]
    // coverity[dereference]
-   TGLayoutManager * lm = GetLayoutManager();
-   if ((GetOptions() & kHorizontalFrame) &&
-       (lm->InheritsFrom(TGHorizontalLayout::Class()))) {
-      ;
-   } else if ((GetOptions() & kVerticalFrame) &&
-              (lm->InheritsFrom(TGVerticalLayout::Class()))) {
-      ;
-   } else {
-      out << "   " << GetName() <<"->SetLayoutManager(";
+   TGLayoutManager *lm = GetLayoutManager();
+   if (!((GetOptions() & kHorizontalFrame) && lm->InheritsFrom(TGHorizontalLayout::Class())) &&
+       !((GetOptions() & kVerticalFrame) && lm->InheritsFrom(TGVerticalLayout::Class()))) {
+      out << "   " << GetName() << "->SetLayoutManager(";
       lm->SavePrimitive(out, option);
-      out << ");"<< std::endl;
+      out << ");\n";
    }
 
    SavePrimitiveSubframes(out, option);

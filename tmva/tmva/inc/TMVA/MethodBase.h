@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MethodBase                                                            *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Virtual base class for all MVA method                                     *
@@ -27,7 +27,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_MethodBase
@@ -65,18 +65,6 @@ class TDirectory;
 class TSpline;
 class TH1F;
 class TH1D;
-class TMultiGraph;
-
-/*! \class TMVA::IPythonInteractive
-\ingroup TMVA
-
-This class is needed by JsMVA, and it's a helper class for tracking errors during
-the training in Jupyter notebook. It’s only initialized in Jupyter notebook context.
-In initialization we specify some title, and a TGraph will be created for every title.
-We can add new data points easily to all TGraphs. These graphs are added to a
-TMultiGraph, and during an interactive training we get this TMultiGraph object
-and plot it with JsROOT.
-*/
 
 namespace TMVA {
 
@@ -86,27 +74,7 @@ namespace TMVA {
    class MethodCuts;
    class MethodBoost;
    class DataSetInfo;
-   namespace Experimental {
-   class Classification;
-   }
    class TrainingHistory;
-
-   class IPythonInteractive {
-   public:
-       IPythonInteractive();
-       ~IPythonInteractive();
-       void Init(std::vector<TString>& graphTitles);
-       void ClearGraphs();
-       void AddPoint(Double_t x, Double_t y1, Double_t y2);
-       void AddPoint(std::vector<Double_t>& dat);
-       inline TMultiGraph* Get() {return fMultiGraph;}
-       inline bool NotInitialized(){ return fNumGraphs==0;};
-   private:
-       TMultiGraph* fMultiGraph;
-       std::vector<TGraph*> fGraphs;
-       Int_t fNumGraphs;
-       Int_t fIndex;
-   };
 
    class MethodBase : virtual public IMethod, public Configurable {
 
@@ -115,7 +83,6 @@ namespace TMVA {
       friend class RootFinder;
       friend class MethodBoost;
       friend class MethodCrossValidation;
-      friend class Experimental::Classification;
 
    public:
 
@@ -155,7 +122,7 @@ namespace TMVA {
       virtual std::map<TString,Double_t> OptimizeTuningParameters(TString fomType="ROCIntegral", TString fitType="FitGA");
       virtual void SetTuneParameters(std::map<TString,Double_t> tuneParameters);
 
-      virtual void     Train() = 0;
+      void             Train() override = 0;
 
       // store and retrieve time used for training
       void             SetTrainTime( Double_t trainTime ) { fTrainTime = trainTime; }
@@ -181,9 +148,9 @@ namespace TMVA {
                                        Types::ETreeType type );
 
       // options treatment
-      virtual void     Init()           = 0;
-      virtual void     DeclareOptions() = 0;
-      virtual void     ProcessOptions() = 0;
+      void     Init()           override = 0;
+      void     DeclareOptions() override = 0;
+      void     ProcessOptions() override = 0;
       virtual void     DeclareCompatibilityOptions(); // declaration of past options
 
       // reset the Method --> As if it was not yet trained, just instantiated
@@ -195,7 +162,7 @@ namespace TMVA {
       // classifier response:
       // some methods may return a per-event error estimate
       // error calculation is skipped if err==0
-      virtual Double_t GetMvaValue( Double_t* errLower = nullptr, Double_t* errUpper = nullptr) = 0;
+      Double_t GetMvaValue( Double_t* errLower = nullptr, Double_t* errUpper = nullptr) override = 0;
 
       // signal/background classification response
       Double_t GetMvaValue( const TMVA::Event* const ev, Double_t* err = nullptr, Double_t* errUpper = nullptr );
@@ -208,6 +175,9 @@ namespace TMVA {
       virtual std::vector<Double_t> GetMvaValues(Long64_t firstEvt = 0, Long64_t lastEvt = -1, Bool_t logProgress = false);
       // same as above but using a provided data set (used by MethodCategory)
       virtual std::vector<Double_t> GetDataMvaValues(DataSet *data = nullptr, Long64_t firstEvt = 0, Long64_t lastEvt = -1, Bool_t logProgress = false);
+
+      virtual std::vector<Float_t> GetAllRegressionValues();
+      virtual std::vector<Float_t> GetAllMulticlassValues();
 
    public:
       // regression response
@@ -243,13 +213,13 @@ namespace TMVA {
       virtual Double_t GetRarity( Double_t mvaVal, Types::ESBType reftype = Types::kBackground ) const;
 
       // create ranking
-      virtual const Ranking* CreateRanking() = 0;
+      const Ranking* CreateRanking() override = 0;
 
       // make ROOT-independent C++ class
-      virtual void     MakeClass( const TString& classFileName = TString("") ) const;
+      void     MakeClass( const TString& classFileName = TString("") ) const override;
 
       // print help message
-      void             PrintHelpMessage() const;
+      void             PrintHelpMessage() const override;
 
       //
       // streamer methods for training information (creates "weight" files) --------
@@ -262,7 +232,7 @@ namespace TMVA {
       // the actual "weights"
       virtual void AddWeightsXMLTo      ( void* parent ) const = 0;
       virtual void ReadWeightsFromXML   ( void* wghtnode ) = 0;
-      virtual void ReadWeightsFromStream( std::istream& ) = 0;       // backward compatibility
+      void ReadWeightsFromStream( std::istream& ) override = 0;       // backward compatibility
       virtual void ReadWeightsFromStream( TFile& ) {}                // backward compatibility
 
    private:
@@ -298,7 +268,7 @@ namespace TMVA {
       virtual void     WriteEvaluationHistosToFile(Types::ETreeType treetype);
 
       // write classifier-specific monitoring information to target file
-      virtual void     WriteMonitoringHistosToFile() const;
+      void     WriteMonitoringHistosToFile() const override;
 
       // ---------- public evaluation methods --------------------------------------
 
@@ -331,7 +301,7 @@ namespace TMVA {
       const TString&   GetMethodName    () const { return fMethodName; }
       TString          GetMethodTypeName() const { return Types::Instance().GetMethodName(fMethodType); }
       Types::EMVA      GetMethodType    () const { return fMethodType; }
-      const char*      GetName          () const { return fMethodName.Data(); }
+      const char*      GetName          () const override { return fMethodName.Data(); }
       const TString&   GetTestvarName   () const { return fTestvar; }
       const TString    GetProbaName     () const { return fTestvar + "_Proba"; }
       TString          GetWeightFileName() const;
@@ -442,45 +412,8 @@ namespace TMVA {
       void                  DisableWriting(Bool_t setter){ fModelPersistence = setter?kFALSE:kTRUE; }//DEPRECATED
 
     protected:
-      mutable const Event *fTmpEvent; //! temporary event when testing on a different DataSet than the own one
-      DataSet *fTmpData =  nullptr; //! temporary dataset used when evaluating on a different data (used by MethodCategory::GetMvaValues)
-       // helper variables for JsMVA
-       IPythonInteractive *fInteractive = nullptr;
-       bool fExitFromTraining = false;
-       UInt_t fIPyMaxIter = 0, fIPyCurrentIter = 0;
-
-    public:
-
-      // initializing IPythonInteractive class (for JsMVA only)
-      inline void InitIPythonInteractive(){
-        if (fInteractive) delete fInteractive;
-        fInteractive = new IPythonInteractive();
-      }
-
-      // get training errors (for JsMVA only)
-      inline TMultiGraph* GetInteractiveTrainingError(){return fInteractive->Get();}
-
-      // stop's the training process (for JsMVA only)
-      inline void ExitFromTraining(){
-        fExitFromTraining = true;
-      }
-
-      // check's if the training ended (for JsMVA only)
-      inline bool TrainingEnded(){
-        if (fExitFromTraining && fInteractive){
-          delete fInteractive;
-          fInteractive = nullptr;
-        }
-        return fExitFromTraining;
-      }
-
-      // get fIPyMaxIter
-      inline UInt_t GetMaxIter(){ return fIPyMaxIter; }
-
-      // get fIPyCurrentIter
-      inline UInt_t GetCurrentIter(){ return fIPyCurrentIter; }
-
-   protected:
+      mutable const Event *fTmpEvent; ///<! temporary event when testing on a different DataSet than the own one
+      DataSet *fTmpData =  nullptr; ///<! temporary dataset used when evaluating on a different data (used by MethodCategory::GetMvaValues)
 
       // ---------- protected accessors -------------------------------------------
 
@@ -517,7 +450,7 @@ namespace TMVA {
    protected:
 
       // make ROOT-independent C++ class for classifier response (classifier-specific implementation)
-      virtual void     MakeClassSpecific( std::ostream&, const TString& = "" ) const {}
+      void     MakeClassSpecific( std::ostream&, const TString& = "" ) const override {}
 
       // header and auxiliary classes
       virtual void     MakeClassSpecificHeader( std::ostream&, const TString& = "" ) const {}
@@ -604,7 +537,7 @@ namespace TMVA {
 
 
       // data sets
-      DataSetInfo&     fDataSetInfo;         //! the data set information (sometimes needed)
+      DataSetInfo&     fDataSetInfo;         ///<! the data set information (sometimes needed)
 
       Double_t         fSignalReferenceCut;  // minimum requirement on the MVA output to declare an event signal-like
       Double_t         fSignalReferenceCutOrientation;  // minimum requirement on the MVA output to declare an event signal-like
@@ -728,7 +661,7 @@ namespace TMVA {
 
    protected:
       Results *fResults;
-      ClassDef(MethodBase,0);  // Virtual base class for all TMVA method
+      ClassDefOverride(MethodBase,0);  // Virtual base class for all TMVA method
 
    };
 } // namespace TMVA

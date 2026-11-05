@@ -1,8 +1,9 @@
 sap.ui.define([
     'sap/ui/core/mvc/Controller',
     "sap/ui/core/ResizeHandler",
-    'sap/ui/core/UIComponent'
-], function (Controller, ResizeHandler, UIComponent) {
+    'sap/ui/core/UIComponent',
+    'rootui5/eve7/lib/EveManager'
+], function (Controller, ResizeHandler, UIComponent, EveManager) {
 
     "use strict";
 
@@ -25,8 +26,17 @@ sap.ui.define([
 
         onViewObjectMatched: function (oEvent) {
             let args = oEvent.getParameter("arguments");
-            this.setupManagerAndViewType(EVE.$eve7tmp.eveViewerId, EVE.$eve7tmp.mgr);
+            // Main's switchSingle() passes the manager in EVE.$eve7tmp. Without it
+            // (browser forward, or this address opened directly) take it from the
+            // main page; if there is none yet, go there: this view has no
+            // standalone mode.
+            let moredata = EVE.$eve7tmp || EveManager.FindMainPageViewer(this.getView(), args.viewName);
             delete EVE.$eve7tmp;
+            if (!moredata) {
+                UIComponent.getRouterFor(this).navTo("Default", {}, true);
+                return;
+            }
+            this.setupManagerAndViewType(moredata.eveViewerId, moredata.mgr);
         },
 
         setupManagerAndViewType: function (eveViewerId, mgr) {
@@ -41,8 +51,6 @@ sap.ui.define([
 
             let scene = this.mgr.GetElement(sceneId);
             let chld = scene.childs[0];
-            let element = this.byId("legoX");
-            element.setHtmlText("Pointset infected by TCanvas / Lego Stack");
 
             this.eve_lego = chld;
             this.canvas_json = EVE.JSR.parse(atob(chld.fTitle));
@@ -71,6 +79,8 @@ sap.ui.define([
             }
         },
         controllerIsMapped() {
+            // a router page that was redirected to the main page has no manager
+            if (!this.mgr) return false;
             let ev = this.mgr.GetElement(this.eveViewerId);
             return ev.fRnrSelf;
         },
@@ -102,6 +112,21 @@ sap.ui.define([
         },
 
         UnselectElement: function (selection_obj, element_id) {
+        },
+        switchSingle: function () {
+            let oRouter = UIComponent.getRouterFor(this);
+            EVE.$eve7tmp = { mgr: this.mgr, eveViewerId: this.eveViewerId };
+
+            oRouter.navTo("Lego", { viewName: this.mgr.GetElement(this.eveViewerId).fName });
+        },
+
+        swap: function () {
+            this.mgr.controllers[0].switchViewSides(this.mgr.GetElement(this.eveViewerId));
+        },
+
+        detachViewer: function () {
+            this.mgr.controllers[0].removeView(this.mgr.GetElement(this.eveViewerId));
+            this.destroy();
         }
     });
 });

@@ -87,7 +87,6 @@ For embedded (pad) GL this viewer is created directly by plugin
 manager. For standalone the derived TGLSAViewer is.
 */
 
-ClassImp(TGLViewer);
 
 TGLColorSet TGLViewer::fgDefaultColorSet;
 Bool_t      TGLViewer::fgUseDefaultColorSetForNewViewers = kFALSE;
@@ -98,7 +97,7 @@ Float_t     TGLViewer::fgAxisLabelScale = 1;
 TGLViewer::TGLViewer(TVirtualPad * pad, Int_t x, Int_t y,
                      Int_t width, Int_t height) :
    fPad(pad),
-   fContextMenu(0),
+   fContextMenu(nullptr),
    fPerspectiveCameraXOZ(TGLVector3(-1.0, 0.0, 0.0), TGLVector3(0.0, 1.0, 0.0)), // XOZ floor
    fPerspectiveCameraYOZ(TGLVector3( 0.0,-1.0, 0.0), TGLVector3(1.0, 0.0, 0.0)), // YOZ floor
    fPerspectiveCameraXOY(TGLVector3(-1.0, 0.0, 0.0), TGLVector3(0.0, 0.0, 1.0)), // XOY floor
@@ -111,7 +110,7 @@ TGLViewer::TGLViewer(TVirtualPad * pad, Int_t x, Int_t y,
    fOrthoZnOYCamera(TGLOrthoCamera::kZnOY, TGLVector3( 1.0, 0.0, 0.0), TGLVector3(0.0, 1.0, 0.0)), // Looking down  X axis, -Z horz, Y vert
    fOrthoZnOXCamera(TGLOrthoCamera::kZnOX, TGLVector3( 0.0, 1.0, 0.0), TGLVector3(1.0, 0.0, 0.0)), // Looking down  Y axis, -Z horz, X vert
    fCurrentCamera(&fPerspectiveCameraXOZ),
-   fAutoRotator(0),
+   fAutoRotator(nullptr),
 
    fStereo               (kFALSE),
    fStereoQuadBuf        (kFALSE),
@@ -119,16 +118,16 @@ TGLViewer::TGLViewer(TVirtualPad * pad, Int_t x, Int_t y,
    fStereoEyeOffsetFac   (1.0f),
    fStereoFrustumAsymFac (1.0f),
 
-   fLightSet          (0),
-   fClipSet           (0),
-   fSelectedPShapeRef (0),
-   fCurrentOvlElm     (0),
+   fLightSet          (nullptr),
+   fClipSet           (nullptr),
+   fSelectedPShapeRef (nullptr),
+   fCurrentOvlElm     (nullptr),
 
-   fEventHandler(0),
-   fGedEditor(0),
-   fPShapeWrap(0),
+   fEventHandler(nullptr),
+   fGedEditor(nullptr),
+   fPShapeWrap(nullptr),
    fPushAction(kPushStd), fDragAction(kDragNone),
-   fRedrawTimer(0),
+   fRedrawTimer(nullptr),
    fMaxSceneDrawTimeHQ(5000),
    fMaxSceneDrawTimeLQ(100),
    fPointScale (1), fLineScale(1), fSmoothPoints(kFALSE), fSmoothLines(kFALSE),
@@ -137,15 +136,15 @@ TGLViewer::TGLViewer(TVirtualPad * pad, Int_t x, Int_t y,
    fReferenceOn(kFALSE),
    fReferencePos(0.0, 0.0, 0.0),
    fDrawCameraCenter(kFALSE),
-   fCameraOverlay(0),
+   fCameraOverlay(nullptr),
    fSmartRefresh(kFALSE),
    fDebugMode(kFALSE),
    fIsPrinting(kFALSE),
    fPictureFileName("viewer.jpg"),
    fFader(0),
-   fGLWidget(0),
+   fGLWidget(nullptr),
    fGLDevice(-1),
-   fGLCtxId(0),
+   fGLCtxId(nullptr),
    fIgnoreSizesOnUpdate(kFALSE),
    fResetCamerasOnUpdate(kTRUE),
    fResetCamerasOnNextUpdate(kFALSE)
@@ -164,7 +163,7 @@ TGLViewer::TGLViewer(TVirtualPad * pad, Int_t x, Int_t y,
 
 TGLViewer::TGLViewer(TVirtualPad * pad) :
    fPad(pad),
-   fContextMenu(0),
+   fContextMenu(nullptr),
    fPerspectiveCameraXOZ(TGLVector3(-1.0, 0.0, 0.0), TGLVector3(0.0, 1.0, 0.0)), // XOZ floor
    fPerspectiveCameraYOZ(TGLVector3( 0.0,-1.0, 0.0), TGLVector3(1.0, 0.0, 0.0)), // YOZ floor
    fPerspectiveCameraXOY(TGLVector3(-1.0, 0.0, 0.0), TGLVector3(0.0, 0.0, 1.0)), // XOY floor
@@ -177,7 +176,7 @@ TGLViewer::TGLViewer(TVirtualPad * pad) :
    fOrthoZnOYCamera(TGLOrthoCamera::kZnOY, TGLVector3( 1.0, 0.0, 0.0), TGLVector3(0.0, 1.0, 0.0)), // Looking down  X axis, -Z horz, Y vert
    fOrthoZnOXCamera(TGLOrthoCamera::kZnOX, TGLVector3( 0.0, 1.0, 0.0), TGLVector3(1.0, 0.0, 0.0)), // Looking down  Y axis, -Z horz, X vert
    fCurrentCamera(&fPerspectiveCameraXOZ),
-   fAutoRotator(0),
+   fAutoRotator(nullptr),
 
    fStereo               (kFALSE),
    fStereoQuadBuf        (kFALSE),
@@ -185,16 +184,16 @@ TGLViewer::TGLViewer(TVirtualPad * pad) :
    fStereoEyeOffsetFac   (1.0f),
    fStereoFrustumAsymFac (1.0f),
 
-   fLightSet          (0),
-   fClipSet           (0),
-   fSelectedPShapeRef (0),
-   fCurrentOvlElm     (0),
+   fLightSet          (nullptr),
+   fClipSet           (nullptr),
+   fSelectedPShapeRef (nullptr),
+   fCurrentOvlElm     (nullptr),
 
-   fEventHandler(0),
-   fGedEditor(0),
-   fPShapeWrap(0),
+   fEventHandler(nullptr),
+   fGedEditor(nullptr),
+   fPShapeWrap(nullptr),
    fPushAction(kPushStd), fDragAction(kDragNone),
-   fRedrawTimer(0),
+   fRedrawTimer(nullptr),
    fMaxSceneDrawTimeHQ(5000),
    fMaxSceneDrawTimeLQ(100),
    fPointScale (1), fLineScale(1), fSmoothPoints(kFALSE), fSmoothLines(kFALSE),
@@ -203,15 +202,15 @@ TGLViewer::TGLViewer(TVirtualPad * pad) :
    fReferenceOn(kFALSE),
    fReferencePos(0.0, 0.0, 0.0),
    fDrawCameraCenter(kFALSE),
-   fCameraOverlay(0),
+   fCameraOverlay(nullptr),
    fSmartRefresh(kFALSE),
    fDebugMode(kFALSE),
    fIsPrinting(kFALSE),
    fPictureFileName("viewer.jpg"),
    fFader(0),
-   fGLWidget(0),
+   fGLWidget(nullptr),
    fGLDevice(fPad->GetGLDevice()),
-   fGLCtxId(0),
+   fGLCtxId(nullptr),
    fIgnoreSizesOnUpdate(kFALSE),
    fResetCamerasOnUpdate(kTRUE),
    fResetCamerasOnNextUpdate(kFALSE)
@@ -227,7 +226,7 @@ TGLViewer::TGLViewer(TVirtualPad * pad) :
    if (fGLDevice != -1) {
       // For the moment instantiate a fake context identity.
       fGLCtxId = new TGLContextIdentity;
-      fGLCtxId->AddRef(0);
+      fGLCtxId->AddRef(nullptr);
       Int_t viewport[4] = {0};
       gGLManager->ExtractViewport(fGLDevice, viewport);
       SetViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -247,7 +246,7 @@ void TGLViewer::InitSecondaryObjects()
    fSelectedPShapeRef->SetDrawBBox(kTRUE);
    AddOverlayElement(fSelectedPShapeRef);
 
-   fPShapeWrap = new TGLPShapeObj(0, this);
+   fPShapeWrap = new TGLPShapeObj(nullptr, this);
 
    fLightColorSet.StdLightBackground();
    if (fgUseDefaultColorSetForNewViewers) {
@@ -283,14 +282,14 @@ TGLViewer::~TGLViewer()
 
    if (fEventHandler) {
       if (fGLWidget)
-         fGLWidget->SetEventHandler(0);
+         fGLWidget->SetEventHandler(nullptr);
       delete fEventHandler;
    }
 
    if (fPad)
       fPad->ReleaseViewer3D();
    if (fGLDevice != -1)
-      fGLCtxId->Release(0);
+      fGLCtxId->Release(nullptr);
 }
 
 
@@ -303,15 +302,15 @@ TGLViewer::~TGLViewer()
 
 void TGLViewer::PadPaint(TVirtualPad* pad)
 {
-   TGLScenePad* scenepad = 0;
+   TGLScenePad* scenepad = nullptr;
    for (SceneInfoList_i si = fScenes.begin(); si != fScenes.end(); ++si)
    {
       scenepad = dynamic_cast<TGLScenePad*>((*si)->GetScene());
       if (scenepad && scenepad->GetPad() == pad)
          break;
-      scenepad = 0;
+      scenepad = nullptr;
    }
-   if (scenepad == 0)
+   if (scenepad == nullptr)
    {
       scenepad = new TGLScenePad(pad);
       AddScene(scenepad);
@@ -812,7 +811,7 @@ Bool_t TGLViewer::SavePicture(const TString &fileName)
    }
    else
    {
-      if (GLEW_EXT_framebuffer_object && gEnv->GetValue("OpenGL.SavePicturesViaFBO", 1))
+      if (GLAD_GL_EXT_framebuffer_object && gEnv->GetValue("OpenGL.SavePicturesViaFBO", 1))
       {
          return SavePictureUsingFBO(fileName, fViewport.Width(), fViewport.Height(), kFALSE);
       }
@@ -866,9 +865,13 @@ Bool_t TGLViewer::SavePictureUsingBB(const TString &fileName)
    glReadPixels(0, 0, fViewport.Width(), fViewport.Height(),
                 GL_BGRA, GL_UNSIGNED_BYTE, xx);
 
+   TGLUtil::SwapPixelBuffer(xx, fViewport.Width(), fViewport.Height());
+
    std::unique_ptr<TImage> image(TImage::Create());
-   image->FromGLBuffer(xx, fViewport.Width(), fViewport.Height());
-   image->WriteImage(fileName);
+   if (image) {
+      image->FromBitmap(xx, fViewport.Width(), fViewport.Height());
+      image->WriteImage(fileName);
+   }
 
    delete [] xx;
 
@@ -958,9 +961,13 @@ Bool_t TGLViewer::SavePictureUsingFBO(const TString &fileName, Int_t w, Int_t h,
    glReadPixels(0, 0, fViewport.Width(), fViewport.Height(),
                 GL_BGRA, GL_UNSIGNED_BYTE, xx);
 
+   TGLUtil::SwapPixelBuffer(xx, fViewport.Width(), fViewport.Height());
+
    std::unique_ptr<TImage> image(TImage::Create());
-   image->FromGLBuffer(xx, fViewport.Width(), fViewport.Height());
-   image->WriteImage(fileName);
+   if (image) {
+      image->FromBitmap(xx, fViewport.Width(), fViewport.Height());
+      image->WriteImage(fileName);
+   }
 
    delete [] xx;
 
@@ -988,7 +995,7 @@ TImage* TGLViewer::GetPictureUsingBB()
 
     if ( ! TakeLock(kDrawLock)) {
         Error(eh, "viewer locked - try later.");
-        return NULL;
+        return nullptr;
     }
 
     TUnlocker ulck(this);
@@ -1010,8 +1017,11 @@ TImage* TGLViewer::GetPictureUsingBB()
     glReadPixels(0, 0, fViewport.Width(), fViewport.Height(),
                  GL_BGRA, GL_UNSIGNED_BYTE, xx);
 
-    TImage *image(TImage::Create());
-    image->FromGLBuffer(xx, fViewport.Width(), fViewport.Height());
+    TGLUtil::SwapPixelBuffer(xx, fViewport.Width(), fViewport.Height());
+
+    TImage *image = TImage::Create();
+    if (image)
+       image->FromBitmap(xx, fViewport.Width(), fViewport.Height());
 
     delete [] xx;
 
@@ -1035,7 +1045,7 @@ TImage* TGLViewer::GetPictureUsingFBO(Int_t w, Int_t h,Float_t pixel_object_scal
 
     if ( ! TakeLock(kDrawLock)) {
         Error(eh, "viewer locked - try later.");
-        return NULL;
+        return nullptr;
     }
 
     TUnlocker ulck(this);
@@ -1056,7 +1066,7 @@ TImage* TGLViewer::GetPictureUsingFBO(Int_t w, Int_t h,Float_t pixel_object_scal
                 Warning(eh, "Back-buffer does not support image scaling, window size will be used.");
             return GetPictureUsingBB();
         } else {
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -1091,8 +1101,11 @@ TImage* TGLViewer::GetPictureUsingFBO(Int_t w, Int_t h,Float_t pixel_object_scal
     glReadPixels(0, 0, fViewport.Width(), fViewport.Height(),
                  GL_BGRA, GL_UNSIGNED_BYTE, xx);
 
-    TImage *image(TImage::Create());
-    image->FromGLBuffer(xx, fViewport.Width(), fViewport.Height());
+    TGLUtil::SwapPixelBuffer(xx, fViewport.Width(), fViewport.Height());
+
+    TImage *image = TImage::Create();
+    if (image)
+       image->FromBitmap(xx, fViewport.Width(), fViewport.Height());
 
     delete [] xx;
     delete fbo;
@@ -1441,7 +1454,7 @@ Bool_t TGLViewer::DoSecondarySelect(Int_t x, Int_t y)
    pshp->Draw(*fRnrCtx);
    glPopName();
    scene->PostRender(*fRnrCtx);
-   fRnrCtx->SetSceneInfo(0);
+   fRnrCtx->SetSceneInfo(nullptr);
    PostRender();
 
    Int_t nSecHits = glRenderMode(GL_RENDER);
@@ -1531,7 +1544,7 @@ Bool_t TGLViewer::DoOverlaySelect(Int_t x, Int_t y)
    fRnrCtx->EndSelection(nHits);
 
    // Process overlay selection.
-   TGLOverlayElement * selElm = 0;
+   TGLOverlayElement * selElm = nullptr;
    if (nHits > 0)
    {
       Int_t idx = 0;
@@ -1951,8 +1964,8 @@ void TGLViewer::SetOrthoCamera(ECameraType camera,
 ///  - 'dolly' - distance from 'center'
 ///  - 'center' - world position from which dolly/hRotate/vRotate are measured
 ///                camera rotates round this, always facing in (in center of viewport)
-///  - 'hRotate' - horizontal rotation from initial configuration in degrees
-///  - 'hRotate' - vertical rotation from initial configuration in degrees
+///  - 'hRotate' - horizontal rotation from initial configuration in radians
+///  - 'vRotate' - vertical rotation from initial configuration in radians
 
 void TGLViewer::SetPerspectiveCamera(ECameraType camera,
                                      Double_t fov, Double_t dolly,
@@ -2008,7 +2021,7 @@ void TGLViewer::ReinitializeCurrentCamera(const TGLVector3& hAxis, const TGLVect
 
 TGLAutoRotator* TGLViewer::GetAutoRotator()
 {
-   if (fAutoRotator == 0)
+   if (fAutoRotator == nullptr)
       fAutoRotator = new TGLAutoRotator(this);
    return fAutoRotator;
 }
@@ -2263,7 +2276,7 @@ void TGLViewer::SelectionChanged()
       fPShapeWrap->fPShape = selected;
       fGedEditor->SetModel(fPad, fPShapeWrap, kButton1Down);
    } else {
-      fPShapeWrap->fPShape = 0;
+      fPShapeWrap->fPShape = nullptr;
       fGedEditor->SetModel(fPad, this, kButton1Down);
    }
 }
@@ -2285,7 +2298,7 @@ void TGLViewer::OverlayDragFinished()
 
 void TGLViewer::RefreshPadEditor(TObject* obj)
 {
-   if (fGedEditor && (obj == 0 || fGedEditor->GetModel() == obj))
+   if (fGedEditor && (obj == nullptr || fGedEditor->GetModel() == obj))
    {
       fGedEditor->SetModel(fPad, fGedEditor->GetModel(), kButton1Down);
    }
@@ -2315,7 +2328,7 @@ void  TGLViewer::RemoveOverlayElement(TGLOverlayElement* el)
 {
    if (el == fCurrentOvlElm)
    {
-      fCurrentOvlElm = 0;
+      fCurrentOvlElm = nullptr;
    }
    TGLViewerBase::RemoveOverlayElement(el);
 }
@@ -2330,7 +2343,7 @@ void TGLViewer::ClearCurrentOvlElm()
    if (fCurrentOvlElm)
    {
       fCurrentOvlElm->MouseLeave();
-      fCurrentOvlElm = 0;
+      fCurrentOvlElm = nullptr;
       RequestDraw();
    }
 }

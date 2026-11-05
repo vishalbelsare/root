@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis  *
  * Package: TMVA                                                             *
  * Class  : DataSetFactory                                                   *
- * Web    : http://tmva.sourceforge.net                                      *
+ *                                        *
  *                                                                           *
  * Description:                                                              *
  *      Implementation (see header for description)                          *
@@ -23,7 +23,7 @@
  *      U. of Bonn, Germany                                                  *
  * Redistribution and use in source and binary forms, with or without        *
  * modification, are permitted according to the terms listed in LICENSE      *
- * (http://tmva.sourceforge.net/LICENSE)                                     *
+ * (see tmva/doc/LICENSE)                                     *
  *****************************************************************************/
 
 /*! \class TMVA::DataSetFactory
@@ -33,7 +33,7 @@ Class that contains all the data information
 
 */
 
-#include <assert.h>
+#include <cassert>
 
 #include <map>
 #include <vector>
@@ -41,26 +41,17 @@ Class that contains all the data information
 #include <iostream>
 
 #include <algorithm>
-#include <functional>
-#include <numeric>
-#include <random>
 
 #include "TMVA/DataSetFactory.h"
 
-#include "TEventList.h"
 #include "TFile.h"
 #include "TRandom3.h"
-#include "TMatrixF.h"
-#include "TVectorF.h"
 #include "TMath.h"
 #include "TTree.h"
 #include "TBranch.h"
 
 #include "TMVA/MsgLogger.h"
 #include "TMVA/Configurable.h"
-#include "TMVA/VariableIdentityTransform.h"
-#include "TMVA/VariableDecorrTransform.h"
-#include "TMVA/VariablePCATransform.h"
 #include "TMVA/DataSet.h"
 #include "TMVA/DataSetInfo.h"
 #include "TMVA/DataInputHandler.h"
@@ -70,7 +61,7 @@ Class that contains all the data information
 #include "TMVA/Types.h"
 #include "TMVA/VariableInfo.h"
 
-using namespace std;
+using std::setiosflags, std::ios;
 
 //TMVA::DataSetFactory* TMVA::DataSetFactory::fgInstance = 0;
 
@@ -354,7 +345,7 @@ void TMVA::DataSetFactory::ChangeToNewTree( TreeInfo& tinfo, const DataSetInfo &
    for (formIt = fTargetFormulas.begin(), formItEnd = fTargetFormulas.end(); formIt!=formItEnd; ++formIt) if (*formIt) delete *formIt;
    fTargetFormulas.clear();
    for (UInt_t i=0; i<dsi.GetNTargets(); i++) {
-      ttf = new TTreeFormula( Form( "Formula%s", dsi.GetTargetInfo(i).GetInternalName().Data() ),
+      ttf = new TTreeFormula( TString::Format( "Formula%s", dsi.GetTargetInfo(i).GetInternalName().Data() ),
                               dsi.GetTargetInfo(i).GetExpression().Data(), tr );
       CheckTTreeFormula( ttf, dsi.GetTargetInfo(i).GetExpression(), hasDollar );
       fTargetFormulas.push_back( ttf );
@@ -367,7 +358,7 @@ void TMVA::DataSetFactory::ChangeToNewTree( TreeInfo& tinfo, const DataSetInfo &
    for (formIt = fSpectatorFormulas.begin(), formItEnd = fSpectatorFormulas.end(); formIt!=formItEnd; ++formIt) if (*formIt) delete *formIt;
    fSpectatorFormulas.clear();
    for (UInt_t i=0; i<dsi.GetNSpectators(); i++) {
-      ttf = new TTreeFormula( Form( "Formula%s", dsi.GetSpectatorInfo(i).GetInternalName().Data() ),
+      ttf = new TTreeFormula( TString::Format( "Formula%s", dsi.GetSpectatorInfo(i).GetInternalName().Data() ),
                               dsi.GetSpectatorInfo(i).GetExpression().Data(), tr );
       CheckTTreeFormula( ttf, dsi.GetSpectatorInfo(i).GetExpression(), hasDollar );
       fSpectatorFormulas.push_back( ttf );
@@ -1128,7 +1119,7 @@ TMVA::DataSetFactory::MixEvents( DataSetInfo& dsi,
       Log() << kDEBUG << Form("Dataset[%s] : ",dsi.GetName())<< "events in training trees    : " << availableTraining  << Endl;
       Log() << kDEBUG << Form("Dataset[%s] : ",dsi.GetName())<< "events in testing trees     : " << availableTesting   << Endl;
       Log() << kDEBUG << Form("Dataset[%s] : ",dsi.GetName())<< "events in unspecified trees : " << availableUndefined << Endl;
-      Log() << kDEBUG << Form("Dataset[%s] : ",dsi.GetName())<< "requested for training      : " << requestedTraining << Endl;;
+      Log() << kDEBUG << Form("Dataset[%s] : ",dsi.GetName())<< "requested for training      : " << requestedTraining << Endl;
 
       if(presel_scale<1)
          Log() << " ( " << eventCounts[cls].nTrainingEventsRequested

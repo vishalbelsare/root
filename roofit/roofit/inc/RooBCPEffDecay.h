@@ -36,8 +36,7 @@ public:
        const RooResolutionModel& model, DecayType type=DoubleSided) ;
 
   RooBCPEffDecay(const RooBCPEffDecay& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new RooBCPEffDecay(*this,newname) ; }
-  ~RooBCPEffDecay() override;
+  TObject* clone(const char* newname=nullptr) const override { return new RooBCPEffDecay(*this,newname) ; }
 
   double coefficient(Int_t basisIndex) const override ;
 

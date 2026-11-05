@@ -34,9 +34,13 @@ public:
    TGraphPolar();
    TGraphPolar(Int_t n, const Double_t* theta = nullptr, const Double_t* r = nullptr,
                         const Double_t* etheta = nullptr, const Double_t* er = nullptr);
-   virtual ~TGraphPolar();
+   ~TGraphPolar() override;
 
    TGraphPolargram *GetPolargram() {return fPolargram;}
+
+   TGraphPolargram *CreatePolargram(const char *opt);
+
+   void             SavePrimitive(std::ostream &out, Option_t *option = "") override;
 
    void             Draw(Option_t* options = "") override;
    Bool_t           GetOptionAxis() {return fOptionAxis;}

@@ -28,7 +28,7 @@ public:
   Roo2DKeysPdf(const char *name, const char *title,
              RooAbsReal& xx, RooAbsReal &yy, RooDataSet& data, TString options = "a", double widthScaleFactor = 1.0);
   Roo2DKeysPdf(const Roo2DKeysPdf& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new Roo2DKeysPdf(*this,newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new Roo2DKeysPdf(*this,newname); }
 
   ~Roo2DKeysPdf() override;
 
@@ -55,7 +55,7 @@ public:
 //           ***********
   inline void     setWidthScaleFactor(double widthScaleFactor);
 
-// choose the kernel bandwith to use.  The default is 0
+// choose the kernel bandwidth to use.  The default is 0
 //    0 = use adaptive kernel estimator (uses local population to vary with of kernels)
 //    1 = use trivial kernel estimator (uses all data and sigma to estimate uniform kernel bandwidth)
   Int_t    calculateBandWidth(Int_t kernel = -999);

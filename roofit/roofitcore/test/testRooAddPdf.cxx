@@ -2,20 +2,32 @@
 // Authors: Jonas Rembser, CERN 07/2022
 
 #include <RooAddPdf.h>
+#include <RooChebychev.h>
 #include <RooConstVar.h>
 #include <RooDataHist.h>
-#include <RooExponential.h>
+#include <RooDataSet.h>
+#include <RooFit/Evaluator.h>
+#include <RooFitResult.h>
 #include <RooGaussian.h>
+#include <RooGenericPdf.h>
+#include <RooHelpers.h>
 #include <RooHistPdf.h>
 #include <RooMsgService.h>
 #include <RooProdPdf.h>
+#include <RooRandom.h>
+#include <RooRealIntegral.h>
+#include <RooRealVar.h>
+#include <RooUniform.h>
 #include <RooWorkspace.h>
 
 #include <RooStats/SPlot.h>
 
-#include <gtest/gtest.h>
+#include "gtest_wrapper.h"
 
+#include <cmath>
 #include <memory>
+#include <string>
+#include <vector>
 
 /// Verify that sPlot does work with a RooAddPdf. This reproduces GitHub issue
 /// #10869, where creating an SPlot from a RooAdPdf unreasonably changed the
@@ -23,90 +35,62 @@
 /// is taken from the GitHub issue thread, with the plotting part removed.
 TEST(RooAddPdf, TestSPlot)
 {
-   auto &msg = RooMsgService::instance();
-   msg.setGlobalKillBelow(RooFit::WARNING);
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
 
-   double lowRange = 0.;
-   double highRange = 200.;
-   RooRealVar invMass("invMass", "M_{inv}", lowRange, highRange, "GeV");
-   RooRealVar isolation("isolation", "isolation", 0., 20., "GeV");
+   RooWorkspace ws;
 
    // mass model: linear combination of two Gaussians of different widths
-   RooRealVar mZ("mZ", "Z Mass", 91.2, lowRange, highRange);
-   RooRealVar sigmaZ("sigmaZ", "Width of Gaussian", 2, 0.1, 10, "GeV");
-   RooGaussian mZModel1("mZModel1", "Z+jets Model", invMass, mZ, sigmaZ);
-
-   RooRealVar sigmaZ2("sigmaZ2", "Width of Gaussian", 1.5, 0.01, 10, "GeV");
-   RooGaussian mZModel2("mZModel2", "Z+jets Model", invMass, mZ, sigmaZ2);
-
-   RooRealVar frac_1a("frac_1a", "frac_1a", 0.5); // fraction of the first Gaussian
-
-   RooArgList shapes_DCB;
-   shapes_DCB.add(mZModel1);
-   shapes_DCB.add(mZModel2);
-
-   RooArgList yields_DCB;
-   yields_DCB.add(frac_1a);
-
-   RooArgSet normSet(invMass);
-
-   RooAddPdf mZModel("mZModel", "mZModel", shapes_DCB, yields_DCB);
+   ws.factory("Gaussian::mZModel1(invMass[0., 200.], mZ[91.2, 0., 200.], sigmaZ[2, 0.1, 10])");
+   ws.factory("Gaussian::mZModel2(invMass[0., 200.], mZ[91.2, 0., 200.], sigmaZ2[1.5, 0.01, 10])");
+   ws.factory("SUM::mZModel(frac_1a[0.5] * mZModel1, mZModel2)");
 
    // isolation model for Z-boson.  Only used to generate toy MC.
-
-   RooConstVar zIsolDecayConst("zIsolDecayConst", "z isolation decay  constant", -1);
-   RooExponential zIsolationModel("zIsolationModel", "z isolation model", isolation, zIsolDecayConst);
+   ws.factory("Exponential::zIsolationModel(isolation[0., 20.], zIsolDecayConst[-1])");
 
    // make the combined Z model
-   RooProdPdf zModel("zModel", "2-d model for Z", {mZModel, zIsolationModel});
-
-   // make the QCD model
+   ws.factory("PROD::zModel(mZModel, zIsolationModel)");
 
    // mass model for QCD.
-
-   RooRealVar qcdMassDecayConst("qcdMassDecayConst", "Decay const for QCD mass spectrum", -0.01, -100, 100, "1/GeV");
-   RooExponential qcdMassModel("qcdMassModel", "qcd Mass Model", invMass, qcdMassDecayConst);
+   ws.factory("Exponential::qcdMassModel(invMass, qcdMassDecayConst[-0.01, -100, 100])");
 
    // isolation model for QCD.
-   RooConstVar qcdIsolDecayConst("qcdIsolDecayConst", "Et resolution constant", -.1);
-   RooExponential qcdIsolationModel("qcdIsolationModel", "QCD isolation model", isolation, qcdIsolDecayConst);
+   ws.factory("Exponential::qcdIsolationModel(isolation, qcdIsolDecayConst[-0.1])");
 
-   // make the 2D model
-   RooProdPdf qcdModel("qcdModel", "2-d model for QCD", {qcdMassModel, qcdIsolationModel});
-
-   // --------------------------------------
-   // combined model
-
-   // These variables represent the number of Z or QCD events
-   // They will be fitted.
-   RooRealVar zYield("zYield", "fitted yield for Z", 300, 0., 10000);
-   RooRealVar qcdYield("qcdYield", "fitted yield for QCD", 2700, 0., 10000);
+   // make the 2D QCD model
+   ws.factory("PROD::qcdModel(qcdMassModel, qcdIsolationModel)");
 
    // now make the combined model
    // this is the 2D model for generation only
-   RooAddPdf model_gen("model_gen", "mygreatmodel_gen", {zModel, qcdModel}, {zYield, qcdYield});
+   ws.factory("SUM::model_gen(zYield[300, 0., 10000] * zModel, qcdYield[2700, 0., 10000] * qcdModel)");
    // this is the mass model for the fit only
-   RooAddPdf model("model", "mygreatmodel", {mZModel, qcdMassModel}, {zYield, qcdYield});
+   ws.factory("SUM::model(zYield[300, 0., 10000] * mZModel, qcdYield[2700, 0., 10000] * qcdMassModel)");
 
-   int nEvents = zYield.getVal() + qcdYield.getVal();
+   RooRealVar &invMass = *ws.var("invMass");
+   RooRealVar &isolation = *ws.var("isolation");
+   RooRealVar &zYield = *ws.var("zYield");
+   RooRealVar &qcdYield = *ws.var("qcdYield");
+   RooAbsPdf &model_gen = *ws.pdf("model_gen");
+   RooAbsPdf &model = *ws.pdf("model");
+
+   RooArgSet normSet{invMass};
 
    // make the toy data
-   std::unique_ptr<RooDataSet> data{model_gen.generate({invMass, isolation}, nEvents, RooFit::Name("mygendataset"))};
+   std::unique_ptr<RooDataSet> data{model_gen.generate({invMass, isolation}, RooFit::Name("mygendataset"))};
 
    // fit the model to the data.
    model.fitTo(*data, RooFit::Extended(), RooFit::PrintLevel(-1));
 
-   double valYieldBefore = zYield.getVal();
+   const double valYieldBefore = zYield.getVal();
 
    // fix the parameters that are not yields before doing the sPlot
-   qcdMassDecayConst.setConstant(true);
-   sigmaZ.setConstant(true);
-   sigmaZ2.setConstant(true);
-   mZ.setConstant(true);
+   ws.var("qcdMassDecayConst")->setConstant(true);
+   ws.var("sigmaZ")->setConstant(true);
+   ws.var("sigmaZ2")->setConstant(true);
+   ws.var("mZ")->setConstant(true);
 
    RooStats::SPlot("sData", "An SPlot", *data, &model, {zYield, qcdYield});
 
-   double valYieldAfter = zYield.getVal();
+   const double valYieldAfter = zYield.getVal();
 
    EXPECT_NEAR(valYieldAfter, valYieldBefore, 1e-1)
       << "Doing the SPlot should not change parameter values by orders of magnitudes!";
@@ -116,8 +100,7 @@ TEST(RooAddPdf, TestSPlot)
 /// issues of RooAddPdf integrals.
 TEST(RooAddPdf, Issue10988)
 {
-   auto &msg = RooMsgService::instance();
-   msg.setGlobalKillBelow(RooFit::WARNING);
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
 
    using namespace RooFit;
 
@@ -134,7 +117,7 @@ TEST(RooAddPdf, Issue10988)
    auto &x2 = *w2.var("x");
 
    // Call createIntegral on workspace w1 only. It's important that this
-   // integral lives longer than "interal1" to reproduce the problem.
+   // integral lives longer than "integral1" to reproduce the problem.
    std::unique_ptr<RooAbsReal> integral0{pdf1.createIntegral(x1, NormSet(x1), Range("range_int"))};
    double val0 = integral0->getVal();
 
@@ -148,7 +131,7 @@ TEST(RooAddPdf, Issue10988)
    std::unique_ptr<RooAbsReal> integral2{pdf2.createIntegral(x2, NormSet(x2), Range("range_int"))};
    double val2 = integral2->getVal();
 
-   // Check that the integrals have differnt values, now that the coefficient
+   // Check that the integrals have different values, now that the coefficient
    // range was fixed to a different one.
    EXPECT_NE(val0, val1);
    EXPECT_EQ(val1, val2);
@@ -188,12 +171,19 @@ TEST(RooAddPdf, RecursiveCoefficients)
 }
 
 class ProjCacheTest : public testing::TestWithParam<std::tuple<bool>> {
-   void SetUp() override { _fixCoefNormalization = std::get<0>(GetParam()); }
+   void SetUp() override
+   {
+      _fixCoefNormalization = std::get<0>(GetParam());
+      _changeMsgLvl = std::make_unique<RooHelpers::LocalChangeMsgLevel>(RooFit::WARNING);
+   }
 
-   void TearDown() override {}
+   void TearDown() override { _changeMsgLvl.reset(); }
 
 protected:
    bool _fixCoefNormalization = false;
+
+private:
+   std::unique_ptr<RooHelpers::LocalChangeMsgLevel> _changeMsgLvl;
 };
 
 /// Verify that the coefficient projection works for different configurations
@@ -249,6 +239,8 @@ TEST(RooAddPdf, ResetServerNormRange)
 {
    using namespace RooFit;
 
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
    RooWorkspace ws;
    ws.factory("PROD::sig(Polynomial(x[-10, 10], {0.0, 0.0, 1.0}, 0), Polynomial(y[-10, 10], {}))");
    ws.factory("PROD::bkg(Polynomial(x, {}), Polynomial(y, {}))");
@@ -293,7 +285,7 @@ TEST(RooAddPdf, ResetServerNormRange)
    }
 
    // We first use the same normalization set to re-evaluate, then a different
-   // one to confuse to first trigger the chache and then have a another
+   // one to confuse to first trigger the cache and then have a another
    // reference.
    const double val2 = model.getVal(normSet1);
    const double val3 = model.getVal(normSet2);
@@ -315,6 +307,8 @@ TEST(RooAddPdf, ResetServerNormRange)
 /// https://sft.its.cern.ch/jira/browse/ROOT-10483.
 TEST(RooAddPdf, ROOT10483)
 {
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
    RooWorkspace ws;
 
    // Create model
@@ -359,4 +353,217 @@ TEST(RooAddPdf, ROOT10483)
    // the plot will be good (i.e. less than one) as the data was directly
    // sampled from the model.
    EXPECT_LE(frame->chiSquare(), 1.0);
+}
+
+/// If you add components where each component only depends on a subset of the
+/// union set of the observables, the RooAddPdf should understand that the
+/// component is uniform in the missing observables. This is validated in the
+/// following test for both the getVal() interface and evaluation with the
+/// RooFit::Evaluator.
+TEST(RooAddPdf, ImplicitDimensions)
+{
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
+   using namespace RooFit;
+
+   RooRealVar x{"x", "x", 5, 0, 10};
+   RooRealVar y{"y", "y", 5, 0, 10};
+
+   // Define the PDFs such that they explicitly depend on only one of the
+   // observables each. This means the RooAddPdf needs to figure out itself
+   // that in the other dimensions (y for uniformX and x for uniformY), the
+   // distribution is implicitly uniform.
+   RooGenericPdf uniformX{"uniform_x", "x - x + 1.0", x};
+   RooGenericPdf uniformY{"uniform_y", "y - y + 1.0", y};
+
+   RooAddPdf pdf{"pdf", "pdf", {uniformX, uniformY}, {RooConst(0.5)}};
+
+   RooArgSet normSet{x, y};
+
+   std::unique_ptr<RooAbsReal> pdfCompiled{RooFit::Detail::compileForNormSet(pdf, normSet)};
+   RooFit::Evaluator evaluator{*pdfCompiled};
+
+   pdf.fixAddCoefNormalization(normSet);
+   pdfCompiled->fixAddCoefNormalization(normSet);
+
+   // A uniform distribution in x and y should have this value everywhere,
+   // given our limits for x and y.
+   const double refVal = 0.01;
+
+   EXPECT_DOUBLE_EQ(pdf.getVal(normSet), refVal);
+   EXPECT_DOUBLE_EQ(evaluator.run()[0], refVal);
+}
+
+// Make sure that there are no superfluous integrals when one does a ranged
+// with equivalent coefficient reference range.
+// Covers GitHub issue 12645.
+TEST(RooAddPdf, IntegralsForRangedFitWithIdenticalCoefRange)
+{
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
+   using namespace RooFit;
+
+   RooRealVar x("x", "", 0, 1);
+
+   RooGaussian g("g", "", x, 0.5, 0.2);
+   RooUniform u("u", "", x);
+
+   RooRealVar f("f", "", 0.5, 0, 1);
+   RooAddPdf a("a", "", {g, u}, {f});
+
+   std::unique_ptr<RooAbsData> dt{a.generate(x, 1000)};
+
+   x.setRange("limited", 0.2, 0.8);
+
+   std::unique_ptr<RooAbsReal> nll{a.createNLL(*dt, Range("limited"), SumCoefRange("limited"), EvalBackend("cpu"))};
+
+   RooArgList nodes;
+   nll->treeNodeServerList(&nodes);
+
+   int iIntegrals = 0;
+
+   for (auto *arg : nodes) {
+      if (dynamic_cast<RooRealIntegral const *>(arg)) {
+         ++iIntegrals;
+      }
+   }
+
+   // We expect only two integral objects: one normalization integral for each
+   // of the component pdfs.
+   EXPECT_EQ(iIntegrals, 2);
+}
+
+// Verify that likelihoods for Pdfs with recursive fractions can be created.
+// Covers GitHub issues #21635 and #2144.
+TEST(RooAddPdf, NLLWithRecursiveFractions)
+{
+    // Create observables
+    RooRealVar x("x", "x", -8, 8);
+
+    // Construct signal pdf
+    RooRealVar mean("mean", "mean", 0, -8, 8);
+    RooRealVar sigma("sigma", "sigma", 0.3, 0.1, 10);
+    RooGaussian gx("gx", "gx", x, mean, sigma);
+
+    // Construct background pdf
+    RooRealVar a0("a0", "a0", -0.1, -1, 1);
+    RooRealVar a1("a1", "a1", 0.004, -1, 1);
+    RooChebychev px("px", "px", x, RooArgList(a0, a1));
+
+    // Construct composite pdf
+    RooRealVar b("b", "b", 200, 0.0, 10000);
+    RooRealVar s("s", "s", 800, 0.0, 10000);
+    RooRealVar f("f", "f", 0.5, 0.0, 1.0);
+    RooAddPdf model("model", "model", RooArgList(gx, px), RooArgList(f), true);
+
+    std::unique_ptr<RooDataSet> data{model.generate(RooArgSet(x), 1000)};
+
+    std::unique_ptr<RooAbsReal> nll{model.createNLL(*data)};
+}
+
+/// Extended fit over multiple disjoint 2D ranges with the new backend.
+///
+/// Regression test for a bug reported on the ROOT forum ("Possible bug in 2D
+/// multi-range extended fit with EvalBackend(\"cpu\")"): the extended term
+/// used the reciprocal of the full-range component integral, which is not
+/// the fraction inside the fit ranges for components whose normalization
+/// doesn't trivially factor over the observable union, like the RooProdPdf
+/// of two Gaussians here (union of sideband boxes spans the full axes).
+///
+/// Reference NLL values and yields are computed with plain math from the
+/// analytic model: fractions and shape normalization follow from erf() and
+/// logarithms only, without RooFit likelihood machinery.
+TEST(RooAddPdf, MultiRangeExtendedFit)
+{
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl{RooFit::WARNING};
+
+   using namespace RooFit;
+
+   RooRealVar x{"x", "x", -5.0, 5.0};
+   RooRealVar y{"y", "y", -5.0, 5.0};
+   RooArgSet obs{x, y};
+
+   // Signal: product of two unit Gaussians, narrow compared to range.
+   RooRealVar mu{"mu", "mu", 0.0};
+   RooRealVar sigma{"sigma", "sigma", 1.0};
+   RooGaussian gx{"gx", "gx", x, mu, sigma};
+   RooGaussian gy{"gy", "gy", y, mu, sigma};
+   RooProdPdf g{"g", "g", {gx, gy}};
+   RooUniform u{"u", "u", obs};
+
+   const double nGTrue = 12000.0;
+   const double nUTrue = 3000.0;
+   RooRealVar ng{"ng", "ng", nGTrue, 0.0, 30000.0};
+   RooRealVar nu{"nu", "nu", nUTrue, 0.0, 30000.0};
+   RooAddPdf model{"model", "model", {g, u}, {ng, nu}};
+
+   // Eight "sideband" boxes of a 3x3 grid, excluding the central box.
+   const double bounds[4] = {-5.0, -2.0, 2.0, 5.0};
+   std::string rangeArg;
+   for (int i = 0; i < 3; ++i) {
+      for (int j = 0; j < 3; ++j) {
+         if (i == 1 && j == 1)
+            continue;
+         std::string name = "sb" + std::to_string(i) + std::to_string(j);
+         x.setRange(name.c_str(), bounds[i], bounds[i + 1]);
+         y.setRange(name.c_str(), bounds[j], bounds[j + 1]);
+         if (!rangeArg.empty())
+            rangeArg += ",";
+         rangeArg += name;
+      }
+   }
+
+   RooRandom::randomGenerator()->SetSeed(12345);
+   std::unique_ptr<RooDataSet> data{model.generate(obs, 15000)};
+
+   // Closed-form reference values. Gaussian truncated to [-5, 5].
+   const double truncation = std::erf(5.0 / std::sqrt(2.0));
+
+   // Component fractions inside the union of sideband ranges. 1D central-box
+   // probability for the Gaussian: erf(2/sqrt(2))/truncation; the uniform
+   // fraction is the area ratio.
+   const double probCentral1D = std::erf(2.0 / std::sqrt(2.0)) / truncation;
+   const double fG = 1.0 - probCentral1D * probCentral1D;
+   const double fU = 1.0 - (4.0 * 4.0) / (10.0 * 10.0);
+   const double sqrtTwoPi = std::sqrt(8.0 * std::atan(1.0));
+   auto gaussVal = [&](double v) { return std::exp(-0.5 * v * v) / (sqrtTwoPi * truncation); };
+   const double uVal = 1.0 / (10.0 * 10.0);
+
+   // Shape part of the reference NLL at the true parameter values.
+   const double nExpTrue = nGTrue * fG + nUTrue * fU;
+   double nSB = 0.0;
+   double nllShapeRef = 0.0;
+   for (int i = 0; i < data->numEntries(); ++i) {
+      const RooArgSet *row = data->get(i);
+      const double xv = row->getRealValue("x");
+      const double yv = row->getRealValue("y");
+      if (std::abs(xv) <= 2.0 && std::abs(yv) <= 2.0)
+         continue;
+      nSB += 1.0;
+      const double modelVal = (nGTrue * gaussVal(xv) * gaussVal(yv) + nUTrue * uVal) / nExpTrue;
+      nllShapeRef -= std::log(modelVal);
+   }
+   // Extended term without offsetting: nExpected - nObserved * ln(nExpected).
+   const double nllExtendedRef = nllShapeRef + nExpTrue - nSB * std::log(nExpTrue);
+
+   // With the bug, the extended term used fractions (1.0, 0.84) instead of
+   // (fG, fU), shifting the NLL by ~2500 units.
+   std::unique_ptr<RooAbsReal> nllExtended{
+      model.createNLL(*data, Range(rangeArg.c_str()), Extended(true), EvalBackend("cpu"), Offset(false))};
+   EXPECT_NEAR(nllExtended->getVal(), nllExtendedRef, 1e-8 * std::abs(nllExtendedRef));
+
+   // Also verify the fitted yields: expected sideband events must match the
+   // actual count, and yields must be close to the truth. With the bug, the
+   // expected count was a factor ~4 too low.
+   std::unique_ptr<RooFitResult> res{
+      model.fitTo(*data, Range(rangeArg.c_str()), Extended(true), EvalBackend("cpu"), Save(), PrintLevel(-1))};
+   const double nGFit = ng.getVal();
+   const double nUFit = nu.getVal();
+   const double expectedSB = nGFit * fG + nUFit * fU;
+
+   // Tolerances far above the statistical fluctuation scale: the bug caused
+   // a factor ~4 deviation, so these clearly discriminate.
+   EXPECT_NEAR(expectedSB, nSB, 0.1 * nSB);
+   EXPECT_NEAR(nGFit, nGTrue, 0.1 * nGTrue);
+   EXPECT_NEAR(nUFit, nUTrue, 0.1 * nUTrue);
 }

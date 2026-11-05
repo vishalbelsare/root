@@ -1,3 +1,5 @@
+/// \cond ROOFIT_INTERNAL
+
 /*****************************************************************************
  * Project: RooFit                                                           *
  * Package: RooFitCore                                                       *
@@ -19,7 +21,7 @@
 \class RooNumGenFactory
 \ingroup Roofitcore
 
-RooNumGenFactory is a factory to instantiate numeric integrators
+%Factory to instantiate numeric integrators
 from a given function binding and a given configuration. The factory
 searches for a numeric integrator registered with the factory that
 has the ability to perform the numeric integration. The choice of
@@ -28,26 +30,14 @@ the nature of the integration limits (closed or open ended) and
 the preference of the caller as encoded in the configuration object.
 **/
 
-#include "TClass.h"
-#include "Riostream.h"
-
 #include "RooNumGenFactory.h"
 #include "RooArgSet.h"
-#include "RooAbsFunc.h"
 #include "RooNumGenConfig.h"
-#include "RooNumber.h"
-
 #include "RooAcceptReject.h"
 #include "RooFoamGenerator.h"
-
-
 #include "RooMsgService.h"
 
-using namespace std ;
-
-ClassImp(RooNumGenFactory);
-
-
+#include <ostream>
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor. Register all known integrators by calling
@@ -117,10 +107,10 @@ RooNumGenFactory& RooNumGenFactory::instance()
 
 bool RooNumGenFactory::storeProtoSampler(RooAbsNumGenerator* proto, const RooArgSet& defConfig)
 {
-  TString name = proto->ClassName() ;
+  TString name = proto->generatorName() ;
 
   if (getProtoSampler(name)) {
-    //cout << "RooNumGenFactory::storeSampler() ERROR: integrator '" << name << "' already registered" << endl ;
+    //cout << "RooNumGenFactory::storeSampler() ERROR: integrator '" << name << "' already registered" << std::endl ;
     return true ;
   }
 
@@ -141,7 +131,7 @@ bool RooNumGenFactory::storeProtoSampler(RooAbsNumGenerator* proto, const RooArg
 const RooAbsNumGenerator* RooNumGenFactory::getProtoSampler(const char* name)
 {
   if (_map.count(name)==0) {
-    return 0 ;
+    return nullptr ;
   }
 
   return _map[name] ;
@@ -161,8 +151,8 @@ const RooAbsNumGenerator* RooNumGenFactory::getProtoSampler(const char* name)
 RooAbsNumGenerator* RooNumGenFactory::createSampler(RooAbsReal& func, const RooArgSet& genVars, const RooArgSet& condVars, const RooNumGenConfig& config, bool verbose, RooAbsReal* maxFuncVal)
 {
   // Find method defined configuration
-  Int_t ndim = genVars.getSize() ;
-  bool cond = (condVars.getSize() > 0) ? true : false ;
+  Int_t ndim = genVars.size() ;
+  bool cond = (!condVars.empty()) ? true : false ;
 
   bool hasCat(false) ;
   for (const auto arg : genVars) {
@@ -191,8 +181,8 @@ RooAbsNumGenerator* RooNumGenFactory::createSampler(RooAbsReal& func, const RooA
   // Check that a method was defined for this case
   if (!method.CompareTo("N/A")) {
     oocoutE(nullptr,Integration) << "RooNumGenFactory::createSampler: No sampler method has been defined for "
-                 << (cond?"a conditional ":"a ") << ndim << "-dimensional p.d.f" << endl ;
-    return 0 ;
+                 << (cond?"a conditional ":"a ") << ndim << "-dimensional p.d.f" << std::endl;
+    return nullptr ;
   }
 
   // Retrieve proto integrator and return clone configured for the requested integration task
@@ -200,3 +190,5 @@ RooAbsNumGenerator* RooNumGenFactory::createSampler(RooAbsReal& func, const RooA
   RooAbsNumGenerator* engine =  proto->clone(func,genVars,condVars,config,verbose,maxFuncVal) ;
   return engine ;
 }
+
+/// \endcond

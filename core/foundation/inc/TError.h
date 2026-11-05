@@ -32,6 +32,7 @@
 
 #include <DllImport.h> // for R__EXTERN
 #include "RtypesCore.h"
+#include <ROOT/RConfig.hxx>
 
 #include <cstdarg>
 #include <functional>
@@ -64,6 +65,15 @@ ErrorSystemMsgHandlerFunc_t SetErrorSystemMsgHandler(ErrorSystemMsgHandlerFunc_t
 
 void MinimalErrorHandler(int level, Bool_t abort, const char *location, const char *msg);
 
+using WarningHandlerFunc_t = bool (*)(const char *location, const char *msg);
+
+/// For the Python bindings: install an error handler that passes warnings to
+/// `handler`, unless it declines them by returning false, and everything else
+/// to DefaultErrorHandler(). While ROOT runs multithreaded (gGlobalMutex is
+/// set) warnings skip the handler: it takes the GIL, which a thread waiting
+/// for ROOT's lock may hold while the reporting thread holds that lock.
+void SetWarningHandler(WarningHandlerFunc_t handler);
+
 } // namespace Internal
 } // namespace ROOT
 
@@ -78,32 +88,37 @@ extern ErrorHandlerFunc_t SetErrorHandler(ErrorHandlerFunc_t newhandler);
 extern ErrorHandlerFunc_t GetErrorHandler();
 
 extern void Info(const char *location, const char *msgfmt, ...)
-#if defined(__GNUC__) && !defined(__CINT__)
+#if defined(__GNUC__)
 __attribute__((format(printf, 2, 3)))
 #endif
 ;
 extern void Warning(const char *location, const char *msgfmt, ...)
-#if defined(__GNUC__) && !defined(__CINT__)
+#if defined(__GNUC__)
 __attribute__((format(printf, 2, 3)))
 #endif
 ;
 extern void Error(const char *location, const char *msgfmt, ...)
-#if defined(__GNUC__) && !defined(__CINT__)
+#if defined(__GNUC__)
 __attribute__((format(printf, 2, 3)))
 #endif
 ;
 extern void Break(const char *location, const char *msgfmt, ...)
-#if defined(__GNUC__) && !defined(__CINT__)
+#if defined(__GNUC__)
 __attribute__((format(printf, 2, 3)))
 #endif
 ;
 extern void SysError(const char *location, const char *msgfmt, ...)
-#if defined(__GNUC__) && !defined(__CINT__)
+#if defined(__GNUC__)
 __attribute__((format(printf, 2, 3)))
 #endif
 ;
-extern void Fatal(const char *location, const char *msgfmt, ...)
-#if defined(__GNUC__) && !defined(__CINT__)
+#ifdef __clang_analyzer__
+// The __attribute__((analyzer_noreturn)) is still very new and possibly not available
+[[noreturn]] void Fatal(const char *location, const char *msgfmt, ...)
+#else
+void Fatal(const char *location, const char *msgfmt, ...)
+#endif
+#if defined(__GNUC__)
 __attribute__((format(printf, 2, 3)))
 #endif
 ;
@@ -115,17 +130,29 @@ extern void Obsolete(const char *function, const char *asOfVers, const char *rem
 R__EXTERN const char *kAssertMsg;
 R__EXTERN const char *kCheckMsg;
 
-#define R__ASSERT(e)                                                     \
-   do {                                                                  \
-      if (!(e)) ::Fatal("", kAssertMsg, _QUOTE_(e), __LINE__, __FILE__); \
-   } while (false)
-#define R__CHECK(e)                                                       \
-   do {                                                                   \
-      if (!(e)) ::Warning("", kCheckMsg, _QUOTE_(e), __LINE__, __FILE__); \
+/*! Checks condition `e` and reports a fatal error if it's false.
+ * \warning
+ *   - this check is NOT stripped in release mode, so it should not be used for hot paths.
+ *     For those cases, prefer a regular `assert()`;
+ *   - depending on `gErrorIgnoreLevel`, this might not terminate the program, \see ::Fatal.
+ */
+#define R__ASSERT(e)                                              \
+   do {                                                           \
+      if (R__unlikely(!(e)))                                      \
+         ::Fatal("", kAssertMsg, _QUOTE_(e), __LINE__, __FILE__); \
    } while (false)
 
-R__EXTERN Int_t  gErrorIgnoreLevel;
-R__EXTERN Int_t  gErrorAbortLevel;
-R__EXTERN Bool_t gPrintViaErrorHandler;
+/*! Checks condition `e` and reports a warning message if it's false.
+ * \warning this check is NOT stripped in release mode, so it should not be used for hot paths.
+ */
+#define R__CHECK(e)                                                \
+   do {                                                            \
+      if (R__unlikely(!(e)))                                       \
+         ::Warning("", kCheckMsg, _QUOTE_(e), __LINE__, __FILE__); \
+   } while (false)
+
+R__EXTERN Int_t  gErrorIgnoreLevel;    ///< errors with level below this value will be ignored. Default is `kUnset`.
+R__EXTERN Int_t  gErrorAbortLevel;     ///< non-ignored errors with level equal or above this value will call abort(). Default is `kSysError+1`.
+R__EXTERN Bool_t gPrintViaErrorHandler;///< If true, ROOT's `Printf` will print via the currently active ROOT error handler; if false (default), it will use the standard `printf`.
 
 #endif

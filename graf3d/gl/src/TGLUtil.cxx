@@ -45,7 +45,6 @@ with OpenGL C API calls - which TVector3 etc cannot (easily).
 They are not intended to be fully featured just provide minimum required.
 */
 
-ClassImp(TGLVertex3);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct a default (0.0, 0.0, 0.0) vertex
@@ -143,7 +142,6 @@ calls. They are not intended to be fully featured just provide
 minimum required.
 */
 
-ClassImp(TGLVector3);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct a vector with components (x,y,z)
@@ -168,7 +166,6 @@ TGLVector3::TGLVector3(const Double_t *src) :
 passing through point 'vertex'. Just wraps a TGLVector3 / TGLVertex3 pair.
 */
 
-ClassImp(TGLLine3);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct 3D line running from 'start' to 'end'
@@ -221,7 +218,6 @@ void TGLLine3::Draw() const
 Viewport (pixel base) 2D rectangle class.
 */
 
-ClassImp(TGLRect);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct empty rect object, corner (0,0), width/height 0
@@ -328,7 +324,6 @@ They are not intended to be fully featured just provide minimum
 required.
 */
 
-ClassImp(TGLPlane);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct a default plane of x + y + z = 0
@@ -593,7 +588,6 @@ They are not intended to be fully featured just provide minimum
 required.
 */
 
-ClassImp(TGLMatrix);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct default identity matrix:
@@ -1150,7 +1144,6 @@ Color index is also cached for easier interfacing with the
 traditional ROOT graphics.
 */
 
-ClassImp(TGLColor);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor. Color is initialized to black.
@@ -1329,7 +1322,6 @@ TString TGLColor::AsString() const
 Class encapsulating a set of colors used throughout standard rendering.
 */
 
-ClassImp(TGLColorSet);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor. Sets default for dark background.
@@ -1406,7 +1398,6 @@ void TGLColorSet::StdLightBackground()
 Wrapper class for various misc static functions - error checking, draw helpers etc.
 */
 
-ClassImp(TGLUtil);
 
 UInt_t TGLUtil::fgDefaultDrawQuality = 10;
 UInt_t TGLUtil::fgDrawQuality        = fgDefaultDrawQuality;
@@ -1461,7 +1452,7 @@ protected:
 public:
    GLUtesselator *fTess;
 
-   TGLTesselatorWrap(tessfuncptr_t vertex_func) : fTess(0)
+   TGLTesselatorWrap(tessfuncptr_t vertex_func) : fTess(nullptr)
    {
       fTess = gluNewTess();
       if (!fTess)
@@ -1472,8 +1463,8 @@ public:
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
 
-      gluTessCallback(fTess, (GLenum)GLU_BEGIN,  (tessfuncptr_t) glBegin);
-      gluTessCallback(fTess, (GLenum)GLU_END,    (tessfuncptr_t) glEnd);
+      gluTessCallback(fTess, (GLenum)GLU_BEGIN,  (tessfuncptr_t) impl_glBegin);
+      gluTessCallback(fTess, (GLenum)GLU_END,    (tessfuncptr_t) impl_glEnd);
       gluTessCallback(fTess, (GLenum)GLU_VERTEX, vertex_func);
 
 #if defined(__GNUC__) && __GNUC__ >= 8
@@ -1503,7 +1494,7 @@ GLUtesselator* TGLUtil::GetDrawTesselator3fv()
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
 
-   static TGLTesselatorWrap singleton((tessfuncptr_t) glVertex3fv);
+   static TGLTesselatorWrap singleton((tessfuncptr_t) impl_glVertex3fv);
 
 #if defined(__GNUC__) && __GNUC__ >= 8
 #pragma GCC diagnostic pop
@@ -1524,7 +1515,7 @@ GLUtesselator* TGLUtil::GetDrawTesselator4fv()
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
 
-   static TGLTesselatorWrap singleton((tessfuncptr_t) glVertex4fv);
+   static TGLTesselatorWrap singleton((tessfuncptr_t) impl_glVertex4fv);
 
 #if defined(__GNUC__) && __GNUC__ >= 8
 #pragma GCC diagnostic pop
@@ -1545,7 +1536,7 @@ GLUtesselator* TGLUtil::GetDrawTesselator3dv()
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
 
-   static TGLTesselatorWrap singleton((tessfuncptr_t) glVertex3dv);
+   static TGLTesselatorWrap singleton((tessfuncptr_t) impl_glVertex3dv);
 
 #if defined(__GNUC__) && __GNUC__ >= 8
 #pragma GCC diagnostic pop
@@ -1566,7 +1557,7 @@ GLUtesselator* TGLUtil::GetDrawTesselator4dv()
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
 
-   static TGLTesselatorWrap singleton((tessfuncptr_t) glVertex4dv);
+   static TGLTesselatorWrap singleton((tessfuncptr_t) impl_glVertex4dv);
 
 #if defined(__GNUC__) && __GNUC__ >= 8
 #pragma GCC diagnostic pop
@@ -2676,6 +2667,20 @@ void TGLUtil::DrawNumber(const TString    & num,
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+/// Swap rows in pixel buffer returned by glReadPixels function
+/// To be able create ASImage from it
+
+void TGLUtil::SwapPixelBuffer(UChar_t *buf, UInt_t width, UInt_t height)
+{
+   std::vector<UChar_t> xx(4 * width);
+   for (UInt_t i = 0; i < height / 2; ++i) {
+      memcpy(xx.data(), buf + 4 * width * i, 4 * width);
+      memcpy(buf + 4 * width * i, buf + 4 * width * (height - i - 1), 4 * width);
+      memcpy(buf + 4 * width * (height - i - 1), xx.data(), 4 * width);
+   }
+}
+
 /**************************************************************************/
 /**************************************************************************/
 
@@ -2788,7 +2793,6 @@ TGLDisableGuard::~TGLDisableGuard()
 \ingroup opengl
 */
 
-ClassImp(TGLSelectionBuffer);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// TGLSelectionBuffer constructor.
@@ -2902,7 +2906,7 @@ void ObjectIDToColor(Int_t objectID, Bool_t highColor)
    if (!highColor)
       glColor3ub(objectID & 0xff, (objectID & 0xff00) >> 8, (objectID & 0xff0000) >> 16);
    else {
-      if (!gObjectIDToColor.size()) {
+      if (gObjectIDToColor.empty()) {
       //Initialize lookup tables.
          for (Int_t i = 0, id = 1; i < Int_t(sizeof gColorTriplets / sizeof(RGB_t)); ++i, ++id)
             gObjectIDToColor[id] = gColorTriplets[i];
@@ -2928,7 +2932,7 @@ Int_t ColorToObjectID(const UChar_t *pixel, Bool_t highColor)
    if (!highColor)
       return pixel[0] | (pixel[1] << 8) | (pixel[2] << 16);
    else {
-      if (!gObjectIDToColor.size())
+      if (gObjectIDToColor.empty())
          return 0;
 
       RGB_t triplet = {{pixel[0], pixel[1], pixel[2]}};
@@ -3206,8 +3210,8 @@ void DrawBoxFrontTextured(Double_t xMin, Double_t xMax, Double_t yMin,
 void DrawBoxWithGradientFill(Double_t y1, Double_t y2, Double_t x1, Double_t x2,
                              const Double_t *rgba1, const Double_t *rgba2)
 {
-   assert(rgba1 != 0 && "DrawBoxWithGradientFill, parameter 'rgba1' is null");
-   assert(rgba2 != 0 && "DrawBoxWithGradientFill, parameter 'rgba2' is null");
+   assert(rgba1 != nullptr && "DrawBoxWithGradientFill, parameter 'rgba1' is null");
+   assert(rgba2 != nullptr && "DrawBoxWithGradientFill, parameter 'rgba2' is null");
 
    glBegin(GL_POLYGON);
    glColor4dv(rgba1);
@@ -3228,13 +3232,13 @@ void DrawQuadStripWithRadialGradientFill(unsigned nPoints, const Double_t *inner
 {
    assert(nPoints != 0 &&
           "DrawQuadStripWithRadialGradientFill, invalid number of points");
-   assert(inner != 0 &&
+   assert(inner != nullptr &&
           "DrawQuadStripWithRadialGradientFill, parameter 'inner' is null");
-   assert(innerRGBA != 0 &&
+   assert(innerRGBA != nullptr &&
           "DrawQuadStripWithRadialGradientFill, parameter 'innerRGBA' is null");
-   assert(outer != 0 &&
+   assert(outer != nullptr &&
           "DrawQuadStripWithRadialGradientFill, parameter 'outer' is null");
-   assert(outerRGBA != 0 &&
+   assert(outerRGBA != nullptr &&
           "DrawQuadStripWithRadialGradientFill, parameter 'outerRGBA' is null");
 
    glBegin(GL_QUAD_STRIP);
@@ -4157,7 +4161,7 @@ void GetColor(Float_t v, Float_t vmin, Float_t vmax, Int_t type, Float_t *rgba)
 ///Ctor.
 
 TGLLevelPalette::TGLLevelPalette()
-                  : fContours(0),
+                  : fContours(nullptr),
                     fPaletteSize(0),
                     fTexture(0),
                     fMaxPaletteSize(0)

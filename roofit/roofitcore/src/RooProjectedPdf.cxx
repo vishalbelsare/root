@@ -14,7 +14,7 @@
 \class RooProjectedPdf
 \ingroup Roofitcore
 
-Class RooProjectedPdf is a RooAbsPdf implementation that represent a projection
+A RooAbsPdf implementation that represent a projection
 of a given input p.d.f and the object returned by RooAbsPdf::createProjection.
 The actual projection integral for it value and normalization are
 calculated on the fly in getVal() once the normalization observables are known.
@@ -27,28 +27,24 @@ The performance of <pre>f->createProjection(x)->createProjection(y)</pre>
 is therefore identical to that of <pre>f->createProjection(RooArgSet(x,y))</pre>
 **/
 
-#include "Riostream.h"
-
 #include "RooProjectedPdf.h"
 #include "RooMsgService.h"
 #include "RooAbsReal.h"
 #include "RooRealVar.h"
 #include "RooNameReg.h"
+#include "RooRatio.h"
+#include "RooWrapperPdf.h"
+#include "RooFitImplHelpers.h"
 
-ClassImp(RooProjectedPdf);
+#include <ostream>
 
+ ////////////////////////////////////////////////////////////////////////////////
+ /// Default constructor
 
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
+ RooProjectedPdf::RooProjectedPdf() : _cacheMgr(this, 10) {}
 
-RooProjectedPdf::RooProjectedPdf() : _cacheMgr(this,10)
-{
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Construct projection of input pdf '_intpdf' over observables 'intObs'
+ ////////////////////////////////////////////////////////////////////////////////
+ /// Construct projection of input pdf '_intpdf' over observables 'intObs'
 
  RooProjectedPdf::RooProjectedPdf(const char *name, const char *title, RooAbsReal& _intpdf, const RooArgSet& intObs) :
    RooAbsPdf(name,title),
@@ -62,7 +58,7 @@ RooProjectedPdf::RooProjectedPdf() : _cacheMgr(this,10)
    // servers are. Integration observables will be shape servers, the other
    // servers are value servers.
    int code;
-   auto proj = getProjection(&intObs, nullptr, 0, code);
+   auto proj = getProjection(&intObs, nullptr, nullptr, code);
    for(RooAbsArg* server : proj->servers()) {
      if(server->isShapeServer(*proj)) {
        intobs.add(*server);
@@ -80,7 +76,7 @@ RooProjectedPdf::RooProjectedPdf() : _cacheMgr(this,10)
  RooProjectedPdf::RooProjectedPdf(const RooProjectedPdf& other, const char* name) :
    RooAbsPdf(other,name),
    intpdf("!IntegratedPdf",this,other.intpdf),
-   intobs("!IntegrationObservable",this,other.intobs),
+   intobs("!IntegrationObservables",this,other.intobs),
    deps("!Dependents",this,other.deps),
    _cacheMgr(other._cacheMgr,this)
 {
@@ -95,7 +91,7 @@ double RooProjectedPdf::evaluate() const
 {
   // Calculate current unnormalized value of object
   int code ;
-  return getProjection(&intobs, _normSet, 0, code)->getVal() ;
+  return getProjection(&intobs, _normSet, normRange(), code)->getVal() ;
 }
 
 
@@ -124,7 +120,7 @@ const RooAbsReal* RooProjectedPdf::getProjection(const RooArgSet* iset, const Ro
   }
 
   auto cache = new CacheElem ;
-  cache->_projection = std::unique_ptr<RooAbsReal>{intpdf.arg().createIntegral(iset?*iset:RooArgSet(),&nset2,0,rangeName)};
+  cache->_projection = std::unique_ptr<RooAbsReal>{intpdf.arg().createIntegral(iset?*iset:RooArgSet(),&nset2,nullptr,rangeName)};
 
   code = _cacheMgr.setObj(iset, nset, cache, RooNameReg::ptr(rangeName)) ;
 
@@ -214,7 +210,7 @@ bool RooProjectedPdf::redirectServersHook(const RooAbsCollection& newServerList,
   // Redetermine explicit list of dependents if intPdf is being replaced
   if (RooAbsArg* newPdf = newServerList.find(intpdf.arg().GetName())) {
 
-    // Determine if set of dependens of new p.d.f is different from old p.d.f.
+    // Determine if set of dependents of new p.d.f is different from old p.d.f.
     RooArgSet olddeps(deps) ;
     RooArgSet newdeps;
     newPdf->getParameters(&intobs, newdeps);
@@ -276,4 +272,65 @@ void RooProjectedPdf::CacheElem::printCompactTreeHook(std::ostream& os, const ch
   if(curElem==maxElem) {
     os << indent << "RooProjectedPdf end projection cache" << std::endl ;
   }
+}
+
+
+std::unique_ptr<RooAbsArg>
+RooProjectedPdf::compileForNormSet(RooArgSet const &normSet, RooFit::Detail::CompileContext &ctx) const
+{
+   RooArgSet nset2;
+   intpdf->getObservables(&normSet, nset2);
+   nset2.add(intobs);
+
+   bool forcedAnalyticalInt = false;
+   for (RooAbsArg *obs : intobs) {
+      forcedAnalyticalInt |= intpdf->forceAnalyticalInt(*obs);
+   }
+
+   // If the pdf forces analytical integration, it is usually because it is
+   // expoliting the analytical integration hooks for special integral
+   // semantics (e.g. conditional RooProdPdfs). In these cases, we can't take
+   // the optimized code path below that splits up the projection into
+   // numerator and denominator, as the integral might not factorize like this.
+   if (forcedAnalyticalInt) {
+      auto newArg = std::unique_ptr<RooAbsReal>{intpdf->createIntegral(intobs, &nset2)};
+
+      std::string namePdf = std::string{newArg->GetName()} + "_wrapped_pdf";
+
+      auto newArgPdf = std::make_unique<RooWrapperPdf>(namePdf.c_str(), namePdf.c_str(), *newArg);
+
+      ctx.markAsCompiled(*newArg);
+      newArgPdf->addOwnedComponents(std::move(newArg));
+
+      return newArgPdf;
+   }
+
+   // Build the projection as an explicit ratio of two integrals instead of a
+   // single RooRealIntegral with a function-normalization set. The latter
+   // would force the integrand to evaluate the *normalized* pdf, hiding the
+   // normalization integral inside RooAbsPdf::_normMgr. That hidden integral
+   // is invisible to the RooFit::Evaluator and is therefore re-run for every
+   // step of the outer integrator during minimization (because the evaluator
+   // sets all its tracked nodes to ADirty). Exposing the normalization as a
+   // sibling node lets the evaluator cache it once per likelihood evaluation.
+   std::unique_ptr<RooAbsReal> numerator{intpdf->createIntegral(intobs)};
+   std::unique_ptr<RooAbsReal> denominator{intpdf->createIntegral(nset2)};
+
+   std::string nameRatio =
+      std::string{numerator->GetName()} + "_Norm[" + RooHelpers::getColonSeparatedNameString(nset2, ',') + "]";
+   auto ratio = std::make_unique<RooRatio>(nameRatio.c_str(), nameRatio.c_str(), *numerator, *denominator);
+
+   std::string namePdf = nameRatio + "_wrapped_pdf";
+   auto newArgPdf = std::make_unique<RooWrapperPdf>(namePdf.c_str(), namePdf.c_str(), *ratio);
+
+   ctx.markAsCompiled(*numerator);
+   ctx.markAsCompiled(*denominator);
+   ctx.markAsCompiled(*ratio);
+   ctx.markAsCompiled(*newArgPdf);
+
+   newArgPdf->addOwnedComponents(std::move(numerator));
+   newArgPdf->addOwnedComponents(std::move(denominator));
+   newArgPdf->addOwnedComponents(std::move(ratio));
+
+   return newArgPdf;
 }

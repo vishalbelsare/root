@@ -19,21 +19,14 @@
 \class RooDataHistSliceIter
 \ingroup Roofitcore
 
-RooDataHistSliceIter iterates over all bins in a RooDataHist that
-occur in a slice defined by the bin coordinates of the input
-sliceSet.
+Iterates over all bins in a RooDataHist that occur in a slice defined by the
+bin coordinates of the input sliceSet.
 **/
 
 #include "RooDataHist.h"
 #include "RooArgSet.h"
 #include "RooAbsLValue.h"
 #include "RooDataHistSliceIter.h"
-
-using namespace std;
-
-ClassImp(RooDataHistSliceIter);
-;
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,7 +39,7 @@ RooDataHistSliceIter::RooDataHistSliceIter(RooDataHist& hist, RooAbsArg& sliceAr
   RooAbsArg* sliceArgInt = hist.get()->find(sliceArg.GetName()) ;
   dynamic_cast<RooAbsLValue&>(*sliceArgInt).setBin(0) ;
 
-  if (hist._vars.getSize()>1) {
+  if (hist._vars.size()>1) {
     _baseIndex = hist.calcTreeIndex(hist._vars, true);
   } else {
     _baseIndex = 0 ;
@@ -54,9 +47,9 @@ RooDataHistSliceIter::RooDataHistSliceIter(RooDataHist& hist, RooAbsArg& sliceAr
 
   _nStep = dynamic_cast<RooAbsLValue&>(*sliceArgInt).numBins() ;
 
-//   cout << "RooDataHistSliceIter" << endl ;
+//   std::cout << "RooDataHistSliceIter" << std::endl ;
 //   hist.Print() ;
-//   cout << "hist._iterator = " << hist._iterator << endl ;
+//   std::cout << "hist._iterator = " << hist._iterator << std::endl ;
 
   Int_t i=0 ;
   for (const auto arg : hist._vars) {
@@ -100,7 +93,7 @@ RooDataHistSliceIter::~RooDataHistSliceIter()
 
 const TCollection* RooDataHistSliceIter::GetCollection() const
 {
-  return 0 ;
+  return nullptr ;
 }
 
 
@@ -112,7 +105,7 @@ const TCollection* RooDataHistSliceIter::GetCollection() const
 TObject* RooDataHistSliceIter::Next()
 {
   if (_curStep==_nStep) {
-    return 0 ;
+    return nullptr ;
   }
 
   // Select appropriate entry in RooDataHist

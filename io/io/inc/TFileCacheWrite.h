@@ -32,8 +32,8 @@ private:
 
 public:
    TFileCacheWrite();
-   TFileCacheWrite(TFile *file, Int_t buffersize);
-   virtual ~TFileCacheWrite();
+   TFileCacheWrite(TFile *file, Int_t bufsize);
+   ~TFileCacheWrite() override;
    virtual Bool_t      Flush();
    virtual Int_t       GetBytesInCache() const { return fNtot; }
            void        Print(Option_t *option="") const override;

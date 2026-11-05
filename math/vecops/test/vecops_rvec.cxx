@@ -37,6 +37,24 @@ void CheckEqual(const ROOT::RVecD &a, const ROOT::RVecD &b, std::string_view msg
    }
 }
 
+// Checks if all the elements in `v1` are at most `percentage` percent different
+// from `v2`
+void CheckNear(const RVecD &v1, const RVecD &v2, double percentage = 1e-4)
+{
+    ASSERT_EQ(v1.size(), v2.size());
+    for (size_t i = 0; i < v1.size(); i++) {
+        double expected = v2[i];
+        double actual = v1[i];
+        // Compute tolerance as percentage of expected value.
+        double tol = std::abs(expected) * percentage;
+        // Fallback: if expected is zero, use the percentage as an absolute tolerance.
+        if (expected == 0.0) {
+            tol = percentage;
+        }
+        ASSERT_NEAR(actual, expected, tol);
+    }
+}
+
 void CheckEqual(const ROOT::Math::PtEtaPhiMVector &a, const ROOT::Math::PtEtaPhiMVector &b) {
    EXPECT_DOUBLE_EQ(a.Pt(), b.Pt());
    EXPECT_DOUBLE_EQ(a.Eta(), b.Eta());
@@ -121,6 +139,21 @@ TEST(VecOps, MoveCtor)
    RVec<int> v1{1, 2, 3};
    RVec<int> v2(std::move(v1));
    EXPECT_EQ(v2.size(), 3u);
+}
+
+// regression test: this used to fail to compile
+TEST(VecOps, MoveOnlyValue)
+{
+   struct MoveOnly {
+      MoveOnly() = default;
+      MoveOnly(const MoveOnly &) = delete;
+      MoveOnly &operator=(const MoveOnly &) = delete;
+      MoveOnly(MoveOnly &&) = default;
+      MoveOnly &operator=(MoveOnly &&) = default;
+   };
+   ROOT::RVec<MoveOnly> v(10);
+   v.resize(20);
+   v[19] = MoveOnly();
 }
 
 TEST(VecOps, Conversion)
@@ -440,6 +473,12 @@ TEST(VecOps, MathFuncs)
    CheckEqual(pow(v,1), v, " error checking math function pow");
    CheckEqual(pow(v,v), w, " error checking math function pow");
 
+   // #16031
+   RVec<double> vv{3.4};
+   RVec<double> vv_ref{11.56};
+   CheckEqual(pow(vv,2), vv_ref, " error checking math function pow");
+   CheckEqual(pow(vv,2.), vv_ref, " error checking math function pow");
+
    CheckEqual(sqrt(v), Map(v, [](double x) { return std::sqrt(x); }), " error checking math function sqrt");
    CheckEqual(log(v), Map(v, [](double x) { return std::log(x); }), " error checking math function log");
    CheckEqual(sin(v), Map(v, [](double x) { return std::sin(x); }), " error checking math function sin");
@@ -510,8 +549,8 @@ TEST(VecOps, InputOutput)
    const RVec<ULong64_t> ullref {1ULL, 2ULL, 3ULL};
    const RVec<UShort_t> usref {1, 2, 3};
    const RVec<UChar_t> ucref {1, 2, 3};
-   const RVec<Int_t> iref {1, 2, 3};;
-   const RVec<Long_t> lref {1UL, 2UL, 3UL};;
+   const RVec<Int_t> iref {1, 2, 3};
+   const RVec<Long_t> lref {1UL, 2UL, 3UL};
    const RVec<Long64_t> llref {1ULL, 2ULL, 3ULL};
    const RVec<Short_t> sref {1, 2, 3};
    const RVec<Char_t> cref {1, 2, 3};
@@ -798,12 +837,32 @@ TEST(VecOps, TakeLast)
    CheckEqual(v2, none);
 }
 
+TEST(VecOps, TakeN)
+{
+   RVec<int> x = {1,2,3,4};
+   auto res = Take(x,5,1);
+   RVec<int> expected = {1,2,3,4,1};
+   CheckEqual(res, expected); // Check the contents of the output vector are correct
+
+   res = Take(x,-5,1);
+   expected = {1,1,2,3,4};
+   CheckEqual(res, expected); // Check the contents of the output vector are correct
+
+   res = Take(x,-1,1);
+   expected = {4};
+   CheckEqual(res, expected); // Check the contents of the output vector are correct
+
+   res = Take(x,4,1);
+   expected = {1,2,3,4};
+   CheckEqual(res, expected); // Check the contents of the output vector are correct
+}
+
 TEST(VecOps, TakeWithDefault)
 {
    RVec<int> v0{1, 2, 3};
 
-   auto v1 = Take(v0, {0, 1, 2, 3}, -999);
-   RVec<int> ref{1, 2, 3, -999};
+   auto v1 = Take(v0, {0, 3}, -999);
+   RVec<int> ref{1, -999};
    CheckEqual(v1, ref);
 }
 
@@ -827,6 +886,68 @@ TEST(VecOps, RangeBeginEnd)
    CheckEqual(Range(1, 4), ref);
 
    CheckEqual(Range(4, 1), RVecI{});
+}
+
+TEST(VecOps, RangeBeginEndStride)
+{
+    const RVecI ref{1, 3};
+    CheckEqual(Range(1, 5, 2), ref);
+
+    CheckEqual(Range(-1, 8, 3), RVecI{-1, 2, 5});
+    CheckEqual(Range(6, 1, -1), RVecI{6, 5, 4, 3, 2});
+    CheckEqual(Range(-3, -9, -2), RVecI{-3, -5, -7});
+    CheckEqual(Range(1, 8, 2), RVecI{1, 3, 5, 7});
+    CheckEqual(Range(-1, -8, -2), RVecI{-1, -3, -5, -7});
+    CheckEqual(Range(-4, -7, 1), RVecI{});
+    CheckEqual(Range(-4, -1, -1), RVecI{});
+    CheckEqual(Range(1, 3, 5), RVecI{1});
+}
+
+TEST(VecOps, Linspace)
+{
+   const RVecD ref{-1, 0.5, 2, 3.5, 5};
+   CheckNear(Linspace(-1, 5, 5), ref);
+
+   CheckNear(Linspace(3, 12, 5), RVecD{ 3, 5.25, 7.5, 9.75, 12 });
+   CheckNear(Linspace(0, 0, 5), RVecD{ 0, 0, 0, 0, 0 });
+   CheckNear(Linspace(-7, 20, 4), RVecD{ -7, 2, 11, 20 });
+   CheckNear(Linspace(1, 13, 5), RVecD{ 1, 4, 7, 10, 13 });
+   CheckNear(Linspace(1, 4, 0), RVecD{});
+   CheckNear(Linspace(1, 14, 0), RVecD{});
+   CheckNear(Linspace(1.4, 13.66, 5), RVecD{ 1.4, 4.465, 7.53, 10.595, 13.66 });
+   CheckNear(Linspace(3, 12, 5, false), RVecD{ 3, 4.8, 6.6, 8.4, 10.2 });
+   CheckNear(Linspace(3, 12, 1, false), RVecD{ 3 });
+   CheckNear(Linspace(3, 12, 1, true), RVecD{ 3 });
+   CheckEqual(Linspace<int, int>(1, 10, 3), RVecI{ 1, 5, 10 });
+}
+
+TEST(VecOps, Logspace)
+{
+   CheckNear(Logspace(4, 10, 12), RVecD{ 10000.0, 35111.917, 123284.67, 432876.13, 1519911.1, 5336699.2, 18738174., 65793322., 2.3101297e+08, 8.1113083e+08, 2.8480359e+09, 1e+10 });
+   CheckNear(Logspace(-1, -10, 12), RVecD{ 0.1, 0.015199111, 0.0023101297, 0.00035111917, 5.3366992e-05, 8.1113083e-06, 1.2328467e-06, 1.8738174e-07, 2.8480359e-08, 4.3287613e-09, 6.5793322e-10, 1e-10 });
+   CheckNear(Logspace(0, 0, 50), RVecD{ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 });
+   CheckNear(Logspace(0, 0, 0), RVecD{});
+   CheckNear(Logspace(9, 0, 3), RVecD{ 1e+09, 31622.777, 1 });
+   CheckNear(Logspace(-1, 10, 22), RVecD{ 0.1, 0.33404850, 1.1158840, 3.7275937, 12.451971, 41.595622, 138.94955, 464.15888, 1550.5158, 5179.4747, 17301.957, 57796.929, 193069.77, 644946.68, 2154434.7, 7196856.7, 24040992., 80308572., 2.6826958e+08, 8.9615050e+08, 2.9935773e+09, 1e+10 });
+   CheckNear(Logspace(5, -3, 3), RVecD{ 100000, 10, 0.001 });
+   CheckNear(Logspace(1.4, 3.66, 5), RVecD{ 25.118864, 92.257143, 338.84416, 1244.5146, 4570.8819 });
+   CheckNear(Logspace(1.4, 13.66, 5, true, 2.0), RVecD{ 2.6390158, 22.085078, 184.82294, 1546.7239, 12944.037 });
+   CheckNear(Logspace(5, 9, 200, true, 2), RVecD{ 32, 32.448964, 32.904227, 33.365877, 33.834004, 34.308699, 34.790054, 35.278163, 35.773119, 36.275020, 36.783963, 37.300047, 37.823371, 38.354037, 38.892149, 39.437810, 39.991127, 40.552207, 41.121160, 41.698094, 42.283124, 42.876361, 43.477921, 44.087921, 44.706480, 45.333717, 45.969755, 46.614716, 47.268726, 47.931912, 48.604402, 49.286327, 49.977820, 50.679015, 51.390048, 52.111056, 52.842180, 53.583562, 54.335346, 55.097677, 55.870704, 56.654577, 57.449447, 58.255470, 59.072801, 59.901599, 60.742026, 61.594243, 62.458418, 63.334717, 64.223310, 65.124371, 66.038074, 66.964596, 67.904117, 68.856819, 69.822889, 70.802512, 71.795880, 72.803184, 73.824622, 74.860390, 75.910690, 76.975726, 78.055704, 79.150835, 80.261330, 81.387406, 82.529281, 83.687177, 84.861318, 86.051932, 87.259251, 88.483508, 89.724942, 90.983794, 92.260307, 93.554730, 94.867314, 96.198314, 97.547987, 98.916597, 100.30441, 101.71169, 103.13872, 104.58577, 106.05312, 107.54105, 109.04987, 110.57985, 112.13130, 113.70451, 115.29980, 116.91747, 118.55784, 120.22122, 121.90794, 123.61832, 125.35270, 127.11141, 128.89480, 130.70321, 132.53699, 134.39650, 136.28210, 138.19415, 140.13303, 142.09912, 144.09278, 146.11442, 148.16442, 150.24319, 152.35112, 154.48862, 156.65612, 158.85402, 161.08276, 163.34277, 165.63449, 167.95836, 170.31484, 172.70437, 175.12744, 177.58449, 180.07603, 182.60251, 185.16445, 187.76233, 190.39665, 193.06794, 195.77671, 198.52348, 201.30879, 204.13317, 206.99718, 209.90138, 212.84632, 215.83258, 218.86074, 221.93138, 225.04510, 228.20251, 231.40422, 234.65085, 237.94303, 241.28139, 244.66660, 248.09930, 251.58016, 255.10986, 258.68909, 262.31852, 265.99888, 269.73088, 273.51524, 277.35269, 281.24398, 285.18986, 289.19111, 293.24850, 297.36281, 301.53484, 305.76541, 310.05534, 314.40545, 318.81659, 323.28963, 327.82542, 332.42485, 337.08881, 341.81821, 346.61395, 351.47699, 356.40825, 361.40870, 366.47931, 371.62106, 376.83494, 382.12198, 387.48320, 392.91963, 398.43234, 404.02240, 409.69088, 415.43889, 421.26755, 427.17798, 433.17134, 439.24878, 445.41149, 451.66067, 457.99752, 464.42328, 470.93919, 477.54653, 484.24656, 491.04060, 497.92995, 504.91597, 512 });
+   CheckNear(Logspace(4, 10, 12, false, 10), RVecD{ 10000, 31622.8, 100000, 316228, 1e+06, 3.16228e+06, 1e+07, 3.16228e+07, 1e+08, 3.16228e+08, 1e+09, 3.16228e+09 });
+   CheckNear(Logspace(5, 9, 200, false, 2), RVecD{ 32, 32.4467, 32.8996, 33.3589, 33.8246, 34.2968, 34.7755, 35.261, 35.7532, 36.2523, 36.7583, 37.2715, 37.7918, 38.3193, 38.8542, 39.3966, 39.9466, 40.5042, 41.0696, 41.6429, 42.2243, 42.8137, 43.4113, 44.0173, 44.6318, 45.2548, 45.8866, 46.5271, 47.1766, 47.8352, 48.5029, 49.18, 49.8665, 50.5626, 51.2685, 51.9842, 52.7098, 53.4456, 54.1917, 54.9482, 55.7152, 56.493, 57.2816, 58.0812, 58.892, 59.7141, 60.5477, 61.3929, 62.2499, 63.1189, 64, 64.8934, 65.7993, 66.7178, 67.6492, 68.5935, 69.551, 70.5219, 71.5064, 72.5046, 73.5167, 74.5429, 75.5835, 76.6386, 77.7085, 78.7932, 79.8932, 81.0084, 82.1393, 83.2859, 84.4485, 85.6274, 86.8227, 88.0347, 89.2636, 90.5097, 91.7731, 93.0542, 94.3532, 95.6704, 97.0059, 98.36, 99.7331, 101.125, 102.537, 103.968, 105.42, 106.891, 108.383, 109.896, 111.43, 112.986, 114.563, 116.162, 117.784, 119.428, 121.095, 122.786, 124.5, 126.238, 128, 129.787, 131.599, 133.436, 135.298, 137.187, 139.102, 141.044, 143.013, 145.009, 147.033, 149.086, 151.167, 153.277, 155.417, 157.586, 159.786, 162.017, 164.279, 166.572, 168.897, 171.255, 173.645, 176.069, 178.527, 181.019, 183.546, 186.108, 188.706, 191.341, 194.012, 196.72, 199.466, 202.251, 205.074, 207.937, 210.839, 213.783, 216.767, 219.793, 222.861, 225.972, 229.126, 232.325, 235.568, 238.856, 242.191, 245.572, 249, 252.476, 256, 259.574, 263.197, 266.871, 270.597, 274.374, 278.204, 282.088, 286.026, 290.018, 294.067, 298.172, 302.334, 306.555, 310.834, 315.173, 319.573, 324.034, 328.557, 333.144, 337.794, 342.509, 347.291, 352.139, 357.054, 362.039, 367.093, 372.217, 377.413, 382.681, 388.023, 393.44, 398.932, 404.501, 410.148, 415.873, 421.679, 427.565, 433.534, 439.586, 445.722, 451.944, 458.253, 464.65, 471.136, 477.713, 484.382, 491.143, 497.999, 504.951 });
+   CheckNear(Logspace(1.4, 13.66, 1, false, 2.0), RVecD{ 2.63902 });
+   CheckEqual(Logspace<int, int>(1, 5, 3), RVecI{ 10, 1000, 100000 });
+}
+
+TEST(VecOps, Arange)
+{
+   CheckNear(Arange(0, 0, 5), RVecD{});
+   CheckNear(Arange(-7, 20, 4), RVecD{ -7, -3, 1, 5, 9, 13, 17 });
+   CheckNear(Arange(1, 13, 5), RVecD{ 1, 6, 11 });
+   CheckNear(Arange(1.0, 4.0, .1), RVecD{ 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9 });
+   CheckNear(Arange(1.0, -14.0, -1.2), RVecD{ 1, -0.2, -1.4, -2.6, -3.8, -5, -6.2, -7.4, -8.6, -9.8, -11, -12.2, -13.4 });
+   CheckNear(Arange(1.4, 13.66, 5.0), RVecD{ 1.4, 6.4, 11.4 });
+   CheckNear(Arange<unsigned int, unsigned int>(5, 9, 1), RVec<unsigned int>{ 5, 6, 7, 8 });
 }
 
 TEST(VecOps, Drop)
@@ -1157,6 +1278,24 @@ TEST(VecOps, DeltaPhi)
    auto dphi4 = DeltaPhi(v4, v3);
    auto r4 = -1.f * r3;
    CheckEqual(dphi4, r4);
+
+   // Checks that calling with different argument types works and yields the
+   // expected return types and values
+   EXPECT_TRUE((std::is_same_v<decltype(DeltaPhi(0.f, 0.0)), double>)) << "DeltaPhi should return double if one of the arguments is double";
+   EXPECT_EQ(DeltaPhi(0.f, 2.0), 2.0);
+   EXPECT_EQ(DeltaPhi(1.0, 0.0, 180.f), -1.0);
+
+   RVec<double> v1d = {0.0, 1.0, -0.5, 0.0, 0.0, 0.0, 0.0};
+   auto dphiMixed = DeltaPhi(v1d, v2);
+   EXPECT_TRUE((std::is_same_v<decltype(dphiMixed), RVec<double>>)) << "DeltaPhi should return double if one of the arguments is double";
+   const RVec<double> r1d = {2.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0};
+   for (size_t i = 0; i < dphiMixed.size(); ++i) {
+      // We use the full double result here as reference and allow for some
+      // jitter introduced by the floating point promotion that happens along
+      // the way (in deterministic but different places depending on the types
+      // of the arguments)
+       EXPECT_NEAR(dphiMixed[i], r1d[i], 1e-6);
+   }
 }
 
 TEST(VecOps, InvariantMass)
@@ -1168,8 +1307,8 @@ TEST(VecOps, InvariantMass)
    RVec<double> phi1 =  {0.0, 0.0, 0.0,  -0.5, -2.4};
 
    RVec<double> mass2 = {40,  40,  40,  40,  30};
-   RVec<double> pt2 =   {0,   5,   5,   10,  2};
-   RVec<double> eta2 =  {0.0, 0.0, 0.5, 0.4, 1.2};
+   RVec<double> pt2 = {1, 5, 5, 10, 2};
+   RVec<double> eta2 = {0.1, 0.0, 0.5, 0.4, 1.2};
    RVec<double> phi2 =  {0.0, 0.0, 0.0, 0.5, 2.4};
 
    // Compute invariant mass of two particle system using both collections
@@ -1208,6 +1347,61 @@ TEST(VecOps, InvariantMass)
    }
 
    EXPECT_NEAR(p5.M(), invMass3, 1e-4);
+
+   // Check that calling with different argument types works and yields the
+   // expected return types and values
+   RVec<float> pt1f =   {0.f, 5.f, 5.f, 10.f, 10.f};
+   RVec<float> eta2f = {0.1f, 0.f, 0.5f, 0.4f, 1.2f};
+   const auto invMassF = InvariantMasses(pt1f, eta1, phi1, mass1, pt2, eta2f, phi2, mass2);
+   EXPECT_TRUE((std::is_same_v<decltype(invMassF), const RVec<double>>)) << "InvariantMasses should return double if one of the arguments is double";
+   for (size_t i = 0; i < invMass.size(); ++i) {
+      // We use the full double result here as reference and allow for some
+      // jitter introduced by the floating point promotion that happens along
+      // the way (in deterministic but different places depending on the types
+      // of the arguments)
+      EXPECT_NEAR(invMassF[i], invMass[i], 1e-7);
+   }
+
+   const auto invMass2F = InvariantMass(pt1f, eta1, phi1, mass1);
+   EXPECT_TRUE((std::is_same_v<decltype(invMass2F), const double>)) << "InvariantMass should return double if one of the arguments is double";
+   EXPECT_EQ(invMass2F, invMass2);
+
+   // Dummy particle collections
+   RVec<double> px1 = {0, 5, 5, 10, 10};
+   RVec<double> py1 = {0.0, 0.0, -1.0, 0.5, 2.5};
+   RVec<double> pz1 = {0.0, 0.0, 0.0, -0.5, -2.4};
+
+   RVec<double> px2 = {0, 5, 5, 10, 2};
+   RVec<double> py2 = {0.0, 0.0, 0.5, 0.4, 1.2};
+   RVec<double> pz2 = {0.0, 0.0, 0.0, 0.5, 2.4};
+
+   // Check with PxPyPxM coordinate systems
+   // Compute invariant mass of two particle system using both collections
+   const auto invMass_XYXM = InvariantMasses_PxPyPzM(px1, py1, pz1, mass1, px2, py2, pz2, mass2);
+
+   for (size_t i = 0; i < mass1.size(); i++) {
+      TLorentzVector p1, p2;
+      p1.SetXYZM(px1[i], py1[i], pz1[i], mass1[i]);
+      p2.SetXYZM(px2[i], py2[i], pz2[i], mass2[i]);
+      // NOTE: The accuracy of the optimized trigonometric functions is relatively
+      // low and the test start to fail with an accuracy of 1e-5.
+      EXPECT_NEAR((p1 + p2).M(), invMass_XYXM[i], 1e-4);
+   }
+
+   // Check that calling with different argument types works and yields the
+   // expected return types and values
+   RVec<float> px1f = {0.f, 5.f, 5.f, 10.f, 10.f};
+   RVec<float> py2f = {0.f, 0.f, 0.5f, 0.4f, 1.2f};
+   const auto invMassF_XYXM = InvariantMasses_PxPyPzM(px1f, py1, pz1, mass1, px2, py2f, pz2, mass2);
+   EXPECT_TRUE((std::is_same_v<decltype(invMassF_XYXM), const RVec<double>>))
+      << "InvariantMasses should return double if one of the arguments is double";
+   for (size_t i = 0; i < invMassF_XYXM.size(); ++i) {
+      // We use the full double result here as reference and allow for some
+      // jitter introduced by the floating point promotion that happens along
+      // the way (in deterministic but different places depending on the types
+      // of the arguments)
+      EXPECT_NEAR(invMassF_XYXM[i], invMass_XYXM[i], 1e-7);
+   }
 }
 
 TEST(VecOps, DeltaR)
@@ -1232,6 +1426,19 @@ TEST(VecOps, DeltaR)
       // Check scalar implementation
       auto dr4 = DeltaR(eta1[i], eta2[i], phi1[i], phi2[i]);
       EXPECT_NEAR(dr3, dr4, 1e-6);
+   }
+
+   // Check that calling with different argument types works and yields the
+   // expected return types and values
+   RVec<float> etaf = {0.1f, -1.f, -1.f, 0.5f, -2.5f};
+   auto drf = DeltaR(etaf, eta2, phi1, phi2);
+   EXPECT_TRUE((std::is_same_v<decltype(drf), RVec<double>>)) << "DeltaR should return double if one of the arguments is double";
+   for (std::size_t i = 0; i < etaf.size(); ++i) {
+      // We use the full double result here as reference and allow for some
+      // jitter introduced by the floating point promotion that happens along
+      // the way (in deterministic but different places depending on the types
+      // of the arguments)
+      EXPECT_NEAR(dr[i], drf[i], 1e-7);
    }
 }
 
@@ -1284,13 +1491,6 @@ TEST(VecOps, Construct)
    EXPECT_TRUE(fourVects[0] == ref0);
    EXPECT_TRUE(fourVects[1] == ref1);
    EXPECT_TRUE(fourVects[2] == ref2);
-}
-
-bool IsSmall(const RVec<int> &v)
-{
-   // the first array element is right after the 3 data members of SmallVectorBase
-   return reinterpret_cast<std::uintptr_t>(v.begin()) - reinterpret_cast<std::uintptr_t>(&v) ==
-          sizeof(void *) + 2 * sizeof(int);
 }
 
 // this is a regression test for https://github.com/root-project/root/issues/6796
@@ -1472,19 +1672,39 @@ TEST_P(VecOpsSwap, BothSmallVectors)
 
 TEST_P(VecOpsSwap, BothRegularVectors)
 {
-   RVec<int> fixed_vreg1{1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3};
-   RVec<int> fixed_vreg2{4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
-   RVec<int> fixed_vreg3{7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7};
+   constexpr std::size_t smallVecSize = ROOT::Internal::VecOps::RVecInlineStorageSize<int>::value;
+
+   // The number of elemens in the large RVecs will be the smallest multiple of
+   // three that larger than smallVecSize.
+   constexpr int nCycle = 3;
+   constexpr std::size_t nElems = ((smallVecSize / nCycle) + 1) * nCycle;
+
+   RVec<int> fixed_vreg1(nElems);
+   RVec<int> fixed_vreg2(nElems);
+   RVec<int> fixed_vreg3(nElems + 1);
    RVec<int> fixed_vmocksmall{0, 7};
 
-   RVec<int> vreg1{1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3};
-   RVec<int> vreg2{4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
-   RVec<int> vreg3{7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7};
-   RVec<int> vmocksmall{0, 7, 8, 9, 7, 8, 9, 7, 8, 9, 7, 8, 7, 8, 9, 7, 8, 9};
+   RVec<int> vreg1(nElems);
+   RVec<int> vreg2(nElems);
+   RVec<int> vreg3(nElems + 1);
+   RVec<int> vmocksmall(nElems + 1);
+
+   for (std::size_t i = 0; i < nElems; ++i) {
+      vreg1[i] = (i % nCycle) + 1;
+      vreg2[i] = vreg1[i] + nCycle;
+      vreg3[i] = vreg2[i] + nCycle;
+      fixed_vreg1[i] = vreg1[i];
+      fixed_vreg2[i] = vreg2[i];
+      fixed_vreg3[i] = vreg3[i];
+      vmocksmall[i + 1] = vreg3[i];
+   }
+   fixed_vreg3[nElems] = fixed_vreg3[0];
+   vreg3[nElems] = vreg3[0];
+
    vmocksmall.erase(vmocksmall.begin() + 2, vmocksmall.end());
    // vmocksmall is a regular vector of size 2
 
-   // verify that initally vectors are not small
+   // verify that initially vectors are not small
    EXPECT_FALSE(IsSmall(vreg1));
    EXPECT_FALSE(IsSmall(vreg2));
    EXPECT_FALSE(IsSmall(vreg3));
@@ -1598,11 +1818,22 @@ TEST_P(VecOpsSwap, BothAdoptingVectors)
 // in cases where ROOT::VecOps::swap produces 1 regular and 1 adopting vector
 TEST_P(VecOpsSwap, SmallRegularVectors)
 {
+   constexpr std::size_t smallVecSize = ROOT::Internal::VecOps::RVecInlineStorageSize<int>::value;
+
+   // The number of elemens in the large RVecs will be the smallest multiple of
+   // three that larger than smallVecSize.
+   constexpr int nCycle = 3;
+   constexpr std::size_t nElems1 = ((smallVecSize / nCycle) + 1) * nCycle;
+   constexpr std::size_t nElems2 = nElems1 + nCycle; // some vectors should be larger than others
+
    RVec<int> fixed_vsmall{1, 2, 3};
    RVec<int> fixed_vreg1{4, 5, 6};
    RVec<int> fixed_vreg2{7, 8};
    RVec<int> fixed_vreg3{9, 10, 11, 12, 13, 14};
-   RVec<int> fixed_vreg4{15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30};
+   RVec<int> fixed_vreg4(nElems1);
+   for (std::size_t i = 0; i < nElems1; ++i) {
+      fixed_vreg4[i] = i + 15;
+   }
 
    // need multiple hard copies since after swap of a small and a regular,
    // there is no fixed policy whether 2 regular vectors are produced or 1 small and 1 regular
@@ -1615,22 +1846,36 @@ TEST_P(VecOpsSwap, SmallRegularVectors)
    RVec<int> vsmall7{1, 2, 3};
    RVec<int> vsmall8{1, 2, 3};
 
-   RVec<int> vreg1{4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
-   vreg1.erase(vreg1.begin() + 3, vreg1.end()); // regular vector of size 3
-   RVec<int> vreg10{4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
+   RVec<int> vreg1;
+   RVec<int> vreg10;
+   RVec<int> vreg2{7, 8};
+   RVec<int> vreg20{7, 8};
+   RVec<int> vreg3{9, 10, 11, 12, 13, 14};
+   RVec<int> vreg30{9, 10, 11, 12, 13, 14};
+   RVec<int> vreg4(nElems1);
+
+   for (std::size_t i = 0; i < nElems2; ++i) {
+      double val = (i % nCycle) + 4;
+      vreg1.push_back(val);
+      vreg10.push_back(vreg1.back());
+      vreg2.push_back(val);
+      vreg20.push_back(vreg2.back());
+      vreg3.push_back(val);
+      vreg30.push_back(vreg3.back());
+   }
+   for (std::size_t i = 0; i < nElems1; ++i) {
+      vreg4[i] = i + 15;
+   }
+
+   vreg1.erase(vreg1.begin() + 3, vreg1.end());    // regular vector of size 3
    vreg10.erase(vreg10.begin() + 3, vreg10.end()); // regular vector of size 3
-   RVec<int> vreg2{7, 8, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
-   vreg2.erase(vreg2.begin() + 2, vreg2.end()); // regular vector of size 2
-   RVec<int> vreg20{7, 8, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
+   vreg2.erase(vreg2.begin() + 2, vreg2.end());    // regular vector of size 2
    vreg20.erase(vreg20.begin() + 2, vreg20.end()); // regular vector of size 2
-   RVec<int> vreg3{9, 10, 11, 12, 13, 14, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
-   vreg3.erase(vreg3.begin() + 6, vreg3.end()); // regular vector of size 6
-   RVec<int> vreg30{9, 10, 11, 12, 13, 14, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6, 4, 5, 6};
+   vreg3.erase(vreg3.begin() + 6, vreg3.end());    // regular vector of size 6
    vreg30.erase(vreg30.begin() + 6, vreg30.end()); // regular vector of size 6
-   RVec<int> vreg4{15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30};
    // vreg4 is a regular vector that cannot "fit" to small vector
 
-   // verify that initally vectors are not small
+   // verify that initially vectors are not small
    EXPECT_FALSE(IsSmall(vreg1));
    EXPECT_FALSE(IsSmall(vreg2));
    EXPECT_FALSE(IsSmall(vreg3));

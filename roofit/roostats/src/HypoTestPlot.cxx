@@ -20,10 +20,8 @@ HypoTestCalculatorGeneric (e.g. HybridCalculator or FrequentistCalculator)  clas
 #include "RooStats/HypoTestResult.h"
 #include "RooStats/SamplingDistribution.h"
 
-ClassImp(RooStats::HypoTestPlot);
 
 using namespace RooStats;
-using namespace std;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -61,7 +59,9 @@ void HypoTestPlot::ApplyResult(HypoTestResult& result, Option_t* opt) {
    }
 
    if(result.HasTestStatisticData()) {
-      double theMin(0.), theMax(0.), theYMax(0.);
+      double theMin(0.);
+      double theMax(0.);
+      double theYMax(0.);
       GetAbsoluteInterval(theMin, theMax, theYMax);
 
       AddLine(result.GetTestStatisticData(), 0, result.GetTestStatisticData(), theYMax*0.66, "test statistic data");

@@ -19,9 +19,6 @@
 #include "RooAbsReal.h"
 
 class RooArgSet ;
-namespace RooBatchCompute {
-  struct RunContext;
-}
 
 class RooConstVar final : public RooAbsReal {
 public:
@@ -29,15 +26,12 @@ public:
   RooConstVar() { }
   RooConstVar(const char *name, const char *title, double value);
   RooConstVar(const RooConstVar& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new RooConstVar(*this,newname); }
-  ~RooConstVar() override = default;
+  TObject* clone(const char* newname=nullptr) const override { return new RooConstVar(*this,newname); }
 
   /// Return (constant) value.
   double getValV(const RooArgSet*) const override {
     return _value;
   }
-
-  RooSpan<const double> getValues(RooBatchCompute::RunContext& evalData, const RooArgSet*) const override;
 
   void writeToStream(std::ostream& os, bool compact) const override ;
 

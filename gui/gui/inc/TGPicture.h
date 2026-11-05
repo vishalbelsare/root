@@ -46,7 +46,7 @@ protected:
    void Draw(Option_t * = "") override { MayNotUse("Draw(Option_t*)"); }
 
 public:
-   virtual ~TGPicture();
+   ~TGPicture() override;
 
    const char *GetName() const override { return fName.Data(); }
    UInt_t      GetWidth() const { return fAttributes.fWidth; }
@@ -80,14 +80,13 @@ protected:
 
 public:
    TGSelectedPicture(const TGClient *client, const TGPicture *p);
-   virtual ~TGSelectedPicture();
+   ~TGSelectedPicture() override;
 
    ClassDefOverride(TGSelectedPicture,0)  // Selected looking picture
 };
 
 
 class TGPicturePool : public TObject {
-
 protected:
    const TGClient    *fClient;    ///< client for which we keep icon pool
    TString            fPath;      ///< icon search path
@@ -99,10 +98,11 @@ protected:
 public:
    TGPicturePool(const TGClient *client, const char *path):
       fClient(client), fPath(path), fPicList(nullptr) { }
-   virtual ~TGPicturePool();
+   ~TGPicturePool() override;
 
    const char      *GetPath() const { return fPath; }
    const TGPicture *GetPicture(const char *name);
+   const TGPicture *GetPictureOrEmpty(const char *name);
    const TGPicture *GetPicture(const char *name, char **xpm);
    const TGPicture *GetPicture(const char *name, UInt_t new_width, UInt_t new_height);
    const TGPicture *GetPicture(const char *name, Pixmap_t pxmap, Pixmap_t mask =  0);

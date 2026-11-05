@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Classes: PDEFoamCell                                                           *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Objects of this class are hyperrectangular cells organized in             *
@@ -25,7 +25,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_PDEFoamCell
@@ -101,12 +101,12 @@ namespace TMVA {
       UInt_t    GetDepth();                                  // Get depth in binary tree
       UInt_t    GetTreeDepth(UInt_t depth=0);                // Get depth of binary tree
       //--- other ---
-      void Print(Option_t *option) const ;                   // Prints cell content
+      void Print(Option_t *option) const override;           // Prints cell content
       //--- getter and setter for user variable ---
       void SetElement(TObject* fobj){ fElement = fobj; }     // Set user variable
       TObject* GetElement() const { return fElement; }       // Get pointer to user variable
       ////////////////////////////////////////////////////////////////////////////
-      ClassDef(PDEFoamCell,2)  //Single cell of FOAM
+      ClassDefOverride(PDEFoamCell,2)  //Single cell of FOAM
          }; // end of PDEFoamCell
 } // namespace TMVA
 

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : TMVA::TNeuronInputAbs                                                 *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      TNeuron input calculator -- calculates the sum of the absolute values     *
@@ -19,7 +19,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 
@@ -51,7 +51,7 @@ namespace TMVA {
       virtual ~TNeuronInputAbs() {}
 
       // calculate the input value for the neuron
-      Double_t GetInput( const TNeuron* neuron ) const {
+      Double_t GetInput( const TNeuron* neuron ) const override {
          if (neuron->IsInputNeuron()) return 0;
          Double_t result = 0;
          for (Int_t i=0; i < neuron->NumPreLinks(); i++)
@@ -60,9 +60,9 @@ namespace TMVA {
       }
 
       // name of the class
-      TString GetName() { return "Sum of weighted activations (absolute value)"; }
+      TString GetName() override { return "Sum of weighted activations (absolute value)"; }
 
-      ClassDef(TNeuronInputAbs,0); // Calculates the sum of the absolute values of the weighted inputs
+      ClassDefOverride(TNeuronInputAbs,0); // Calculates the sum of the absolute values of the weighted inputs
    };
 
 } // namespace TMVA

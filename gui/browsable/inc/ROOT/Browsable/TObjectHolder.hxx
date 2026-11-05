@@ -12,7 +12,6 @@
 #include <ROOT/Browsable/RHolder.hxx>
 
 namespace ROOT {
-namespace Experimental {
 namespace Browsable {
 
 /** \class TObjectHolder
@@ -20,7 +19,6 @@ namespace Browsable {
 \brief Holder of TObject instance. Should not be used very often, while ownership is undefined for it
 \author Sergey Linev <S.Linev@gsi.de>
 \date 2019-10-19
-\warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 */
 
 class TObjectHolder : public RHolder {
@@ -51,13 +49,18 @@ public:
       if (fOwner) delete fObj;
    }
 
+   void Forget() final
+   {
+      fAdjusted = fObj = nullptr;
+      fOwner = false;
+   }
+
    const TClass *GetClass() const final { return fObj ? fObj->IsA() : nullptr; }
    const void *GetObject() const final { return fAdjusted; }
 };
 
 
 } // namespace Browsable
-} // namespace Experimental
 } // namespace ROOT
 
 

@@ -23,14 +23,18 @@ public:
   RooGamma(const char *name, const char *title,
          RooAbsReal& _x, RooAbsReal& _gamma, RooAbsReal& _beta, RooAbsReal& _mu);
   RooGamma(const RooGamma& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooGamma(*this,newname); }
-  inline ~RooGamma() override { }
+  TObject* clone(const char* newname=nullptr) const override { return new RooGamma(*this,newname); }
 
   Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName=nullptr) const override ;
   double analyticalIntegral(Int_t code, const char* rangeName=nullptr) const override ;
 
   Int_t getGenerator(const RooArgSet& directVars, RooArgSet &generateVars, bool staticInitOK=true) const override;
   void generateEvent(Int_t code) override;
+
+  RooAbsReal const &getX() const { return *x; }
+  RooAbsReal const &getGamma() const { return *gamma; }
+  RooAbsReal const &getBeta() const { return *beta; }
+  RooAbsReal const &getMu() const { return *mu; }
 
 protected:
 
@@ -40,7 +44,7 @@ protected:
   RooRealProxy mu ;
 
   double evaluate() const override ;
-  void computeBatch(cudaStream_t*, double* output, size_t nEvents, RooFit::Detail::DataMap const&) const override;
+  void doEval(RooFit::EvalContext &) const override;
   inline bool canComputeBatchWithCuda() const override { return true; }
 
 private:

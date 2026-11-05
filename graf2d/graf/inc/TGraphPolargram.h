@@ -58,13 +58,12 @@ private:
 
 public:
    // TGraphPolarGram status bits
-   enum { kLabelOrtho    = BIT(14)
-        };
+   enum { kLabelOrtho = BIT(14) };
 
-   TGraphPolargram(const char* name, Double_t rmin, Double_t rmax,
-                                     Double_t tmin, Double_t tmax);
    TGraphPolargram(const char* name="");
-   virtual ~TGraphPolargram();
+   TGraphPolargram(const char* name, Double_t rmin, Double_t rmax,
+                                     Double_t tmin, Double_t tmax, const char *opt = "");
+   ~TGraphPolargram() override;
 
    Color_t  GetPolarColorLabel() { return fPolarLabelColor;}
    Color_t  GetRadialColorLabel() { return fRadialLabelColor;}
@@ -96,6 +95,7 @@ public:
    void     ExecuteEvent(Int_t event, Int_t px, Int_t py) override;
    void     PaintCircle(Double_t x, Double_t y, Double_t r,
                         Double_t phimin, Double_t phimax, Double_t theta);
+   void     SavePrimitive(std::ostream &out, Option_t *option = "") override;
    void     SetAxisAngle(Double_t angle = 0); //*MENU*
    void     SetNdivPolar(Int_t Ndiv = 508); //*MENU*
    void     SetNdivRadial(Int_t Ndiv = 508); //*MENU*

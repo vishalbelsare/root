@@ -27,8 +27,7 @@ public:
   RooLegendre(const char *name, const char *title, RooAbsReal& ctheta, int l1, int m1, int l2, int m2);
 
   RooLegendre(const RooLegendre& other, const char *name = nullptr);
-  TObject* clone(const char* newname) const override { return new RooLegendre(*this, newname); }
-  inline ~RooLegendre() override { }
+  TObject* clone(const char* newname=nullptr) const override { return new RooLegendre(*this, newname); }
 
   Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName=nullptr) const override ;
   double analyticalIntegral(Int_t code, const char* rangeName=nullptr) const override ;
@@ -42,7 +41,7 @@ protected: // allow RooSpHarmonic access...
   int _l2,_m2;
 
   double evaluate() const override;
-  RooSpan<double> evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const override;
+  void doEval(RooFit::EvalContext &) const override;
 
   ClassDefOverride(RooLegendre,1) // Legendre polynomial
 };

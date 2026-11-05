@@ -26,14 +26,13 @@ public:
   RooStringVar() { }
   RooStringVar(const char *name, const char *title, const char* value, Int_t size=1024) ;
   RooStringVar(const RooStringVar& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new RooStringVar(*this,newname); }
-  ~RooStringVar() override = default;
+  TObject* clone(const char* newname=nullptr) const override { return new RooStringVar(*this,newname); }
 
   // Parameter value and error accessors
-  virtual operator TString() {return TString(_string.c_str()); }
+  operator TString() {return TString(_string.c_str()); }
   const char* getVal() const { clearValueDirty(); return _string.c_str(); }
   void setVal(const char* newVal) { _string = newVal ? newVal : ""; setValueDirty(); }
-  virtual RooAbsArg& operator=(const char* newVal) { setVal(newVal); return *this; }
+  RooAbsArg& operator=(const char* newVal) { setVal(newVal); return *this; }
 
   // We implement a fundamental type of AbsArg that can be stored in a dataset
   bool isFundamental() const override { return true; }
@@ -54,24 +53,26 @@ public:
   void printValue(std::ostream& os) const override { os << _string; }
 
 
-  RooAbsArg *createFundamental(const char* newname=nullptr) const override {
-    return new RooStringVar(newname ? newname : GetName(), GetTitle(), "", 1);
-  }
+   RooFit::OwningPtr<RooAbsArg> createFundamental(const char *newname = nullptr) const override
+   {
+      return RooFit::makeOwningPtr<RooAbsArg>(
+         std::make_unique<RooStringVar>(newname ? newname : GetName(), GetTitle(), "", 1));
+   }
 
 protected:
   // Internal consistency checking (needed by RooDataSet)
   bool isValid() const override { return true; }
-  virtual bool isValidString(const char*, bool /*printError=false*/) const { return true; }
+  bool isValidString(const char*, bool /*printError=false*/) const { return true; }
 
   void syncCache(const RooArgSet* /*nset*/ = nullptr) override { }
   void copyCache(const RooAbsArg* source, bool valueOnly=false, bool setValDiry=true) override;
   void attachToTree(TTree& t, Int_t bufSize=32000) override;
   void attachToVStore(RooVectorDataStore&) override { }
   void fillTreeBranch(TTree& t) override;
-  void setTreeBranchStatus(TTree& t, bool active) override;
 
 private:
   std::string _string;
+  std::string* _stringAddr; ///<! Required to connect to TTree branch
   ClassDefOverride(RooStringVar,2) // String-valued variable
 };
 

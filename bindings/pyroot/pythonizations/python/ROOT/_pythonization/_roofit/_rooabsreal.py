@@ -12,7 +12,7 @@
 ################################################################################
 
 
-from ._utils import _kwargs_to_roocmdargs, cpp_signature
+from ._utils import _kwargs_to_roocmdargs, cpp_signature, _pack_cmd_args
 
 
 class RooAbsReal(object):
@@ -29,13 +29,15 @@ class RooAbsReal(object):
     \endcode
     """
 
+    __cpp_name__ = "RooAbsReal"
+
     @cpp_signature(
         "RooPlot* RooAbsReal::plotOn(RooPlot* frame,"
-        "    const RooCmdArg& arg1=RooCmdArg(), const RooCmdArg& arg2=RooCmdArg(),"
-        "    const RooCmdArg& arg3=RooCmdArg(), const RooCmdArg& arg4=RooCmdArg(),"
-        "    const RooCmdArg& arg5=RooCmdArg(), const RooCmdArg& arg6=RooCmdArg(),"
-        "    const RooCmdArg& arg7=RooCmdArg(), const RooCmdArg& arg8=RooCmdArg(),"
-        "    const RooCmdArg& arg9=RooCmdArg(), const RooCmdArg& arg10=RooCmdArg()) const ;"
+        "    const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={},"
+        "    const RooCmdArg& arg9={}, const RooCmdArg& arg10={}) const ;"
     )
     def plotOn(self, *args, **kwargs):
         r"""The RooAbsReal::plotOn() function is pythonized with the command argument pythonization.
@@ -47,85 +49,102 @@ class RooAbsReal(object):
 
     @cpp_signature(
         "TH1 *RooAbsReal::createHistogram(const char *name, const RooAbsRealLValue& xvar,"
-        "    const RooCmdArg& arg1=RooCmdArg::none(), const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) const ;"
+        "    const RooCmdArg& arg1={}, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) const ;"
     )
     def createHistogram(self, *args, **kwargs):
         r"""The RooAbsReal::createHistogram() function is pythonized with the command argument pythonization.
         The keywords must correspond to the CmdArgs of the function.
         """
-        # Redefinition of `RooAbsReal.createHistogram` for keyword arguments.
+        import ROOT
+
         args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
-        return self._createHistogram(*args, **kwargs)
+        out = self._createHistogram(*args, **kwargs)
+        ROOT.SetOwnership(out, True)
+        return out
 
     @cpp_signature(
-        "RooAbsReal* RooAbsReal::createIntegral(const RooArgSet& iset, const RooCmdArg& arg1, const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) const ;"
+        "RooAbsReal* RooAbsReal::createIntegral(const RooArgSet& iset, const RooCmdArg& arg1, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) const ;"
     )
     def createIntegral(self, *args, **kwargs):
         r"""The RooAbsReal::createIntegral() function is pythonized with the command argument pythonization.
         The keywords must correspond to the CmdArgs of the function.
         """
-        # Redefinition of `RooAbsReal.createIntegral` for keyword arguments.
+        import ROOT
+
         args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
-        return self._createIntegral(*args, **kwargs)
+        out = self._createIntegral(*args, **kwargs)
+        ROOT.SetOwnership(out, True)
+        return out
 
     @cpp_signature(
-        "RooAbsReal* RooAbsReal::createRunningIntegral(const RooArgSet& iset, const RooCmdArg& arg1, const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(), const RooCmdArg& arg4=RooCmdArg::none(),"
-        "    const RooCmdArg& arg5=RooCmdArg::none(), const RooCmdArg& arg6=RooCmdArg::none(),"
-        "    const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "RooAbsReal* RooAbsReal::createRunningIntegral(const RooArgSet& iset, const RooCmdArg& arg1, const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def createRunningIntegral(self, *args, **kwargs):
         r"""The RooAbsReal::createRunningIntegral() function is pythonized with the command argument pythonization.
         The keywords must correspond to the CmdArgs of the function.
         """
-        # Redefinition of `RooAbsReal.createRunningIntegral` for keyword arguments.
+        import ROOT
+
         args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
-        return self._createRunningIntegral(*args, **kwargs)
+        out = self._createRunningIntegral(*args, **kwargs)
+        ROOT.SetOwnership(out, True)
+        return out
 
     @cpp_signature(
-        "RooAbsReal* RooAbsReal::createChi2(RooDataHist& data, const RooCmdArg& arg1=RooCmdArg::none(),  const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(),  const RooCmdArg& arg4=RooCmdArg::none(), const RooCmdArg& arg5=RooCmdArg::none(),"
-        "    const RooCmdArg& arg6=RooCmdArg::none(),  const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "RooAbsReal* RooAbsReal::createChi2(RooDataHist& data, const RooCmdArg& arg1={},  const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={},  const RooCmdArg& arg4={}, const RooCmdArg& arg5={},"
+        "    const RooCmdArg& arg6={},  const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def createChi2(self, *args, **kwargs):
         r"""The RooAbsReal::createChi2() function is pythonized with the command argument pythonization.
         The keywords must correspond to the CmdArgs of the function.
         """
-        # Redefinition of `RooAbsReal.createChi2` for keyword arguments.
-        args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
-        return self._createChi2(*args, **kwargs)
+        import ROOT
+
+        out = self._createChi2["RooLinkedList const&"](args[0], _pack_cmd_args(*args[1:], **kwargs))
+        ROOT.SetOwnership(out, True)
+        return out
 
     @cpp_signature(
-        "RooFitResult *RooAbsReal::chi2FitTo(RooDataSet& xydata, const RooCmdArg& arg1=RooCmdArg::none(),  const RooCmdArg& arg2=RooCmdArg::none(),"
-        "    const RooCmdArg& arg3=RooCmdArg::none(),  const RooCmdArg& arg4=RooCmdArg::none(), const RooCmdArg& arg5=RooCmdArg::none(),"
-        "    const RooCmdArg& arg6=RooCmdArg::none(),  const RooCmdArg& arg7=RooCmdArg::none(), const RooCmdArg& arg8=RooCmdArg::none()) ;"
+        "RooFitResult *RooAbsReal::chi2FitTo(RooDataSet& xydata, const RooCmdArg& arg1={},  const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={},  const RooCmdArg& arg4={}, const RooCmdArg& arg5={},"
+        "    const RooCmdArg& arg6={},  const RooCmdArg& arg7={}, const RooCmdArg& arg8={}) ;"
     )
     def chi2FitTo(self, *args, **kwargs):
         r"""The RooAbsReal::chi2FitTo() function is pythonized with the command argument pythonization.
         The keywords must correspond to the CmdArgs of the function.
         """
-        # Redefinition of `RooAbsReal.chi2FitTo` for keyword arguments.
-        args, kwargs = _kwargs_to_roocmdargs(*args, **kwargs)
-        return self._chi2FitTo(*args, **kwargs)
+        import ROOT
 
-    def getVal(self, normalizationSet=None):
-        # We do the conversion to RooArgSet now, such that we can keep alive
-        # the normalization set by setting it as an attribute of this
-        # RooAbsReal.
-        if isinstance(normalizationSet, (set, list, tuple)):
-            import ROOT
+        out = self._chi2FitTo["RooLinkedList const&"](args[0], _pack_cmd_args(*args[1:], **kwargs))
+        ROOT.SetOwnership(out, True)
+        return out
 
-            normalizationSet = ROOT.RooArgSet(normalizationSet)
-        # With the pythonizations, we have the opportunity to use the Python
-        # reference counting to make sure the last normalization set doesn't
-        # get deleted under our feet (RooFit tries to use it by pointer when
-        # you call getVal() without any normalization set the next time).
-        if normalizationSet:
-            self._getVal_normSet = normalizationSet
-        return self._getVal(normalizationSet) if normalizationSet else self._getVal()
+    def setEvalErrorLoggingMode(m):
+
+        import ROOT
+
+        if isinstance(m, str):
+            # Hardcode enum integer values here, because enum lookups cause
+            # some memory fiasco at the end.
+            # TODO: fix this in cppyy / PyROOT!
+            lut = {"PrintErrors": 0, "CollectErrors": 1, "CountErrors": 2, "Ignore": 3}
+            if m not in lut:
+                raise ValueError(
+                    "Unsupported value passed. The value has to be the name or enum value of an RooAbsReal ErrorLogging mode: {}".format(
+                        lut
+                    )
+                )
+
+            m = lut[m]
+
+        ROOT.RooAbsReal._setEvalErrorLoggingMode(m)

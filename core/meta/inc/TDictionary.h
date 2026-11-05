@@ -84,7 +84,7 @@ enum EProperty {
    kIsCCompiled     = 0x00040000,
    kIsCPPCompiled   = kIsCCompiled,
    kIsCompiled      = kIsCCompiled,
-   // 0x00080000 is available
+   kIsNotReacheable = 0x00080000,   // Indicate that the entity can not be used from the Global Namespace
    kIsConstant      = 0x00100000,
    kIsVirtualBase   = 0x00200000,
    kIsConstPointer  = 0x00400000,
@@ -132,19 +132,23 @@ enum EFunctionProperty {
    kIsTemplateSpec= 0x00000020
 };
 
+// clang-format off
 enum EClassProperty {
-   kClassIsValid         = 0x00000001,
-   kClassHasExplicitCtor = 0x00000010,
-   kClassHasImplicitCtor = 0x00000020,
-   kClassHasCtor         = 0x00000030,
-   kClassHasDefaultCtor  = 0x00000040,
-   kClassHasAssignOpr    = 0x00000080,
-   kClassHasExplicitDtor = 0x00000100,
-   kClassHasImplicitDtor = 0x00000200,
-   kClassHasDtor         = 0x00000300,
-   kClassHasVirtual      = 0x00001000,
-   kClassIsAbstract      = 0x00002000
+   kClassIsValid                = 0x00000001,
+   kClassHasExplicitCtor        = 0x00000010,
+   kClassHasImplicitCtor        = 0x00000020,
+   kClassHasCtor                = 0x00000030,
+   kClassHasDefaultCtor         = 0x00000040,
+   kClassHasAssignOpr           = 0x00000080,
+   kClassHasExplicitDtor        = 0x00000100,
+   kClassHasImplicitDtor        = 0x00000200,
+   kClassHasDtor                = 0x00000300,
+   kClassHasVirtual             = 0x00001000,
+   kClassIsAbstract             = 0x00002000,
+   kClassIsAggregate            = 0x00004000,
+   kClassIsTriviallyRelocatable = 0x00008000
 };
+// clang-format on
 
 enum ERefTypeValues {
    kParaNormal     = 0,     // not used
@@ -168,7 +172,7 @@ class TDictionary : public TNamed {
 
 private:
    TDictAttributeMap *fAttributeMap{nullptr};    //pointer to a class attribute map
-   ULong64_t fUpdatingTransactionCount{0}; //!the Cling ID of the transaction that last updated the object
+   ULong64_t fUpdatingTransactionCount{0}; ///<!the Cling ID of the transaction that last updated the object
 
 protected:
    Bool_t              UpdateInterpreterStateMarker();
@@ -192,24 +196,6 @@ public:
    virtual Long_t      Property() const = 0;
    static TDictionary* GetDictionary(const char* name);
    static TDictionary* GetDictionary(const std::type_info &typeinfo);
-
-   // Type of STL container (returned by IsSTLContainer).
-   enum ESTLType {
-      kNone              = ROOT::kNotSTL,
-      kVector            = ROOT::kSTLvector,
-      kList              = ROOT::kSTLlist,
-      kForwardlist       = ROOT::kSTLforwardlist,
-      kDeque             = ROOT::kSTLdeque,
-      kMap               = ROOT::kSTLmap,
-      kMultimap          = ROOT::kSTLmultimap,
-      kSet               = ROOT::kSTLset,
-      kMultiset          = ROOT::kSTLmultiset,
-      kUnorderedSet      = ROOT::kSTLunorderedset,
-      kUnorderedMultiset = ROOT::kSTLunorderedmultiset,
-      kUnorderedMap      = ROOT::kSTLunorderedmap,
-      kUnorderedMultimap = ROOT::kSTLunorderedmultimap,
-      kBitset            = ROOT::kSTLbitset
-   };
 
    /// Kinds of members to include in lists.
    enum class EMemberSelection {

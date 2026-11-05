@@ -24,8 +24,10 @@
 #include "TNamed.h"
 #include "TAttAxis.h"
 #include "TArrayD.h"
+#include <vector>
 
 class THashList;
+class TAxisModLab;
 
 class TAxis : public TNamed, public TAttAxis {
 
@@ -39,9 +41,9 @@ private:
    UShort_t     fBits2;         ///<  Second bit status word
    Bool_t       fTimeDisplay;   ///<  On/off displaying time values instead of numerics
    TString      fTimeFormat;    ///<  Date&time format, ex: 09/12/99 12:34:00
-   TObject     *fParent;        ///<! Object owning this axis
-   THashList   *fLabels;        ///<  List of labels
-   TList       *fModLabs;       ///<  List of modified labels
+   TObject     *fParent = nullptr;  ///<! Object owning this axis
+   THashList   *fLabels = nullptr;  ///<  List of labels
+   TList       *fModLabs = nullptr; ///<  List of modified labels
 
    /// TAxis extra status bits (stored in fBits2)
    enum {
@@ -51,6 +53,9 @@ private:
    };
 
    Bool_t       HasBinWithoutLabel() const;
+
+
+   TAxisModLab *FindModLab(Int_t num, Double_t v = 0., Double_t eps = 0.) const;
 
 public:
    /// TAxis status bits
@@ -75,6 +80,7 @@ public:
    TAxis();
    TAxis(Int_t nbins, Double_t xmin, Double_t xmax);
    TAxis(Int_t nbins, const Double_t *xbins);
+   TAxis(std::vector<double> const &bins);
    TAxis(const TAxis &axis);
    ~TAxis() override;
    TAxis& operator=(const TAxis&);
@@ -127,6 +133,7 @@ public:
    virtual Bool_t     GetTimeDisplay() const {return fTimeDisplay;}
    virtual const char *GetTimeFormat() const {return fTimeFormat.Data();}
    virtual const char *GetTimeFormatOnly() const;
+           UInt_t      GetTimeOffset();
    const char        *GetTitle() const override {return fTitle.Data();}
    const TArrayD     *GetXbins() const {return &fXbins;}
            Int_t      GetFirst() const;
@@ -151,7 +158,11 @@ public:
    void               ChangeLabel(Int_t labNum=0, Double_t labAngle = -1.,
                                   Double_t labSize = -1., Int_t labAlign = -1,
                                   Int_t labColor = -1 , Int_t labFont = -1,
-                                  TString labText = ""); // *MENU*
+                                  const TString &labText = ""); // *MENU*
+   void               ChangeLabelByValue(Double_t labValue, Double_t labAngle = -1.,
+                                  Double_t labSize = -1., Int_t labAlign = -1,
+                                  Int_t labColor = -1 , Int_t labFont = -1,
+                                  const TString &labText = ""); // *MENU*
    virtual void       SetLimits(Double_t xmin, Double_t xmax) { /* set axis limits */ fXmin = xmin; fXmax = xmax; } // *MENU*
            void       SetMoreLogLabels(Bool_t more=kTRUE);  // *TOGGLE* *GETTER=GetMoreLogLabels
            void       SetNoExponent(Bool_t noExponent=kTRUE);  // *TOGGLE* *GETTER=GetNoExponent

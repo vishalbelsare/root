@@ -12,7 +12,7 @@
 #include <ROOT/RDF/RLoopManager.hxx>
 #include <ROOT/RDF/RVariationBase.hxx>
 #include <ROOT/RDF/Utils.hxx> // CacheLineStep
-#include <ROOT/RStringView.hxx>
+#include <string_view>
 #include <ROOT/RVec.hxx>
 #include <RtypesCore.h>
 
@@ -27,13 +27,19 @@ namespace RDF {
 RVariationBase::RVariationBase(const std::vector<std::string> &colNames, std::string_view variationName,
                                const std::vector<std::string> &variationTags, std::string_view type,
                                const RColumnRegister &colRegister, RLoopManager &lm, const ColumnNames_t &inputColNames)
-   : fColNames(colNames), fVariationNames(variationTags), fType(type),
-     fLastCheckedEntry(lm.GetNSlots() * CacheLineStep<Long64_t>(), -1), fColumnRegister(colRegister), fLoopManager(&lm),
-     fInputColumns(inputColNames), fIsDefine(inputColNames.size())
+   : fColNames(colNames),
+     fVariationNames(variationTags),
+     fVariationName(variationName),
+     fType(type),
+     fLastCheckedEntry(lm.GetNSlots() * CacheLineStep<Long64_t>(), -1),
+     fColumnRegister(colRegister),
+     fLoopManager(&lm),
+     fInputColumns(inputColNames),
+     fIsDefine(inputColNames.size())
 {
    // prepend the variation name to each tag
    for (auto &tag : fVariationNames)
-      tag = std::string(variationName) + ':' + tag;
+      tag = std::string(fVariationName) + ':' + tag;
 
    const auto nColumns = fInputColumns.size();
    for (auto i = 0u; i < nColumns; ++i)
@@ -50,6 +56,11 @@ const std::vector<std::string> &RVariationBase::GetColumnNames() const
 const std::vector<std::string> &RVariationBase::GetVariationNames() const
 {
    return fVariationNames;
+}
+
+const std::string &RVariationBase::GetVariationName() const
+{
+   return fVariationName;
 }
 
 std::string RVariationBase::GetTypeName() const

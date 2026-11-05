@@ -17,7 +17,7 @@
 #include "TBuffer3D.h"
 #include "TBuffer3DTypes.h"
 #include "TVirtualViewer3D.h"
-#include "TGeometry.h"
+#include "TGeometryTransformer.h"
 #include "TH1.h"
 #include "TROOT.h"
 #include "TMath.h"
@@ -25,7 +25,6 @@
 #include <cassert>
 #include <iostream>
 
-ClassImp(TPolyMarker3D);
 
 constexpr Int_t kDimension = 3;
 
@@ -357,14 +356,14 @@ void TPolyMarker3D::Paint(Option_t * /*option*/ )
 
       // Transform points - we don't support local->global matrix
       // so always work in global reference frame
-      if (gGeometry) {
+      if (ROOT::Internal::currentTGeometryTransformer) {
          Double_t dlocal[3];
          Double_t dmaster[3];
          for (UInt_t j=0; j<buffer.NbPnts(); j++) {
             dlocal[0] = buffer.fPnts[3*j];
             dlocal[1] = buffer.fPnts[3*j+1];
             dlocal[2] = buffer.fPnts[3*j+2];
-            gGeometry->Local2Master(&dlocal[0],&dmaster[0]);
+            ROOT::Internal::currentTGeometryTransformer(&dlocal[0], &dmaster[0]);
             buffer.fPnts[3*j]   = dmaster[0];
             buffer.fPnts[3*j+1] = dmaster[1];
             buffer.fPnts[3*j+2] = dmaster[2];
@@ -417,7 +416,7 @@ void TPolyMarker3D::PaintH3(TH1 *h, Option_t *option)
    TView *view = gPad->GetView();
    if (!view) {
       gPad->Range(-1,-1,1,1);
-      view = TView::CreateView(1,0,0);
+      view = TView::CreateView(1,nullptr,nullptr);
       if (!view) return;
    }
    view->SetRange(xaxis->GetBinLowEdge(xaxis->GetFirst()),
@@ -484,24 +483,23 @@ void TPolyMarker3D::Print(Option_t *option) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Save primitive as a C++ statement(s) on output stream.
 
-void TPolyMarker3D::SavePrimitive(std::ostream &out, Option_t * /*= ""*/)
+void TPolyMarker3D::SavePrimitive(std::ostream &out, Option_t *option)
 {
-   char quote = '"';
-   out<<"   "<<std::endl;
-   if (gROOT->ClassSaved(TPolyMarker3D::Class())) {
-      out<<"   ";
-   } else {
-      out<<"   TPolyMarker3D *";
-   }
-   out<<"pmarker3D = new TPolyMarker3D("<<fN<<","<<GetMarkerStyle()<<","<<quote<<fOption<<quote<<");"<<std::endl;
-   out<<"   pmarker3D->SetName("<<quote<<GetName()<<quote<<");"<<std::endl;
+   std::vector<Double_t> arr(Size() * 3);
+   for (Int_t i = 0; i < Size() * 3; i++)
+      arr[i] = fP[i];
 
-   SaveMarkerAttributes(out,"pmarker3D",1,1,1);
+   TString vectname = SavePrimitiveVector(out, "pmarker3D", Size() * 3, arr.data(), kTRUE);
 
-   for (Int_t i=0;i<Size();i++) {
-      out<<"   pmarker3D->SetPoint("<<i<<","<<fP[3*i]<<","<<fP[3*i+1]<<","<<fP[3*i+2]<<");"<<std::endl;
-   }
-   out<<"   pmarker3D->Draw();"<<std::endl;
+   SavePrimitiveConstructor(out, Class(), "pmarker3D",
+                            TString::Format("%d, %s.data(), %d, \"%s\"", Size(), vectname.Data(), GetMarkerStyle(),
+                                            TString(fOption).ReplaceSpecialCppChars().Data()),
+                            kFALSE);
+
+   out << "   pmarker3D->SetName(\"" << TString(GetName()).ReplaceSpecialCppChars() << "\");\n";
+
+   SaveMarkerAttributes(out, "pmarker3D", 1, 1, 1);
+   SavePrimitiveDraw(out, "pmarker3D", option);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

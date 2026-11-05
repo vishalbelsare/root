@@ -38,54 +38,17 @@ also used by MnMinos and MnContours;
 class MnFumiliMinimize : public MnApplication {
 
 public:
-   /// construct from FumiliFCNBase + std::vector for parameters and errors
-   MnFumiliMinimize(const FumiliFCNBase &fcn, const std::vector<double> &par, const std::vector<double> &err,
-                    unsigned int stra = 1)
-      : MnApplication(fcn, MnUserParameterState(par, err), MnStrategy(stra)), fMinimizer(FumiliMinimizer()), fFCN(fcn)
-   {
-   }
-
-   /// construct from FumiliFCNBase + std::vector for parameters and covariance
-   MnFumiliMinimize(const FumiliFCNBase &fcn, const std::vector<double> &par, unsigned int nrow,
-                    const std::vector<double> &cov, unsigned int stra = 1)
-      : MnApplication(fcn, MnUserParameterState(par, cov, nrow), MnStrategy(stra)), fMinimizer(FumiliMinimizer()),
-        fFCN(fcn)
-   {
-   }
-
-   /// construct from FumiliFCNBase + std::vector for parameters and MnUserCovariance
-   MnFumiliMinimize(const FumiliFCNBase &fcn, const std::vector<double> &par, const MnUserCovariance &cov,
-                    unsigned int stra = 1)
-      : MnApplication(fcn, MnUserParameterState(par, cov), MnStrategy(stra)), fMinimizer(FumiliMinimizer()), fFCN(fcn)
-   {
-   }
-
-   /// construct from FumiliFCNBase + MnUserParameters
-   MnFumiliMinimize(const FumiliFCNBase &fcn, const MnUserParameters &par, unsigned int stra = 1)
-      : MnApplication(fcn, MnUserParameterState(par), MnStrategy(stra)), fMinimizer(FumiliMinimizer()), fFCN(fcn)
-   {
-   }
-
-   /// construct from FumiliFCNBase + MnUserParameters + MnUserCovariance
-   MnFumiliMinimize(const FumiliFCNBase &fcn, const MnUserParameters &par, const MnUserCovariance &cov,
-                    unsigned int stra = 1)
-      : MnApplication(fcn, MnUserParameterState(par, cov), MnStrategy(stra)), fMinimizer(FumiliMinimizer()), fFCN(fcn)
-   {
-   }
-
    /// construct from FumiliFCNBase + MnUserParameterState + MnStrategy
-   MnFumiliMinimize(const FumiliFCNBase &fcn, const MnUserParameterState &par, const MnStrategy &str)
+   MnFumiliMinimize(const FumiliFCNBase &fcn, const MnUserParameterState &par, const MnStrategy &str = MnStrategy{1})
       : MnApplication(fcn, MnUserParameterState(par), str), fMinimizer(FumiliMinimizer()), fFCN(fcn)
    {
    }
 
-   MnFumiliMinimize(const MnFumiliMinimize &migr)
-      : MnApplication(migr.Fcnbase(), migr.State(), migr.Strategy(), migr.NumOfCalls()), fMinimizer(migr.fMinimizer),
-        fFCN(migr.Fcnbase())
-   {
-   }
+   /// Copy constructor, copy shares the reference to the same FCNBase in MnApplication
+   MnFumiliMinimize(const MnFumiliMinimize &) = default;
 
-   ~MnFumiliMinimize() override {}
+   // Copy assignment deleted, since MnApplication has unassignable reference to FCNBase
+   MnFumiliMinimize &operator=(const MnFumiliMinimize &) = delete;
 
    FumiliMinimizer &Minimizer() override { return fMinimizer; }
    const FumiliMinimizer &Minimizer() const override { return fMinimizer; }
@@ -98,10 +61,6 @@ public:
 private:
    FumiliMinimizer fMinimizer;
    const FumiliFCNBase &fFCN;
-
-private:
-   // forbidden assignment of migrad (const FumiliFCNBase& = )
-   MnFumiliMinimize &operator=(const MnFumiliMinimize &) { return *this; }
 };
 
 } // namespace Minuit2

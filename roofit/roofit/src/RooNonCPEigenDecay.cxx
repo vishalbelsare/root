@@ -43,16 +43,11 @@ get the parameters used here you have to change the sign of both
 where Q denotes the charge of the \f$\rho\f$ meson.
 **/
 
-#include "Riostream.h"
 #include "RooRealVar.h"
 #include "RooRandom.h"
 #include "RooNonCPEigenDecay.h"
-#include "TMath.h"
 #include "RooRealIntegral.h"
 
-using namespace std;
-
-ClassImp(RooNonCPEigenDecay);
 
 #define Debug_RooNonCPEigenDecay 1
 
@@ -147,7 +142,7 @@ RooNonCPEigenDecay::RooNonCPEigenDecay( const char *name, const char *title,
   _tag      ( "tag",      "CP state",           this, tag      ),
   _rhoQ     ( "rhoQ",     "Charge of the rho",  this, rhoQ     ),
   _correctQ ( "correctQ", "correction of rhoQ", this, correctQ ),
-  _wQ      ( "wQ", "mischarge", this, *(new RooRealVar( "wQ", "wQ", 0 )), true, false, true ),
+  _wQ      ( "wQ", "mischarge", this, std::make_unique<RooRealVar>( "wQ", "wQ", 0 ), true, false),
   _genB0Frac     ( 0 ),
   _genRhoPlusFrac( 0 ),
   _type     ( type )
@@ -200,18 +195,11 @@ RooNonCPEigenDecay::RooNonCPEigenDecay( const RooNonCPEigenDecay& other, const c
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooNonCPEigenDecay::~RooNonCPEigenDecay( void )
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
 ///  - B0    : _tag  == -1
 ///  - B0bar : _tag  == +1
 ///  - rho+  : _rhoQ == +1
 ///  - rho-  : _rhoQ == -1
-///  - the charge correction factor "_correctQ" serves to implement mis-charges
+///  - the charge correction factor "_correctQ" serves to implement misidentified charges
 
 double RooNonCPEigenDecay::coefficient( Int_t basisIndex ) const
 {
@@ -224,38 +212,41 @@ double RooNonCPEigenDecay::coefficient( Int_t basisIndex ) const
   double a_cos_m = _avgC - _delC;
 
   if (basisIndex == _basisExp) {
-    if (rhoQc == -1 || rhoQc == +1)
-      return (1 + rhoQc*_acp*(1 - 2*_wQ))*(1 + 0.5*_tag*(2*_delW));
-    else
-      return 1;
+    if (rhoQc == -1 || rhoQc == +1) {
+       return (1 + rhoQc * _acp * (1 - 2 * _wQ)) * (1 + 0.5 * _tag * (2 * _delW));
+    } else {
+       return 1;
+    }
   }
 
   if (basisIndex == _basisSin) {
 
-    if (rhoQc == -1)
+    if (rhoQc == -1) {
 
-      return - ((1 - _acp)*a_sin_m*(1 - _wQ) + (1 + _acp)*a_sin_p*_wQ)*(1 - 2*_avgW)*_tag;
+       return -((1 - _acp) * a_sin_m * (1 - _wQ) + (1 + _acp) * a_sin_p * _wQ) * (1 - 2 * _avgW) * _tag;
 
-    else if (rhoQc == +1)
+    } else if (rhoQc == +1) {
 
-      return - ((1 + _acp)*a_sin_p*(1 - _wQ) + (1 - _acp)*a_sin_m*_wQ)*(1 - 2*_avgW)*_tag;
+       return -((1 + _acp) * a_sin_p * (1 - _wQ) + (1 - _acp) * a_sin_m * _wQ) * (1 - 2 * _avgW) * _tag;
 
-    else
-       return - _tag*((a_sin_p + a_sin_m)/2)*(1 - 2*_avgW);
+    } else {
+       return -_tag * ((a_sin_p + a_sin_m) / 2) * (1 - 2 * _avgW);
+    }
   }
 
   if (basisIndex == _basisCos) {
 
-    if ( rhoQc == -1)
+    if (rhoQc == -1) {
 
-      return + ((1 - _acp)*a_cos_m*(1 - _wQ) + (1 + _acp)*a_cos_p*_wQ)*(1 - 2*_avgW)*_tag;
+       return +((1 - _acp) * a_cos_m * (1 - _wQ) + (1 + _acp) * a_cos_p * _wQ) * (1 - 2 * _avgW) * _tag;
 
-    else if (rhoQc == +1)
+    } else if (rhoQc == +1) {
 
-      return + ((1 + _acp)*a_cos_p*(1 - _wQ) + (1 - _acp)*a_cos_m*_wQ)*(1 - 2*_avgW)*_tag;
+       return +((1 + _acp) * a_cos_p * (1 - _wQ) + (1 - _acp) * a_cos_m * _wQ) * (1 - 2 * _avgW) * _tag;
 
-    else
-      return _tag*((a_cos_p + a_cos_m)/2)*(1 - 2*_avgW);
+    } else {
+       return _tag * ((a_cos_p + a_cos_m) / 2) * (1 - 2 * _avgW);
+    }
   }
 
   return 0;
@@ -305,13 +296,15 @@ double RooNonCPEigenDecay::coefAnalyticalIntegral( Int_t basisIndex,
   case 2:
     if (basisIndex == _basisExp) return 2*(1 + 0.5*_tag*(2.*_delW));
 
-    if (basisIndex == _basisSin)
+    if (basisIndex == _basisSin) {
 
-      return - ( (1 - _acp)*a_sin_m + (1 + _acp)*a_sin_p )*(1 - 2*_avgW)*_tag;
+       return -((1 - _acp) * a_sin_m + (1 + _acp) * a_sin_p) * (1 - 2 * _avgW) * _tag;
+    }
 
-    if (basisIndex == _basisCos)
+    if (basisIndex == _basisCos) {
 
-      return + ( (1 - _acp)*a_cos_m + (1 + _acp)*a_cos_p )*(1 - 2*_avgW)*_tag;
+       return +((1 - _acp) * a_cos_m + (1 + _acp) * a_cos_p) * (1 - 2 * _avgW) * _tag;
+    }
 
     assert( false );
 
@@ -357,11 +350,10 @@ void RooNonCPEigenDecay::initGenerator( Int_t code )
                  ).getVal();
     _genB0Frac = b0Int1/sumInt1;
 
-    if (Debug_RooNonCPEigenDecay == 1)
-      cout << "     o RooNonCPEigenDecay::initgenerator: genB0Frac     : "
-      << _genB0Frac
-      << ", tag dilution: " << (1 - 2*_avgW)
-      << endl;
+    if (Debug_RooNonCPEigenDecay == 1) {
+       std::cout << "     o RooNonCPEigenDecay::initgenerator: genB0Frac     : " << _genB0Frac
+            << ", tag dilution: " << (1 - 2 * _avgW) << std::endl;
+    }
   }
 
   if (code == 3 || code == 4) {
@@ -375,9 +367,9 @@ void RooNonCPEigenDecay::initGenerator( Int_t code )
                  ).getVal();
     _genRhoPlusFrac = b0Int2/sumInt2;
 
-    if (Debug_RooNonCPEigenDecay == 1)
-      cout << "     o RooNonCPEigenDecay::initgenerator: genRhoPlusFrac: "
-      << _genRhoPlusFrac << endl;
+    if (Debug_RooNonCPEigenDecay == 1) {
+       std::cout << "     o RooNonCPEigenDecay::initgenerator: genRhoPlusFrac: " << _genRhoPlusFrac << std::endl;
+    }
   }
 }
 
@@ -403,10 +395,10 @@ void RooNonCPEigenDecay::generateEvent( Int_t code )
     double a_cos_m = _avgC - _delC;
 
     // maximum probability density
-    double a1 = 1 + sqrt(TMath::Power(a_cos_m, 2) + TMath::Power(a_sin_m, 2));
-    double a2 = 1 + sqrt(TMath::Power(a_cos_p, 2) + TMath::Power(a_sin_p, 2));
+    double a1 = 1 + sqrt(std::pow(a_cos_m, 2) + std::pow(a_sin_m, 2));
+    double a2 = 1 + sqrt(std::pow(a_cos_p, 2) + std::pow(a_sin_p, 2));
 
-    double maxAcceptProb = (1.10 + TMath::Abs(_acp)) * (a1 > a2 ? a1 : a2);
+    double maxAcceptProb = (1.10 + std::abs(_acp)) * (a1 > a2 ? a1 : a2);
     // The 1.10 in the above line is a security feature to prevent crashes close to the limit at 1.00
 
     double rand = RooRandom::uniform();

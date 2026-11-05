@@ -24,6 +24,7 @@
 #include "RooEffProd.h"
 #include "RooEffGenContext.h"
 
+#include "RooFit/Detail/MathFuncs.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructs the product of the PDF `inPdf` with the efficiency function
@@ -44,7 +45,7 @@ RooEffProd::RooEffProd(const char *name, const char *title,
 RooEffProd::RooEffProd(const RooEffProd& other, const char* name) :
   RooAbsPdf(other, name),
   _pdf("pdf",this,other._pdf),
-  _eff("acc",this,other._eff)
+  _eff("eff",this,other._eff)
 {
 }
 
@@ -54,7 +55,7 @@ RooEffProd::RooEffProd(const RooEffProd& other, const char* name) :
 
 double RooEffProd::evaluate() const
 {
-  return _eff * _pdf;
+  return RooFit::Detail::MathFuncs::effProd(_eff, _pdf);
 }
 
 

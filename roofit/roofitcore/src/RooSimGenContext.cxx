@@ -19,7 +19,7 @@
 \class RooSimGenContext
 \ingroup Roofitcore
 
-RooSimGenContext is an efficient implementation of the generator context
+Efficient implementation of the generator context
 specific for RooSimultaneous PDFs when generating more than one of the
 component pdfs.
 It runs in two modes:
@@ -40,15 +40,8 @@ that an event originates from a certain category.
 #include "RooRandom.h"
 #include "RooGlobalFunc.h"
 
-using namespace RooFit;
-
 #include <iostream>
 #include <string>
-
-using namespace std;
-
-ClassImp(RooSimGenContext);
-;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,55 +51,34 @@ ClassImp(RooSimGenContext);
 
 RooSimGenContext::RooSimGenContext(const RooSimultaneous &model, const RooArgSet &vars,
                const RooDataSet *prototype, const RooArgSet* auxProto, bool verbose) :
-  RooAbsGenContext(model,vars,prototype,auxProto,verbose), _pdf(&model), _protoData(0)
+  RooAbsGenContext(model,vars,prototype,auxProto,verbose), _pdf(&model)
 {
   // Determine if we are requested to generate the index category
-  RooAbsCategory *idxCat = (RooAbsCategory*) model._indexCat.absArg() ;
+  RooAbsCategoryLValue const& idxCat = model.indexCat();
   RooArgSet pdfVars(vars) ;
 
   RooArgSet allPdfVars(pdfVars) ;
   if (prototype) allPdfVars.add(*prototype->get(),true) ;
 
-  if (!idxCat->isDerived()) {
-    pdfVars.remove(*idxCat,true,true) ;
-    bool doGenIdx = allPdfVars.find(idxCat->GetName())?true:false ;
+  RooArgSet catsAmongAllVars;
+  allPdfVars.selectCommon(model.flattenedCatList(), catsAmongAllVars);
 
-    if (!doGenIdx) {
+  if(catsAmongAllVars.size() != model.flattenedCatList().size()) {
       oocoutE(_pdf,Generation) << "RooSimGenContext::ctor(" << GetName() << ") ERROR: This context must"
-                << " generate the index category" << endl ;
+                << " generate all components of the index category" << std::endl ;
       _isValid = false ;
       _numPdf = 0 ;
       _haveIdxProto = false ;
       return ;
-    }
-  } else {
-    bool anyServer(false), allServers(true) ;
-    for(RooAbsArg* server : idxCat->servers()) {
-      if (vars.find(server->GetName())) {
-   anyServer=true ;
-   pdfVars.remove(*server,true,true) ;
-      } else {
-   allServers=false ;
-      }
-    }
-
-    if (anyServer && !allServers) {
-      oocoutE(_pdf,Generation) << "RooSimGenContext::ctor(" << GetName() << ") ERROR: This context must"
-                << " generate all components of a derived index category" << endl ;
-      _isValid = false ;
-      _numPdf = 0 ;
-      _haveIdxProto = false ;
-      return ;
-    }
   }
 
   // We must either have the prototype or extended likelihood to determined
   // the relative fractions of the components
   _haveIdxProto = prototype ? true : false ;
-  _idxCatName = idxCat->GetName() ;
+  _idxCatName = idxCat.GetName() ;
   if (!_haveIdxProto && !model.canBeExtended()) {
     oocoutE(_pdf,Generation) << "RooSimGenContext::ctor(" << GetName() << ") ERROR: Need either extended mode"
-              << " or prototype data to calculate number of events per category" << endl ;
+              << " or prototype data to calculate number of events per category" << std::endl ;
     _isValid = false ;
     _numPdf = 0 ;
     return ;
@@ -114,7 +86,7 @@ RooSimGenContext::RooSimGenContext(const RooSimultaneous &model, const RooArgSet
 
   // Initialize fraction threshold array (used only in extended mode)
   _numPdf = model._pdfProxyList.GetSize() ;
-  _fracThresh = new double[_numPdf+1] ;
+  _fracThresh.resize(_numPdf+1);
   _fracThresh[0] = 0 ;
 
   // Generate index category and all registered PDFS
@@ -122,14 +94,26 @@ RooSimGenContext::RooSimGenContext(const RooSimultaneous &model, const RooArgSet
   Int_t i(1) ;
   for(auto * proxy : static_range_cast<RooRealProxy*>(model._pdfProxyList)) {
     auto* pdf = static_cast<RooAbsPdf*>(proxy->absArg());
-
-    // Create generator context for this PDF
-    RooAbsGenContext* cx = pdf->genContext(pdfVars,prototype,auxProto,verbose) ;
+    RooArgSet genVars{pdfVars};
+    if (prototype) {
+      genVars.add(*prototype->get(), true);
+    }
+    pdf = RooSimultaneous::resolveSwitchMode(pdf, genVars);
+    if (!pdf) {
+      oocoutE(_pdf,Generation) << "RooSimGenContext::ctor(" << GetName() << ") ERROR: the nested RooSimultaneous for the state "
+                << proxy->name() << " has no pdf for its selected state" << std::endl ;
+      _isValid = false ;
+      _numPdf = 0 ;
+      return ;
+    }
 
     // Name the context after the associated state and add to list
-    cx->SetName(proxy->name()) ;
-    _gcList.push_back(cx) ;
-    _gcIndex.push_back(idxCat->lookupIndex(proxy->name()));
+    _gcList.emplace_back(pdf->genContext(pdfVars,prototype,auxProto,verbose)) ;
+
+    // Create generator context for this PDF
+    _gcList.back()->SetName(proxy->name()) ;
+
+    _gcIndex.push_back(idxCat.lookupIndex(proxy->name()));
 
     // Fill fraction threshold array
     _fracThresh[i] = _fracThresh[i-1] + (_haveIdxProto?0:pdf->expectedEvents(&allPdfVars)) ;
@@ -144,31 +128,17 @@ RooSimGenContext::RooSimGenContext(const RooSimultaneous &model, const RooArgSet
 
 
   // Clone the index category
-  _idxCatSet = (RooArgSet*) RooArgSet(model._indexCat.arg()).snapshot(true) ;
+  _idxCatSet = std::make_unique<RooArgSet>();
+  RooArgSet(model.indexCat()).snapshot(*_idxCatSet, true);
   if (!_idxCatSet) {
-    oocoutE(_pdf,Generation) << "RooSimGenContext::RooSimGenContext(" << GetName() << ") Couldn't deep-clone index category, abort," << endl ;
+    oocoutE(_pdf,Generation) << "RooSimGenContext::RooSimGenContext(" << GetName() << ") Couldn't deep-clone index category, abort," << std::endl ;
     throw std::string("RooSimGenContext::RooSimGenContext() Couldn't deep-clone index category, abort") ;
   }
 
-  _idxCat = (RooAbsCategoryLValue*) _idxCatSet->find(model._indexCat.arg().GetName()) ;
+  _idxCat = static_cast<RooAbsCategoryLValue*>(_idxCatSet->find(model.indexCat().GetName()));
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor. Delete all owned subgenerator contexts
-
-RooSimGenContext::~RooSimGenContext()
-{
-  delete[] _fracThresh ;
-  delete _idxCatSet ;
-  for (vector<RooAbsGenContext*>::iterator iter = _gcList.begin() ; iter!=_gcList.end() ; ++iter) {
-    delete (*iter) ;
-  }
-  if (_protoData) delete _protoData ;
-}
-
-
+RooSimGenContext::~RooSimGenContext() = default;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Attach the index category clone to the given event buffer
@@ -176,12 +146,12 @@ RooSimGenContext::~RooSimGenContext()
 void RooSimGenContext::attach(const RooArgSet& args)
 {
   if (_idxCat->isDerived()) {
-    _idxCat->recursiveRedirectServers(args,true) ;
+    _idxCat->recursiveRedirectServers(args) ;
   }
 
   // Forward initGenerator call to all components
-  for (vector<RooAbsGenContext*>::iterator iter = _gcList.begin() ; iter!=_gcList.end() ; ++iter) {
-    (*iter)->attach(args) ;
+  for(auto& item : _gcList) {
+    item->attach(args) ;
   }
 
 }
@@ -194,17 +164,17 @@ void RooSimGenContext::initGenerator(const RooArgSet &theEvent)
 {
   // Attach the index category clone to the event
   if (_idxCat->isDerived()) {
-    _idxCat->recursiveRedirectServers(theEvent,true) ;
+    _idxCat->recursiveRedirectServers(theEvent) ;
   } else {
-    _idxCat = (RooAbsCategoryLValue*) theEvent.find(_idxCat->GetName()) ;
+    _idxCat = static_cast<RooAbsCategoryLValue*>(theEvent.find(_idxCat->GetName())) ;
   }
 
   // Update fractions reflecting possible new parameter values
   updateFractions() ;
 
   // Forward initGenerator call to all components
-  for (vector<RooAbsGenContext*>::iterator iter = _gcList.begin() ; iter!=_gcList.end() ; ++iter) {
-    (*iter)->initGenerator(theEvent) ;
+  for(auto& item : _gcList) {
+    item->initGenerator(theEvent) ;
   }
 
 }
@@ -222,22 +192,19 @@ RooDataSet* RooSimGenContext::createDataSet(const char* name, const char* title,
   }
 
   if (!_protoData) {
-    map<string,RooAbsData*> dmap ;
+    std::map<std::string,RooAbsData*> dmap ;
     for (const auto& nameIdx : *_idxCat) {
       RooAbsPdf* slicePdf = _pdf->getPdf(nameIdx.first.c_str());
-      RooArgSet* sliceObs = slicePdf->getObservables(obs) ;
-      std::string sliceName = Form("%s_slice_%s", name, nameIdx.first.c_str());
-      std::string sliceTitle = Form("%s (index slice %s)", title, nameIdx.first.c_str());
-      RooDataSet* dset = new RooDataSet(sliceName.c_str(),sliceTitle.c_str(),*sliceObs) ;
-      dmap[nameIdx.first] = dset ;
-      delete sliceObs ;
+      std::unique_ptr<RooArgSet> sliceObs{slicePdf->getObservables(obs)};
+      std::string sliceName = name + ("_slice_" + nameIdx.first);
+      std::string sliceTitle = title + (" (index slice " + nameIdx.first + ")");
+      dmap[nameIdx.first] = new RooDataSet(sliceName,sliceTitle,*sliceObs);
     }
-    _protoData = new RooDataSet(name, title, obs, Index((RooCategory&)*_idxCat), Link(dmap), OwnLinked()) ;
+    using namespace RooFit;
+    _protoData = std::make_unique<RooDataSet>(name, title, obs, Index(static_cast<RooCategory&>(*_idxCat)), Link(dmap), OwnLinked()) ;
   }
 
-  RooDataSet* emptyClone =  new RooDataSet(*_protoData,name) ;
-
-  return emptyClone ;
+  return new RooDataSet(*_protoData,name) ;
 }
 
 
@@ -254,15 +221,16 @@ void RooSimGenContext::generateEvent(RooArgSet &theEvent, Int_t remaining)
   if (_haveIdxProto) {
 
     // Lookup pdf from selected prototype index state
-    Int_t gidx(0), cidx =_idxCat->getCurrentIndex() ;
+    Int_t gidx(0);
+    Int_t cidx = _idxCat->getCurrentIndex();
     for (Int_t i=0 ; i<(Int_t)_gcIndex.size() ; i++) {
       if (_gcIndex[i]==cidx) { gidx = i ; break ; }
     }
-    RooAbsGenContext* cx = _gcList[gidx] ;
+    RooAbsGenContext* cx = _gcList[gidx].get();
     if (cx) {
       cx->generateEvent(theEvent,remaining) ;
     } else {
-      oocoutW(_pdf,Generation) << "RooSimGenContext::generateEvent: WARNING, no PDF to generate event of type " << cidx << endl ;
+      oocoutW(_pdf,Generation) << "RooSimGenContext::generateEvent: WARNING, no PDF to generate event of type " << cidx << std::endl ;
     }
 
 
@@ -273,7 +241,7 @@ void RooSimGenContext::generateEvent(RooArgSet &theEvent, Int_t remaining)
     Int_t i=0 ;
     for (i=0 ; i<_numPdf ; i++) {
       if (rand>_fracThresh[i] && rand<_fracThresh[i+1]) {
-        RooAbsGenContext* gen=_gcList[i] ;
+        RooAbsGenContext* gen=_gcList[i].get();
         gen->generateEvent(theEvent,remaining) ;
         //Write through to sub-categories because they might be written to dataset:
         _idxCat->setIndex(_gcIndex[i]);
@@ -322,8 +290,8 @@ void RooSimGenContext::setProtoDataOrder(Int_t* lut)
 {
   RooAbsGenContext::setProtoDataOrder(lut) ;
 
-  for (vector<RooAbsGenContext*>::iterator iter = _gcList.begin() ; iter!=_gcList.end() ; ++iter) {
-    (*iter)->setProtoDataOrder(lut) ;
+  for (auto& item : _gcList) {
+    item->setProtoDataOrder(lut) ;
   }
 }
 
@@ -331,18 +299,18 @@ void RooSimGenContext::setProtoDataOrder(Int_t* lut)
 ////////////////////////////////////////////////////////////////////////////////
 /// Detailed printing interface
 
-void RooSimGenContext::printMultiline(ostream &os, Int_t content, bool verbose, TString indent) const
+void RooSimGenContext::printMultiline(std::ostream &os, Int_t content, bool verbose, TString indent) const
 {
   RooAbsGenContext::printMultiline(os,content,verbose,indent) ;
-  os << indent << "--- RooSimGenContext ---" << endl ;
+  os << indent << "--- RooSimGenContext ---" << std::endl ;
   os << indent << "Using PDF ";
   _pdf->printStream(os,kName|kArgs|kClassName,kSingleLine,indent);
-  os << indent << "List of component generators" << endl ;
+  os << indent << "List of component generators" << std::endl ;
 
   TString indent2(indent) ;
   indent2.Append("    ") ;
 
-  for (vector<RooAbsGenContext*>::const_iterator iter = _gcList.begin() ; iter!=_gcList.end() ; ++iter) {
-    (*iter)->printMultiline(os,content,verbose,indent2);
+  for (auto& item : _gcList) {
+    item->printMultiline(os,content,verbose,indent2);
   }
 }

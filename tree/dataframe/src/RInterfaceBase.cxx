@@ -13,7 +13,7 @@
 #include <ROOT/RDF/RInterfaceBase.hxx>
 #include <ROOT/RDF/Utils.hxx>
 #include <ROOT/RDF/RVariationsDescription.hxx>
-#include <ROOT/RStringView.hxx>
+#include <string_view>
 #include <TTree.h>
 
 #include <algorithm> // std::for_each
@@ -24,73 +24,19 @@
 #include <string>
 #include <unordered_set>
 
+unsigned int ROOT::RDF::RInterfaceBase::GetNFiles()
+{
+   if (auto dataSource = GetDataSource()) {
+      return dataSource->GetNFiles();
+   }
+   return 0;
+}
+
 std::string ROOT::RDF::RInterfaceBase::DescribeDataset() const
 {
-   // TTree/TChain as input
-   const auto tree = fLoopManager->GetTree();
-   if (tree) {
-      const auto treeName = tree->GetName();
-      const auto isTChain = dynamic_cast<TChain *>(tree) ? true : false;
-      const auto treeType = isTChain ? "TChain" : "TTree";
-      const auto isInMemory = !isTChain && !tree->GetCurrentFile() ? true : false;
-      const auto friendInfo = ROOT::Internal::TreeUtils::GetFriendInfo(*tree);
-      const auto hasFriends = friendInfo.fFriendNames.empty() ? false : true;
-      std::stringstream ss;
-      ss << "Dataframe from " << treeType << " " << treeName;
-      if (isInMemory) {
-         ss << " (in-memory)";
-      } else {
-         const auto files = ROOT::Internal::TreeUtils::GetFileNamesFromTree(*tree);
-         const auto numFiles = files.size();
-         if (numFiles == 1) {
-            ss << " in file " << files[0];
-         } else {
-            ss << " in files\n";
-            for (auto i = 0u; i < numFiles; i++) {
-               ss << "  " << files[i];
-               if (i < numFiles - 1)
-                  ss << '\n';
-            }
-         }
-      }
-      if (hasFriends) {
-         const auto numFriends = friendInfo.fFriendNames.size();
-         if (numFriends == 1) {
-            ss << "\nwith friend\n";
-         } else {
-            ss << "\nwith friends\n";
-         }
-         for (auto i = 0u; i < numFriends; i++) {
-            const auto nameAlias = friendInfo.fFriendNames[i];
-            const auto files = friendInfo.fFriendFileNames[i];
-            const auto numFiles = files.size();
-            const auto subnames = friendInfo.fFriendChainSubNames[i];
-            ss << "  " << nameAlias.first;
-            if (nameAlias.first != nameAlias.second)
-               ss << " (" << nameAlias.second << ")";
-            // case: TTree as friend
-            if (numFiles == 1) {
-               ss << " " << files[0];
-            }
-            // case: TChain as friend
-            else {
-               ss << '\n';
-               for (auto j = 0u; j < numFiles; j++) {
-                  ss << "    " << subnames[j] << " " << files[j];
-                  if (j < numFiles - 1)
-                     ss << '\n';
-               }
-            }
-            if (i < numFriends - 1)
-               ss << '\n';
-         }
-      }
-      return ss.str();
-   }
    // Datasource as input
-   else if (fDataSource) {
-      const auto datasourceLabel = fDataSource->GetLabel();
-      return "Dataframe from datasource " + datasourceLabel;
+   if (auto ds = GetDataSource()) {
+      return ROOT::Internal::RDF::DescribeDataset(*ds);
    }
    // Trivial/empty datasource
    else {
@@ -104,13 +50,14 @@ std::string ROOT::RDF::RInterfaceBase::DescribeDataset() const
 }
 
 ROOT::RDF::RInterfaceBase::RInterfaceBase(std::shared_ptr<RDFDetail::RLoopManager> lm)
-   : fLoopManager(lm.get()), fDataSource(lm->GetDataSource()), fColRegister(std::move(lm))
+   : fLoopManager(lm), fColRegister(lm.get())
 {
    AddDefaultColumns();
 }
 
 ROOT::RDF::RInterfaceBase::RInterfaceBase(RDFDetail::RLoopManager &lm, const RDFInternal::RColumnRegister &colRegister)
-   : fLoopManager(&lm), fDataSource(lm.GetDataSource()), fColRegister(colRegister)
+   : fLoopManager(std::shared_ptr<ROOT::Detail::RDF::RLoopManager>{&lm, [](ROOT::Detail::RDF::RLoopManager *) {}}),
+     fColRegister(colRegister)
 {
 }
 
@@ -137,18 +84,12 @@ ROOT::RDF::ColumnNames_t ROOT::RDF::RInterfaceBase::GetColumnNames()
          allColumns.emplace(colName);
    };
 
-   auto definedColumns = fColRegister.GetNames();
+   auto definedColumns = fColRegister.GenerateColumnNames();
 
    std::for_each(definedColumns.begin(), definedColumns.end(), addIfNotInternal);
 
-   auto tree = fLoopManager->GetTree();
-   if (tree) {
-      for (const auto &bName : RDFInternal::GetBranchNames(*tree, /*allowDuplicates=*/false))
-         allColumns.emplace(bName);
-   }
-
-   if (fDataSource) {
-      for (const auto &s : fDataSource->GetColumnNames()) {
+   if (auto ds = GetDataSource()) {
+      for (const auto &s : ROOT::Internal::RDF::GetColumnNamesNoDuplicates(*ds)) {
          if (s.rfind("R_rdf_sizeof", 0) != 0)
             allColumns.emplace(s);
       }
@@ -156,6 +97,28 @@ ROOT::RDF::ColumnNames_t ROOT::RDF::RInterfaceBase::GetColumnNames()
 
    ColumnNames_t ret(allColumns.begin(), allColumns.end());
    std::sort(ret.begin(), ret.end());
+   return ret;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+/// \brief Retrieve the names of top-level field names
+///
+/// For data sources that support hierarchical dataset schemas, such as TTree
+/// or RNTuple, this function will retrieve the names of top-level fields. For
+/// example, if the schema contains a user class with a data member, only
+/// the name of the top-level field containing the user class object would be
+/// reported, but not the name of the data member sub-field.
+///
+/// For all other data sources, returns the list of all available dataset columns.
+ROOT::RDF::ColumnNames_t ROOT::RDF::RInterfaceBase::GetDatasetTopLevelFieldNames()
+{
+   ROOT::RDF::ColumnNames_t ret;
+   if (auto ds = GetDataSource()) {
+      ret = ROOT::Internal::RDF::GetTopLevelFieldNames(*ds);
+      // Sorting to be consistent with GetColumnNames
+      std::sort(ret.begin(), ret.end());
+   }
+
    return ret;
 }
 
@@ -174,12 +137,12 @@ ROOT::RDF::ColumnNames_t ROOT::RDF::RInterfaceBase::GetColumnNames()
 ///
 std::string ROOT::RDF::RInterfaceBase::GetColumnType(std::string_view column)
 {
-   const auto col = fColRegister.ResolveAlias(std::string(column));
+   const auto col = fColRegister.ResolveAlias(column);
 
    RDFDetail::RDefineBase *define = fColRegister.GetDefine(col);
 
    const bool convertVector2RVec = true;
-   return RDFInternal::ColumnName2ColumnTypeName(col, fLoopManager->GetTree(), fLoopManager->GetDataSource(), define,
+   return RDFInternal::ColumnName2ColumnTypeName(std::string(col), nullptr, fLoopManager->GetDataSource(), define,
                                                  convertVector2RVec);
 }
 
@@ -262,13 +225,11 @@ ROOT::RDF::RDFDescription ROOT::RDF::RInterfaceBase::Describe()
       if (definedColumnNamesSet.find(columnNames[i]) != definedColumnNamesSet.end())
          origin = "Define";
       ss << std::left << std::setw(columnWidthNames) << columnNames[i] << std::setw(columnWidthTypes) << columnTypes[i]
-         << origin;
-      if (i < nCols - 1)
-         ss << '\n';
+         << origin << '\n';
    }
    // Use the string returned from DescribeDataset() as the 'brief' description
    // Use the converted to string stringstream ss as the 'full' description
-   return RDFDescription(DescribeDataset(), ss.str());
+   return RDFDescription(DescribeDataset(), ss.str(), GetNFiles());
 }
 
 /// \brief Returns the names of the defined columns.
@@ -335,14 +296,7 @@ bool ROOT::RDF::RInterfaceBase::HasColumn(std::string_view columnName)
    if (fColRegister.IsDefineOrAlias(columnName))
       return true;
 
-   if (fLoopManager->GetTree()) {
-      const auto &branchNames = fLoopManager->GetBranchNames();
-      const auto branchNamesEnd = branchNames.end();
-      if (branchNamesEnd != std::find(branchNames.begin(), branchNamesEnd, columnName))
-         return true;
-   }
-
-   if (fDataSource && fDataSource->HasColumn(columnName))
+   if (auto ds = GetDataSource(); ds && ds->HasColumn(columnName))
       return true;
 
    return false;

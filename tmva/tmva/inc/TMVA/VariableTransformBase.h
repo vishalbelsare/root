@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : VariableTransformBase                                                 *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Pre-transformation of input variables (base class)                        *
@@ -23,7 +23,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_VariableTransformBase
@@ -88,7 +88,7 @@ namespace TMVA {
       void SetUseSignalTransform( Bool_t e=kTRUE) { fUseSignalTransform = e; }
       Bool_t UseSignalTransform() const { return fUseSignalTransform; }
 
-      virtual const char* GetName() const { return fTransformName.Data(); }
+      const char* GetName() const override { return fTransformName.Data(); }
       TString GetShortName() const { TString a(fTransformName); a.ReplaceAll("Transform",""); return a; }
 
       virtual void WriteTransformationToStream ( std::ostream& o ) const = 0;
@@ -173,7 +173,7 @@ namespace TMVA {
 
       mutable MsgLogger* fLogger;                     ///<! message logger
 
-      ClassDef(VariableTransformBase,0);   //  Base class for variable transformations
+      ClassDefOverride(VariableTransformBase,0);   //  Base class for variable transformations
    };
 
 } // namespace TMVA

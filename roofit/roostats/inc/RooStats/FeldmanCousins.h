@@ -50,20 +50,6 @@ namespace RooStats {
       void SetData(RooAbsData& /*data*/) override {
          std::cout << "DEPRECATED, set data in constructor" << std::endl;
       }
-      /// Set the Pdf
-      virtual void SetPdf(RooAbsPdf& /*pdf*/) {
-         std::cout << "DEPRECATED, use ModelConfig" << std::endl;
-      }
-
-      /// specify the parameters of interest in the interval
-      virtual void SetParameters(const RooArgSet& /*set*/) {
-         std::cout << "DEPRECATED, use ModelConfig" << std::endl;
-      }
-
-      /// specify the nuisance parameters (eg. the rest of the parameters)
-      virtual void SetNuisanceParameters(const RooArgSet& /*set*/) {
-         std::cout << "DEPRECATED, use ModelConfig" << std::endl;
-      }
 
       /// User-defined set of points to test
       void SetParameterPointsToTest(RooAbsData& pointsToTest) {
@@ -134,7 +120,7 @@ namespace RooStats {
       bool fCreateBelt;                     ///< controls use if ConfidenceBelt should be saved to a TFile
 
    protected:
-      ClassDefOverride(FeldmanCousins,2)   // Interface for tools setting limits (producing confidence intervals)
+      ClassDefOverride(FeldmanCousins,0)   // Interface for tools setting limits (producing confidence intervals)
    };
 }
 

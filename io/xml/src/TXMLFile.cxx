@@ -24,7 +24,7 @@
 // The XML file is built in memory before being dumped to disk.
 //
 // Like for normal ROOT files, XML files use the same I/O mechanism
-// exploiting the ROOT/CINT dictionary. Any class having a dictionary
+// exploiting the I/O dictionary. Any class having a dictionary
 // can be saved in XML format.
 //
 // This first implementation does not support subdirectories
@@ -67,7 +67,7 @@
 // =============
 // See also classes TBufferXML, TKeyXML, TXMLEngine, TXMLSetup and TXMLPlayer.
 // An example of XML file corresponding to the small example below
-// can be found at http://root.cern.ch/root/Example.xml
+// can be found at http://root.cern/root/Example.xml
 //
 //______________________________________________________________________________
 
@@ -88,7 +88,6 @@
 
 #include <memory>
 
-ClassImp(TXMLFile);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -940,8 +939,7 @@ void TXMLFile::SetUsedDtd(Bool_t use)
 ////////////////////////////////////////////////////////////////////////////////
 /// Specify usage of namespaces in xml file
 /// In current implementation every instrumented class in file gets its unique namespace,
-/// which is equal to name of class and refer to root documentation page like
-/// `<TAttPad xmlns:TAttPad="http://root.cern.ch/root/htmldoc/TAttPad.html" version="3">`
+/// which is equal to name of class and refer to root documentation page.
 /// And xml node for class member gets its name as combination of class name and member name
 ///            `<TAttPad:fLeftMargin v="0.100000"/>`
 ///            `<TAttPad:fRightMargin v="0.100000"/>`

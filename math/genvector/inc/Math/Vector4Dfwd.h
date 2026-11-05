@@ -31,13 +31,11 @@ namespace ROOT {
     template<typename T> class PtEtaPhiE4D;
     template<typename T> class PxPyPzM4D;
     template<typename T> class PtEtaPhiM4D;
-//     template<typename T> class EEtaPhiMSystem;
-
 
     // for LorentzVector have only double classes (define the vector in the global ref frame)
 
     /**
-       LorentzVector based on x,y,x,t (or px,py,pz,E) coordinates in double precision with metric (-,-,-,+)
+       LorentzVector based on x,y,z,t (or px,py,pz,E) coordinates in double precision with metric (-,-,-,+)
 
        To use it add the line `#include <Math/Vector4D.h>`
 
@@ -49,7 +47,7 @@ namespace ROOT {
 
 
     /**
-       LorentzVector based on x,y,x,t (or px,py,pz,E) coordinates in float precision with metric (-,-,-,+)
+       LorentzVector based on x,y,z,t (or px,py,pz,E) coordinates in float precision with metric (-,-,-,+)
 
        To use it add the line `#include <Math/Vector4D.h>`
 
@@ -59,7 +57,7 @@ namespace ROOT {
 
 
     /**
-       LorentzVector based on the x, y, z,  and Mass in double precision
+       LorentzVector based on the x, y, z and Mass in double precision
 
        To use it add the line `#include <Math/Vector4D.h>`
 
@@ -84,13 +82,6 @@ namespace ROOT {
        See the documentation on the LorentzVector page.
     */
     typedef LorentzVector<PtEtaPhiM4D<double> > PtEtaPhiMVector;
-
-//     /**
-//        LorentzVector based on the coordinates E, Eta, Phi and Mass in double precision. These coordinates are normally used to represents a cluster objects in a calorimeter at a collider experiment.
-//     */
-//     typedef BasicLorentzVector<EEtaPhiMSystem<double> > LorentzVectorEEtaPhiM;
-
-
 
   } // end namespace Math
 

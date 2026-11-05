@@ -46,7 +46,7 @@ public:
                       UInt_t w = 1, UInt_t h = 1,
                       UInt_t options = kRaisedFrame | kDoubleBorder,
                       Pixel_t back = GetDefaultFrameBackground());
-   virtual ~TGScrollBarElement();
+   ~TGScrollBarElement() override;
 
    virtual void SetState(Int_t state);
    void DrawBorder() override;
@@ -95,8 +95,9 @@ public:
 
    TGScrollBar(const TGWindow *p = nullptr, UInt_t w = 1, UInt_t h = 1,
                UInt_t options = kChildFrame,
-               Pixel_t back = GetDefaultFrameBackground());
-   virtual ~TGScrollBar();
+               Pixel_t back = GetDefaultFrameBackground(),
+               const char *headPicName = "", const char *tailPicName = "");
+   ~TGScrollBar() override;
 
    void           GrabPointer(Bool_t grab) { fGrabPointer = grab; }
 
@@ -145,7 +146,7 @@ public:
    TGHScrollBar(const TGWindow *p = nullptr, UInt_t w = 4, UInt_t h = 2,
                 UInt_t options = kHorizontalFrame,
                 Pixel_t back = GetDefaultFrameBackground());
-   virtual ~TGHScrollBar() { }
+   ~TGHScrollBar() override { }
 
    Bool_t HandleButton(Event_t *event) override;
    Bool_t HandleMotion(Event_t *event) override;
@@ -168,7 +169,7 @@ public:
    TGVScrollBar(const TGWindow *p = nullptr, UInt_t w = 2, UInt_t h = 4,
                 UInt_t options = kVerticalFrame,
                 Pixel_t back = GetDefaultFrameBackground());
-   virtual ~TGVScrollBar() { }
+   ~TGVScrollBar() override { }
 
    Bool_t HandleButton(Event_t *event) override;
    Bool_t HandleMotion(Event_t *event) override;

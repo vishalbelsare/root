@@ -37,7 +37,6 @@ namespace RooStats {
 
    public:
 
-     ///     NeymanConstruction();
      NeymanConstruction(RooAbsData& data, ModelConfig& model);
 
      ~NeymanConstruction() override;
@@ -76,21 +75,6 @@ namespace RooStats {
 
       /// Set the DataSet
       void SetData(RooAbsData& data) override { fData = data; }
-
-      /// Set the Pdf, add to the workspace if not already there
-      virtual void SetPdf(RooAbsPdf& /*pdf*/) {
-        std::cout << "DEPRECATED, use ModelConfig"<<std::endl;
-      }
-
-      /// specify the parameters of interest in the interval
-      virtual void SetParameters(const RooArgSet& /*set*/) {
-        std::cout << "DEPRECATED, use ModelConfig"<<std::endl;
-      }
-
-      /// specify the nuisance parameters (eg. the rest of the parameters)
-      virtual void SetNuisanceParameters(const RooArgSet& /*set*/) {
-        std::cout << "DEPRECATED, use ModelConfig"<<std::endl;
-      }
 
       /// set the size of the test (rate of Type I error) ( Eg. 0.05 for a 95% Confidence Interval)
       void SetTestSize(double size) override {fSize = size;}
@@ -135,7 +119,7 @@ namespace RooStats {
       bool fCreateBelt;                ///< controls use if ConfidenceBelt should be saved to a TFile
 
    protected:
-      ClassDefOverride(NeymanConstruction,1)   ///< Interface for tools setting limits (producing confidence intervals)
+      ClassDefOverride(NeymanConstruction,0)   ///< Interface for tools setting limits (producing confidence intervals)
    };
 }
 

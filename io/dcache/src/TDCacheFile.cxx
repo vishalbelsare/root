@@ -14,7 +14,7 @@
 
 /**
 \class TDCacheFile
-\ingroup IO
+\ingroup io_files
 A TDCacheFile is like a normal TFile except that it may read and
 write its data via a dCache server (for more on the dCache daemon
 see http://www-dcache.desy.de/. Given a path which doesn't belong
@@ -28,7 +28,7 @@ TFile behaviour.
 #include "TROOT.h"
 
 #include <cstdlib>
-#include <errno.h>
+#include <cerrno>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -36,7 +36,7 @@ TFile behaviour.
 #ifndef R__WIN32
 #include <unistd.h>
 #if defined(R__SUN) || defined(R__HPUX) || \
-    defined(R__AIX) || defined(R__LINUX) || defined(R__SOLARIS) || \
+    defined(R__LINUX) || defined(R__SOLARIS) || \
     defined(R__HIUX) || defined(R__FBSD) || defined(R__MACOSX) || \
     defined(R__HURD) || defined(R__OBSD)
 #define HAS_DIRENT
@@ -53,7 +53,6 @@ static const char* const DCAP_PREFIX = "dcap:";
 static const size_t DCAP_PREFIX_LEN = strlen(DCAP_PREFIX);
 
 
-ClassImp(TDCacheFile);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a dCache file object.
@@ -141,7 +140,7 @@ TDCacheFile::TDCacheFile(const char *path, Option_t *option,
 
    if (create || update) {
 #ifndef WIN32
-      fD = SysOpen(fname, O_RDWR | O_CREAT, 0644);
+      fD = SysOpen(fname, O_RDWR | O_CREAT, 0666);
 #else
       fD = SysOpen(fname, O_RDWR | O_CREAT | O_BINARY, S_IREAD | S_IWRITE);
 #endif
@@ -152,7 +151,7 @@ TDCacheFile::TDCacheFile(const char *path, Option_t *option,
       fWritable = kTRUE;
    } else {
 #ifndef WIN32
-      fD = SysOpen(fname, O_RDONLY, 0644);
+      fD = SysOpen(fname, O_RDONLY, 0666);
 #else
       fD = SysOpen(fname, O_RDONLY | O_BINARY, S_IREAD | S_IWRITE);
 #endif
@@ -191,7 +190,7 @@ TDCacheFile::TDCacheFile(const char *path, Option_t *option,
    return;
 
 zombie:
-   // error in file opening occured, make this object a zombie
+   // error in file opening occurred, make this object a zombie
    MakeZombie();
    gDirectory = gROOT;
 }
@@ -241,7 +240,7 @@ Bool_t TDCacheFile::ReadBuffer(char *buf, Long64_t pos, Int_t len)
 /// Read the nbuf blocks described in arrays pos and len,
 /// where pos[i] is the seek position of block i of length len[i].
 /// Note that for nbuf=1, this call is equivalent to TFile::ReafBuffer.
-/// This function is overloaded by TNetFile, TWebFile, etc.
+/// This function is overridden in remote-file implementations.
 /// Returns kTRUE in case of failure.
 
 Bool_t TDCacheFile::ReadBuffers(char *buf, Long64_t *pos, Int_t *len, Int_t nbuf)

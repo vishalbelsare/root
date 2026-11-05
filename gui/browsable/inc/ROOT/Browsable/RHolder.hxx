@@ -14,11 +14,11 @@
 #include <memory>
 
 namespace ROOT {
-namespace Experimental {
 
 class RLogChannel;
+
 /// Log channel for Browsable diagnostics.
-RLogChannel &BrowsableLog(); // implemented in RElement.cxx
+ROOT::RLogChannel &BrowsableLog(); // implemented in RElement.cxx
 
 namespace Browsable {
 
@@ -27,7 +27,6 @@ namespace Browsable {
 \brief Basic class for object holder of any kind. Could be used to transfer shared_ptr or unique_ptr or plain pointer
 \author Sergey Linev <S.Linev@gsi.de>
 \date 2019-10-19
-\warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 */
 
 class RHolder {
@@ -53,6 +52,9 @@ public:
 
    /** Returns direct (temporary) object pointer */
    virtual const void *GetObject() const = 0;
+
+   /** Clear all pointers without performing cleanup */
+   virtual void Forget() {}
 
    template <class T>
    bool InheritsFrom() const
@@ -126,7 +128,6 @@ public:
 };
 
 } // namespace Browsable
-} // namespace Experimental
 } // namespace ROOT
 
 

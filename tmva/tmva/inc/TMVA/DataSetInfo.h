@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : DataSetInfo                                                           *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Contains all the data information                                         *
@@ -21,7 +21,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_DataSetInfo
@@ -68,7 +68,7 @@ namespace TMVA {
       DataSetInfo(const TString& name = "Default");
       virtual ~DataSetInfo();
 
-      virtual const char* GetName() const { return fName.Data(); }
+      const char* GetName() const override { return fName.Data(); }
 
       // the data set
       void        ClearDataSet() const;
@@ -241,7 +241,7 @@ namespace TMVA {
 
    public:
 
-       ClassDef(DataSetInfo,1);
+       ClassDefOverride(DataSetInfo,1);
    };
 }
 

@@ -14,7 +14,6 @@
 #define ROOT_ROOFIT_TESTSTATISTICS_RooAbsL
 
 #include "RooArgSet.h"
-#include "RooAbsArg.h" // enum ConstOpCode
 #include "RooAbsPdf.h"
 
 #include "Math/Util.h" // KahanSum
@@ -36,9 +35,16 @@ public:
    static bool isExtendedHelper(RooAbsPdf *pdf, Extended extended);
 
    /// Convenience wrapper class used to distinguish between pdf/data owning and non-owning constructors.
-   struct ClonePdfData {
-      RooAbsPdf *pdf;
-      RooAbsData *data;
+   class ClonePdfData {
+   public:
+      ClonePdfData(RooAbsPdf *inPdf, RooAbsData *inData) : pdf{inPdf}, data{inData} {}
+      ClonePdfData(std::unique_ptr<RooAbsPdf> inPdf, RooAbsData *inData)
+         : pdf{inPdf.get()}, data{inData}, ownedPdf{std::move(inPdf)}
+      {
+      }
+      RooAbsPdf *pdf = nullptr;
+      RooAbsData *data = nullptr;
+      std::shared_ptr<RooAbsPdf> ownedPdf;
    };
 
 private:
@@ -74,8 +80,9 @@ public:
          }
       }
 
-      bool operator==(const Section& rhs) {
-         return begin_fraction == rhs.begin_fraction && end_fraction == rhs.end_fraction;
+      friend bool operator==(const Section &lhs, const Section &rhs)
+      {
+         return lhs.begin_fraction == rhs.begin_fraction && lhs.end_fraction == rhs.end_fraction;
       }
 
       double begin_fraction;
@@ -99,13 +106,7 @@ public:
    evaluatePartition(Section events, std::size_t components_begin, std::size_t components_end) = 0;
 
    // necessary from MinuitFcnGrad to reach likelihood properties:
-   virtual RooArgSet *getParameters();
-
-   /// \brief Interface function signaling a request to perform constant term optimization.
-   ///
-   /// The default implementation takes no action other than to forward the calls to all servers. May be overridden in
-   /// likelihood classes without a cached dataset, like RooSubsidiaryL.
-   virtual void constOptimizeTestStatistic(RooAbsArg::ConstOpCode opcode, bool doAlsoTrackingOpt);
+   virtual std::unique_ptr<RooArgSet> getParameters();
 
    virtual std::string GetName() const;
    virtual std::string GetTitle() const;

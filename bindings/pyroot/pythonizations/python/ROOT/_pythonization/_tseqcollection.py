@@ -9,10 +9,6 @@
 ################################################################################
 
 from . import pythonization
-from libcppyy import SetOwnership
-
-import sys
-
 
 # Item access
 
@@ -20,15 +16,10 @@ def _check_type(idx, msg):
     # Parameters:
     # - idx: index whose type needs to be checked
     # - msg: message to show in case of type issue
-
-    # Python2 also allows long indices
-    if sys.version_info >= (3,0):
-        allowed_types = (int,)
-    else:
-        allowed_types = (int, long)
+    allowed_types = (int,)
 
     t = type(idx)
-    if not t in allowed_types:
+    if t not in allowed_types:
         raise TypeError(msg.format(t.__name__))
 
 def _check_index(self, idx):
@@ -80,6 +71,9 @@ def _remove_at(self, idx):
     return self.Remove(lnk)
 
 def _setitem_pyz(self, idx, val):
+
+    import ROOT
+
     # Parameters:
     # - self: collection where to set item/s
     # - idx: index/slice of the item/s
@@ -99,7 +93,7 @@ def _setitem_pyz(self, idx, val):
             # Prevent this new Python proxy from owning the C++ object
             # Otherwise we get an 'already deleted' error in
             # TList::Clear when the application ends
-            SetOwnership(elem, False)
+            ROOT.SetOwnership(elem, False)
             try:
                 i = next(it)
                 self[i] = elem
@@ -226,10 +220,11 @@ def _sort_pyz(self, *args, **kwargs):
         self.Sort()
     else:
         # Sort in a Python list copy
-        l = list(self)
-        l.sort(*args, **kwargs)
+        pylist = list(self)
+        pylist.sort(*args, **kwargs)
         self.Clear()
-        self.extend(l)
+        self.extend(pylist)
+
 
 def _index_pyz(self, val):
     # Parameters:
@@ -246,10 +241,29 @@ def _index_pyz(self, val):
     return idx
 
 
+def _TSeqCollection_AddAt(self, *args, **kwargs):
+    from ROOT._pythonization._memory_utils import declare_cpp_owned_arg
+
+    def condition(_):
+        return self.IsOwner()
+
+    declare_cpp_owned_arg(0, "obj", args, kwargs, condition=condition)
+
+    self._AddAt(*args, **kwargs)
+
+
 @pythonization('TSeqCollection')
 def pythonize_tseqcollection(klass):
+    from ROOT._pythonization._tcollection import _TCollection_Add
+
     # Parameters:
     # klass: class to be pythonized
+
+    # Pythonize Add() methods
+    klass._Add = klass.Add
+    klass.Add = _TCollection_Add
+    klass._AddAt = klass.AddAt
+    klass.AddAt = _TSeqCollection_AddAt
 
     # Item access methods
     klass.__getitem__ = _getitem_pyz
@@ -262,3 +276,17 @@ def pythonize_tseqcollection(klass):
     klass.reverse = _reverse_pyz
     klass.sort    = _sort_pyz
     klass.index   = _index_pyz
+
+
+@pythonization("TList")
+def pythonize_tlist(klass):
+    from ROOT._pythonization._tcollection import _TCollection_Add
+
+    # Parameters:
+    # klass: class to be pythonized
+
+    # Pythonize Add() methods
+    klass._Add = klass.Add
+    klass.Add = _TCollection_Add
+    klass._AddAt = klass.AddAt
+    klass.AddAt = _TSeqCollection_AddAt

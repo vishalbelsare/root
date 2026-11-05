@@ -19,8 +19,6 @@
 #include "RooResolutionModel.h"
 #include "RooListProxy.h"
 #include "RooSetProxy.h"
-#include "RooAICRegistry.h"
-#include "RooNormSetCache.h"
 #include "RooObjCacheManager.h"
 
 class AddCacheElem;
@@ -31,11 +29,14 @@ public:
   RooAddModel() ;
   RooAddModel(const char *name, const char *title, const RooArgList& pdfList, const RooArgList& coefList, bool ownPdfList=false) ;
   RooAddModel(const RooAddModel& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooAddModel(*this,newname) ; }
+  TObject* clone(const char* newname=nullptr) const override { return new RooAddModel(*this,newname) ; }
   RooResolutionModel* convolution(RooFormulaVar* basis, RooAbsArg* owner) const override ;
 
   double evaluate() const override ;
   bool checkObservables(const RooArgSet* nset) const override ;
+
+  void doEval(RooFit::EvalContext &) const override;
+  inline bool canComputeBatchWithCuda() const override { return true; }
 
   Int_t basisCode(const char* name) const override ;
 
@@ -94,7 +95,7 @@ protected:
   mutable RooSetProxy _refCoefNorm ;   ///<! Reference observable set for coefficient interpretation
   mutable TNamed* _refCoefRangeName = nullptr;  ///<! Reference range name for coefficient interpretation
 
-  mutable std::vector<double> _coefCache; ///<! Transiet cache with transformed values of coefficients
+  mutable std::vector<double> _coefCache; ///<! Transient cache with transformed values of coefficients
 
 
   mutable RooObjCacheManager _projCacheMgr ;  ///<! Manager of cache with coefficient projections and transformations
@@ -105,20 +106,17 @@ protected:
   void getCompIntList(const RooArgSet* nset, const RooArgSet* iset, pRooArgList& compIntList, Int_t& code, const char* isetRangeName) const ;
   class IntCacheElem : public RooAbsCacheElement {
   public:
-    ~IntCacheElem() override {} ;
     RooArgList _intList ; ///< List of component integrals
     RooArgList containedArgs(Action) override ;
   } ;
 
   mutable RooObjCacheManager _intCacheMgr ; ///<! Manager of cache with integrals
 
-  mutable RooAICRegistry _codeReg = 10; ///<! Registry of component analytical integration codes
-
   RooListProxy _pdfList ;   ///<  List of component PDFs
   RooListProxy _coefList ;  ///<  List of coefficients
   mutable RooArgList* _snormList{nullptr};  ///<!  List of supplemental normalization factors
 
-  bool _haveLastCoef = false;    ///<  Flag indicating if last PDFs coefficient was supplied in the ctor
+  bool _haveLastCoef = false;    ///<  Flag indicating if last PDFs coefficient was supplied in the constructor
   bool _allExtendable = false;   ///<  Flag indicating if all PDF components are extendable
 
   mutable Int_t _coefErrCount ; ///<! Coefficient error counter

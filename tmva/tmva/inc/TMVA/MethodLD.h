@@ -4,7 +4,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MethodLD                                                              *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Linear Discriminant (Simple Linear Regression)                            *
@@ -23,7 +23,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  *                                                                                *
  **********************************************************************************/
 
@@ -64,32 +64,32 @@ namespace TMVA {
       // destructor
       virtual ~MethodLD( void );
 
-      Bool_t HasAnalysisType( Types::EAnalysisType type, UInt_t numberClasses, UInt_t numberTargets );
+      Bool_t HasAnalysisType( Types::EAnalysisType type, UInt_t numberClasses, UInt_t numberTargets ) override;
 
       // training method
-      void Train( void );
+      void Train( void ) override;
 
       // calculate the MVA value
-      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr );
+      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr ) override;
 
       // calculate the Regression value
-      virtual const std::vector<Float_t>& GetRegressionValues();
+      const std::vector<Float_t>& GetRegressionValues() override;
 
       using MethodBase::ReadWeightsFromStream;
 
-      void AddWeightsXMLTo      ( void* parent ) const;
+      void AddWeightsXMLTo      ( void* parent ) const override;
 
-      void ReadWeightsFromStream( std::istream & i );
-      void ReadWeightsFromXML   ( void* wghtnode );
+      void ReadWeightsFromStream( std::istream & i ) override;
+      void ReadWeightsFromXML   ( void* wghtnode ) override;
 
-      const Ranking* CreateRanking();
-      void DeclareOptions();
-      void ProcessOptions();
+      const Ranking* CreateRanking() override;
+      void DeclareOptions() override;
+      void ProcessOptions() override;
 
    protected:
 
-      void MakeClassSpecific( std::ostream&, const TString& ) const;
-      void GetHelpMessage() const;
+      void MakeClassSpecific( std::ostream&, const TString& ) const override;
+      void GetHelpMessage() const override;
 
    private:
 
@@ -101,7 +101,7 @@ namespace TMVA {
       std::vector< std::vector<Double_t>* > *fLDCoeff; ///< LD coefficients
 
       // default initialisation called by all constructors
-      void Init( void );
+      void Init( void ) override;
 
       // Initialization and allocation of matrices
       void InitMatrices( void );
@@ -118,7 +118,7 @@ namespace TMVA {
       // nice output
       void PrintCoefficients( void );
 
-      ClassDef(MethodLD,0); //Linear discriminant analysis
+      ClassDefOverride(MethodLD,0); //Linear discriminant analysis
    };
 } // namespace TMVA
 

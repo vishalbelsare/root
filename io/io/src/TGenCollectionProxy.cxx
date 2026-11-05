@@ -28,7 +28,7 @@
 
 /**
 \class TGenVectorProxy
-\ingroup IO
+\ingroup io_other
 Local optimization class.
 
 Collection proxies get copied. On copy we switch the type of the
@@ -43,7 +43,7 @@ public:
    {
    }
    // Standard Destructor
-   virtual ~TGenVectorProxy()
+   ~TGenVectorProxy() override
    {
    }
    // Return the address of the value at index 'idx'
@@ -56,7 +56,7 @@ public:
             return fEnv->fStart = fFirst.invoke(fEnv);
          default:
             if (! fEnv->fStart ) fEnv->fStart = fFirst.invoke(fEnv);
-            return ((char*)fEnv->fStart) + fValDiff*idx;
+            return ((char *)fEnv->fStart) + ElementOffset(idx);
          }
       }
       Fatal("TGenVectorProxy","At> Logic error - no proxy object set.");
@@ -78,7 +78,7 @@ public:
 
 /**
 \class TGenVectorBoolProxy
-\ingroup IO
+\ingroup io_other
 Local optimization class.
 
 Collection proxies get copied. On copy we switch the type of the
@@ -93,7 +93,7 @@ public:
    {
       // Standard Constructor.
    }
-   virtual ~TGenVectorBoolProxy()
+   ~TGenVectorBoolProxy() override
    {
       // Standard Destructor.
    }
@@ -139,7 +139,7 @@ public:
    {
       // Standard Constructor.
    }
-   virtual ~TGenBitsetProxy()
+   ~TGenBitsetProxy() override
    {
       // Standard Destructor.
    }
@@ -179,7 +179,7 @@ public:
 
 /*
 \class TGenListProxy
-\ingroup IO
+\ingroup io_other
 Local optimization class.
 
 Collection proxies get copied. On copy we switch the type of the
@@ -194,7 +194,7 @@ public:
    {
    }
    // Standard Destructor
-   virtual ~TGenListProxy()
+   ~TGenListProxy() override
    {
    }
    // Return the address of the value at index 'idx'
@@ -221,7 +221,7 @@ public:
 
 /**
 \class TGenSetProxy
-\ingroup IO
+\ingroup io_other
 Localoptimization class.
 
 Collection proxies get copied. On copy we switch the type of the
@@ -236,7 +236,7 @@ public:
    {
    }
    // Standard Destructor
-   virtual ~TGenSetProxy()
+   ~TGenSetProxy() override
    {
    }
    // Return the address of the value at index 'idx'
@@ -244,7 +244,7 @@ public:
    {
       if ( fEnv && fEnv->fObject ) {
          if ( fEnv->fUseTemp ) {
-            return (((char*)fEnv->fTemp)+idx*fValDiff);
+            return (((char *)fEnv->fTemp) + ElementOffset(idx));
          }
          switch( idx ) {
          case 0:
@@ -266,7 +266,7 @@ public:
 
 /**
 \class TGenMapProxy
-\ingroup IO
+\ingroup io_other
 Localoptimization class.
 
 Collection proxies get copied. On copy we switch the type of the
@@ -281,7 +281,7 @@ public:
    {
    }
    // Standard Destructor
-   virtual ~TGenMapProxy()
+   ~TGenMapProxy() override
    {
    }
    // Call to delete/destruct individual item
@@ -325,16 +325,15 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent,
    fKind = kNoType_t;
 
    // Let's treat the unique_ptr case
-   bool nameChanged = false;
-   std::string intype = TClassEdit::GetNameForIO(inside.c_str(), TClassEdit::EModType::kNone, &nameChanged);
+   std::string intype = TClassEdit::GetNameForIO(inside, TClassEdit::EModType::kNone);
 
-   bool isPointer = nameChanged; // unique_ptr is considered a pointer
+   bool isPointer = false;
    // The incoming name is normalized (it comes from splitting the name of a TClass),
    // so all we need to do is drop the last trailing star (if any) and record that information.
-   if (!nameChanged && intype[intype.length()-1] == '*') {
+   if (intype.back() == '*') {
       isPointer = true;
       intype.pop_back();
-      if (intype[intype.length()-1] == '*') {
+      if (intype.back() == '*') {
          // The value is a pointer to a pointer
          if (!silent)
             Warning("TGenCollectionProxy::Value::Value", "I/O not supported for collection of pointer to pointer: %s", inside_type.c_str());
@@ -361,7 +360,7 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent,
       // In the case where we have an emulated class,
       // if the class is nested (in a class or a namespace),
       // calling G__TypeInfo ti(inside.c_str());
-      // might fail because CINT does not known the nesting
+      // might fail because Cling does not know the nesting
       // scope, so let's first look for an emulated class:
 
       fType = TClass::GetClass(intype.c_str(),kTRUE,silent, hint_pair_offset, hint_pair_size);
@@ -398,11 +397,12 @@ TGenCollectionProxy::Value::Value(const std::string& inside_type, Bool_t silent,
             } else {
                fSize = fundType->Size();
             }
-         } else if (TEnum::GetEnum( intype.c_str(), TEnum::kNone) ) {
+         } else if (auto e = TEnum::GetEnum(intype.c_str(), TEnum::kNone)) {
+            R__ASSERT(e->IsValid());
             // This is a known enum.
             fCase = kIsEnum;
-            fSize = sizeof(Int_t);
-            fKind = kInt_t;
+            fSize = TDataType::GetDataType(e->GetUnderlyingType())->Size();
+            fKind = e->GetUnderlyingType();
             if (isPointer) {
                fCase |= kIsPointer;
                fSize = sizeof(void*);
@@ -535,7 +535,7 @@ void TGenCollectionProxy::Value::DeleteItem(void* ptr)
 
 /**
  \class TGenCollectionProxy TGenCollectionProxy.cxx
- \ingroup IO
+ \ingroup io_other
 
  Proxy around an arbitrary container, which implements basic
  functionality and iteration.
@@ -579,6 +579,7 @@ TGenCollectionProxy::TGenCollectionProxy(const TGenCollectionProxy& copy)
    fKey            = copy.fKey   ? new Value(*copy.fKey)   : 0;
    fOnFileClass    = copy.fOnFileClass;
    fReadMemberWise = new TObjArray(TCollection::kInitCapacity,-1);
+   fReadMemberWise->SetOwner(true);
    fConversionReadMemberWise = 0;
    fWriteMemberWise = 0;
    fProperties     = copy.fProperties;
@@ -625,6 +626,7 @@ TGenCollectionProxy::TGenCollectionProxy(Info_t info, size_t iter_size)
             (Long_t)sizeof(e.fIterator));
    }
    fReadMemberWise = new TObjArray(TCollection::kInitCapacity,-1);
+   fReadMemberWise->SetOwner(true);
    fConversionReadMemberWise   = 0;
    fWriteMemberWise            = 0;
    fFunctionCreateIterators    = 0;
@@ -676,6 +678,7 @@ TGenCollectionProxy::TGenCollectionProxy(const ROOT::Detail::TCollectionProxyInf
             (Long_t)sizeof(e.fIterator));
    }
    fReadMemberWise = new TObjArray(TCollection::kInitCapacity,-1);
+   fReadMemberWise->SetOwner(true);
    fConversionReadMemberWise   = 0;
    fWriteMemberWise            = 0;
    fFunctionCreateIterators    = info.fCreateIterators;
@@ -958,6 +961,12 @@ TGenCollectionProxy *TGenCollectionProxy::InitializeEx(Bool_t silent)
                }
                break;
          }
+         if (!(fProperties & kIsEmulated) && newfValue->fType && !newfValue->fType->IsSyntheticPair()) {
+            if (!newfValue->fType->IsLoaded() && !newfValue->fType->HasInterpreterInfo())
+               Error("TGenCollectionProxy::InitializeEx",
+                     "The TClass for %s used as the value type of the compiled collection proxy %s is not loaded.",
+                     newfValue->fType->GetName(), cl->GetName());
+         }
 
          fPointers = fPointers || (0 != (fVal->fCase&kIsPointer));
          if (fPointers || (0 != (fVal->fProperties&kNeedDelete))) {
@@ -1075,7 +1084,7 @@ void* TGenCollectionProxy::At(UInt_t idx)
             return fEnv->fStart = fFirst.invoke(fEnv);
          default:
             if (! fEnv->fStart ) fEnv->fStart = fFirst.invoke(fEnv);
-            return ((char*)fEnv->fStart) + fValDiff*idx;
+            return ((char *)fEnv->fStart) + ElementOffset(idx);
          }
       case ROOT::kSTLbitset: {
          switch (idx) {
@@ -1103,7 +1112,7 @@ void* TGenCollectionProxy::At(UInt_t idx)
       case ROOT::kSTLmultimap:
       case ROOT::kSTLunorderedmultimap:
          if ( fEnv->fUseTemp ) {
-            return (((char*)fEnv->fTemp)+idx*fValDiff);
+            return (((char *)fEnv->fTemp) + ElementOffset(idx));
          }
          // Intentional fall through.
       default:
@@ -1509,14 +1518,8 @@ void TGenCollectionProxy__VectorCreateIterators(void *obj, void **begin_arena, v
       *end_arena = 0;
       return;
    }
-   *begin_arena = &(*vec->begin());
-#ifdef R__VISUAL_CPLUSPLUS
-   *end_arena = &(*(vec->end()-1)) + 1; // On windows we can not dererence the end iterator at all.
-#else
-   // coverity[past_the_end] Safe on other platforms
-   *end_arena = &(*vec->end());
-#endif
-
+   *begin_arena = vec->data();
+   *end_arena   = vec->data() + vec->size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1620,7 +1623,9 @@ TVirtualCollectionProxy::CreateIterators_t TGenCollectionProxy::GetFunctionCreat
 //      fprintf(stderr,"a generic iterator\n");
 
    // TODO could we do better than SlowCreateIterators for RVec?
-   if (fSTL_type==ROOT::kSTLvector || (fProperties & kIsEmulated))
+   if (fProperties & kIsEmulated)
+      return fFunctionCreateIterators = TGenCollectionProxy__VectorCreateIterators;
+   else if (fSTL_type == ROOT::kSTLvector)
       return fFunctionCreateIterators = TGenCollectionProxy__VectorCreateIterators;
    else if ( (fProperties & kIsAssociative) && read)
       return TGenCollectionProxy__StagingCreateIterators;

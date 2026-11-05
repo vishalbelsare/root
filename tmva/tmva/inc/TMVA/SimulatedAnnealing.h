@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : SimulatedAnnealing                                                    *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Implementation of simulated annealing fitting procedure                   *
@@ -22,7 +22,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_SimulatedAnnealing
@@ -70,12 +70,6 @@ namespace TMVA {
                        TString  kernelTemperatureS, Double_t temperatureScale, Double_t adaptiveSpeed,
                        Double_t temperatureAdaptiveStep, Bool_t useDefaultScale, Bool_t useDefaultTemperature );
 
-      //setting up helper variables for JsMVA
-      void SetIPythonInteractive(bool* ExitFromTraining, UInt_t *fIPyCurrentIter_){
-        fExitFromTraining = ExitFromTraining;
-        fIPyCurrentIter = fIPyCurrentIter_;
-      }
-
    private:
 
       enum EKernelTemperature {
@@ -115,14 +109,10 @@ namespace TMVA {
       Bool_t                        fUseDefaultScale;        ///< if TRUE, SA calculates its own TemperatureScale
       Bool_t                        fUseDefaultTemperature;  ///< if TRUE, SA calculates its own InitialTemperature (MinTemperautre)
 
-      mutable MsgLogger*            fLogger;   ///< message logger
+      mutable MsgLogger*            fLogger;   ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
 
       Double_t fProgress;
-
-      // variables for JsMVA
-      UInt_t *fIPyCurrentIter = nullptr;
-      bool * fExitFromTraining = nullptr;
 
       ClassDef(SimulatedAnnealing,0);  // Base class for Simulated Annealing fitting
    };

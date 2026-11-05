@@ -19,7 +19,7 @@
 \class RooPrintable
 \ingroup Roofitcore
 
-RooPlotable is a 'mix-in' base class that define the standard RooFit plotting and
+A 'mix-in' base class that define the standard RooFit plotting and
 printing methods. Each RooPlotable implementation must define methods that
 print the objects name, class name, title, value, arguments and extras
 to a provided stream. The definition of value is class dependent. The definition
@@ -34,15 +34,14 @@ given a Print() option string.
 
 #include "RooPrintable.h"
 
-#include "Riostream.h"
-#include <iomanip>
 #include "TNamed.h"
 #include "TClass.h"
 
-using namespace std;
+#include <iostream>
+#include <iomanip>
 
-ClassImp(RooPrintable);
-;
+using std::ostream, std::setw;
+
 
 Int_t  RooPrintable::_nameLength(0) ;
 
@@ -140,7 +139,7 @@ void RooPrintable::printStream(ostream& os, Int_t contents, StyleOption style, T
     }
   }
 
-  if (style!=kInline) os << endl ;
+  if (style!=kInline) os << std::endl ;
 
 }
 
@@ -176,7 +175,7 @@ void RooPrintable::printMultiline(ostream& /*os*/, Int_t /*contents*/, bool /*ve
 
 void RooPrintable::printTree(ostream& /*os*/, TString /*indent*/) const
 {
-  cout << "Tree structure printing not implement for class " << IsA()->GetName() << endl ;
+  std::cout << "Tree structure printing not implement for class " << IsA()->GetName() << std::endl ;
 }
 
 
@@ -267,11 +266,11 @@ RooPrintable::StyleOption RooPrintable::defaultPrintStyle(Option_t* opt) const
 /// method allows subclasses to provide an inline implementation of
 /// Print() without pulling in iostream.h.
 
-ostream &RooPrintable::defaultPrintStream(ostream *os)
+ostream &RooPrintable::defaultPrintStream(std::ostream *os)
 {
-  static ostream *_defaultPrintStream = &cout;
+  static ostream *_defaultPrintStream = &std::cout;
 
   ostream& _oldDefault= *_defaultPrintStream;
-  if(0 != os) _defaultPrintStream= os;
+  if(nullptr != os) _defaultPrintStream= os;
   return _oldDefault;
 }

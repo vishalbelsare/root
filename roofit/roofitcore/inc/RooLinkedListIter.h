@@ -21,7 +21,7 @@
 
 #include <memory>
 #include <stdexcept>
-#include <assert.h>
+#include <cassert>
 
 /// Interface for RooFIter-compatible iterators
 class GenericRooFIter
@@ -232,7 +232,7 @@ class RooLinkedListIter final : public TIterator {
   TObject * operator*() const override {return fIterImpl->operator*();}
 
   private:
-  std::shared_ptr<TIterator> fIterImpl; //!
+  std::shared_ptr<TIterator> fIterImpl; ///<!
 };
 
 

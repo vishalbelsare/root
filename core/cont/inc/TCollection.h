@@ -114,7 +114,7 @@ public:
       };
    };
 
-   mutable TErrorLock fLock; //! Special 'lock' to detect multiple access to a collection.
+   mutable TErrorLock fLock; ///<! Special 'lock' to detect multiple access to a collection.
 
 #define R__COLLECTION_WRITE_GUARD() TCollection::TErrorLock::WriteGuard wg(fLock, this, __PRETTY_FUNCTION__)
 #define R__COLLECTION_READ_GUARD() TCollection::TErrorLock::ReadGuard rg(fLock, this, __PRETTY_FUNCTION__)
@@ -160,6 +160,7 @@ public:
 
    virtual            ~TCollection();
    virtual void       Add(TObject *obj) = 0;
+   virtual void       Add(TObject */*obj*/, Option_t */*opt*/) { AbstractMethod("Add"); };
    void               AddVector(TObject *obj1, ...);
    virtual void       AddAll(const TCollection *col);
    Bool_t             AssertClass(TClass *cl) const;
@@ -177,6 +178,7 @@ public:
    TObject           *operator()(const char *name) const;
    TObject           *FindObject(const TObject *obj) const override;
    virtual Int_t      GetEntries() const { return GetSize(); }
+   inline std::size_t size() const { return GetEntries(); }
    const char        *GetName() const override;
    virtual TObject  **GetObjectRef(const TObject *obj) const = 0;
    /// Return the *capacity* of the collection, i.e. the current total amount of space that has been allocated so far.
@@ -265,8 +267,7 @@ public:
    }
    TIter &operator=(TIterator *iter)
    {
-      if (fIterator)
-         delete fIterator;
+      delete fIterator;
       fIterator = iter;
       return *this;
    }
@@ -321,7 +322,7 @@ public:
 /// of the type requested (or a derived class). Any deviation from this expectation
 /// will only be caught/reported by an assert in debug builds.
 ///
-/// This is best used with a TClonesArray, for other cases prefered TRangeDynCast.
+/// This is best used with a TClonesArray, for other cases TRangeDynCast is preferred.
 ///
 /// The typical use is:
 /// ```{.cpp}
@@ -357,9 +358,6 @@ using TRangeStaticCast = TRangeCast<T, false>;
 template <typename T>
 using TRangeDynCast = ROOT::Detail::TRangeCast<T, true>;
 
-// Zero overhead macros in case not compiled with thread support
-#if defined (_REENTRANT) || defined (WIN32)
-
 #define R__COLL_COND_MUTEX(mutex) this->IsUsingRWLock() ? mutex : nullptr
 
 #define R__COLLECTION_READ_LOCKGUARD(mutex) ::ROOT::TReadLockGuard _R__UNIQUE_(R__readguard)(R__COLL_COND_MUTEX(mutex))
@@ -367,16 +365,6 @@ using TRangeDynCast = ROOT::Detail::TRangeCast<T, true>;
 
 #define R__COLLECTION_WRITE_LOCKGUARD(mutex) ::ROOT::TWriteLockGuard _R__UNIQUE_(R__readguard)(R__COLL_COND_MUTEX(mutex))
 #define R__COLLECTION_WRITE_LOCKGUARD_NAMED(name,mutex) ::ROOT::TWriteLockGuard _NAME2_(R__readguard,name)(R__COLL_COND_MUTEX(mutex))
-
-#else
-
-#define R__COLLECTION_READ_LOCKGUARD(mutex) (void)mutex
-#define R__COLLECTION_COLLECTION_READ_LOCKGUARD_NAMED(name,mutex) (void)mutex
-
-#define R__COLLECTION_WRITE_LOCKGUARD(mutex) (void)mutex
-#define R__COLLECTION_WRITE_LOCKGUARD_NAMED(name,mutex) (void)mutex
-
-#endif
 
 //---- R__FOR_EACH macro -------------------------------------------------------
 

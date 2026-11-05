@@ -21,7 +21,7 @@
 #include "RooDirItem.h"
 #include "RooArgList.h"
 
-#include "RVersion.h"
+#include "ROOT/RVersion.hxx"
 #include "TMatrixFfwd.h"
 #include "TMatrixDSym.h"
 #include "TList.h"
@@ -33,9 +33,7 @@
 class RooArgSet ;
 class RooAbsPdf ;
 class RooPlot;
-class TObject ;
-class TH2 ;
-typedef RooArgSet* pRooArgSet ;
+class TH2;
 
 class RooFitResult : public TNamed, public RooPrintable, public RooDirItem {
 public:
@@ -50,8 +48,6 @@ public:
   }
   virtual TObject* clone() const { return new RooFitResult(*this); }
   ~RooFitResult() override ;
-
-  static RooFitResult* lastMinuitFit(const RooArgList& varList=RooArgList()) ;
 
   static RooFitResult *prefitResult(const RooArgList &paramList);
 
@@ -157,11 +153,8 @@ public:
   void SetName(const char *name) override ;
   void SetNameTitle(const char *name, const char* title) override ;
 
-protected:
 
-  friend class RooAbsPdf ;
-  friend class RooMinuit ;
-  friend class RooMinimizer ;
+
   void setCovarianceMatrix(TMatrixDSym& V) ;
   void setConstParList(const RooArgList& list) ;
   void setInitParList(const RooArgList& list) ;
@@ -171,12 +164,14 @@ protected:
   inline void setStatus(Int_t val) { _status = val ; }
   inline void setCovQual(Int_t val) { _covQual = val ; }
   inline void setNumInvalidNLL(Int_t val) { _numBadNLL=val ; }
-  void fillCorrMatrix() ;
+  void setStatusHistory(std::vector<std::pair<std::string,int> >& hist) { _statusHistory = hist ; }
   void fillCorrMatrix(const std::vector<double>& globalCC, const TMatrixDSym& corrs, const TMatrixDSym& covs) ;
+
+protected:
+
+  void fillGlobalCorr() const ;
   void fillLegacyCorrMatrix() const ;
   void fillPrefitCorrMatrix();
-  void setStatusHistory(std::vector<std::pair<std::string,int> >& hist) { _statusHistory = hist ; }
-
   double correlation(Int_t row, Int_t col) const;
   double covariance(Int_t row, Int_t col) const;
 
@@ -189,15 +184,16 @@ protected:
   RooArgList* _initPars = nullptr;     ///< List of floating parameters with initial values
   RooArgList* _finalPars = nullptr;    ///< List of floating parameters with final values
 
-  mutable RooArgList* _globalCorr = nullptr;   ///<! List of global correlation coefficients
+  mutable std::unique_ptr<RooArgList> _globalCorr; ///<! List of global correlation coefficients
   mutable TList       _corrMatrix ;   ///<! Correlation matrix (list of RooArgLists)
 
-  mutable RooArgList *_randomPars = nullptr; ///<! List of floating parameters with most recent random perturbation applied
-  mutable TMatrixF* _Lt = nullptr;           ///<! triangular matrix used for generate random perturbations
+  mutable std::unique_ptr<RooArgList>
+     _randomPars;                        ///<! List of floating parameters with most recent random perturbation applied
+  mutable std::unique_ptr<TMatrixF> _Lt; ///<! triangular matrix used for generate random perturbations
 
   TMatrixDSym* _CM = nullptr;  ///< Correlation matrix
   TMatrixDSym* _VM = nullptr;  ///< Covariance matrix
-  TVectorD* _GC = nullptr;     ///< Global correlation coefficients
+  mutable TVectorD* _GC = nullptr; ///< Global correlation coefficients, computed on demand if not set
 
   std::vector<std::pair<std::string,int> > _statusHistory ; ///< History of status codes
 

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MethodKNN                                                             *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Implementation                                                            *
@@ -20,7 +20,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 /*! \class TMVA::MethodKNN
@@ -54,7 +54,6 @@ Analysis of k-nearest neighbor.
 
 REGISTER_METHOD(KNN)
 
-ClassImp(TMVA::MethodKNN);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// standard constructor
@@ -287,7 +286,6 @@ void TMVA::MethodKNN::Train()
    // create kd-tree (binary tree) structure
    MakeKNN();
 
-   ExitFromTraining();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -686,7 +684,7 @@ void TMVA::MethodKNN::WriteWeightsToStream(TFile &rf) const
 
    kNN::Event *event = new kNN::Event();
    TTree *tree = new TTree("knn", "event tree");
-   tree->SetDirectory(0);
+   tree->SetDirectory(nullptr);
    tree->Branch("event", "TMVA::kNN::Event", &event);
 
    Double_t size = 0.0;

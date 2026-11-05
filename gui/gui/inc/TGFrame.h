@@ -128,6 +128,8 @@ protected:
    // some protected methods use in gui builder
    virtual void StartGuiBuilding(Bool_t on = kTRUE);
 
+   TString SaveCtorArgs(std::ostream &out, UInt_t dflt_options = kChildFrame, Bool_t check_white_pixel = kFALSE);
+
 private:
    TGFrame(const TGFrame&) = delete;
    TGFrame& operator=(const TGFrame&) = delete;
@@ -147,7 +149,7 @@ public:
    TGFrame(const TGWindow *p = nullptr, UInt_t w = 1, UInt_t h = 1,
            UInt_t options = 0, Pixel_t back = GetDefaultFrameBackground());
    TGFrame(TGClient *c, Window_t id, const TGWindow *parent = nullptr);
-   virtual ~TGFrame();
+   ~TGFrame() override;
 
    virtual void DeleteWindow();
    virtual void ReallyDelete() { delete this; }
@@ -305,7 +307,7 @@ public:
                     UInt_t options = 0,
                     Pixel_t back = GetDefaultFrameBackground());
    TGCompositeFrame(TGClient *c, Window_t id, const TGWindow *parent = nullptr);
-   virtual ~TGCompositeFrame();
+   ~TGCompositeFrame() override;
 
    virtual TList *GetList() const { return fList; }
 
@@ -443,7 +445,7 @@ private:
 public:
    TGMainFrame(const TGWindow *p = nullptr, UInt_t w = 1, UInt_t h = 1,
                UInt_t options = kVerticalFrame);
-   virtual ~TGMainFrame();
+   ~TGMainFrame() override;
 
    Bool_t HandleKey(Event_t *event) override;
    Bool_t HandleClientMessage(Event_t *event) override;
@@ -508,8 +510,16 @@ public:
    TGTransientFrame(const TGWindow *p = nullptr, const TGWindow *main = nullptr, UInt_t w = 1, UInt_t h = 1,
                     UInt_t options = kVerticalFrame);
 
-   enum EPlacement { kCenter, kLeft, kRight, kTop, kBottom, kTopLeft, kTopRight,
-                     kBottomLeft, kBottomRight };
+   enum EPlacement { kCenter, kLeft, kRight, kTop, kBottom,
+// clang++ <v20 (-Wshadow) complains about shadowing GuiTypes.h global enum ECursor. Let's silence warning:
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+#endif
+                     kTopLeft, kTopRight, kBottomLeft, kBottomRight };
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic pop
+#endif
    virtual void    CenterOnParent(Bool_t croot = kTRUE, EPlacement pos = kCenter);
    const TGWindow *GetMain() const { return fMain; }
    void    SavePrimitive(std::ostream &out, Option_t *option = "") override;
@@ -553,7 +563,7 @@ public:
                 GContext_t norm = GetDefaultGC()(),
                 FontStruct_t font = GetDefaultFontStruct(),
                 Pixel_t back = GetDefaultFrameBackground());
-   virtual ~TGGroupFrame();
+   ~TGGroupFrame() override;
 
    TGDimension GetDefaultSize() const override;
    void  DrawBorder() override;

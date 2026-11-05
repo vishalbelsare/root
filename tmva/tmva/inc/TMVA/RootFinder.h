@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : RootFinder                                                            *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Root finding using Brents algorithm                                       *
@@ -23,7 +23,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_RootFinder
@@ -71,7 +71,7 @@ namespace TMVA {
       mutable MsgLogger* fLogger;   ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
 
-      ClassDef(RootFinder,0); // Root finding using Brents algorithm
+      ClassDefOverride(RootFinder,0); // Root finding using Brents algorithm
    };
 
 } // namespace TMVA

@@ -22,18 +22,15 @@
 #include <cmath>
 #include <memory>
 
-namespace ROOT {
+namespace ROOT::Math {
+class Minimizer;
+}
 
-   namespace Math {
-      class Minimizer;
-   }
+namespace ROOT::Fit {
 
-
-   namespace Fit {
-
-      class FitConfig;
-      class FitData;
-      class BinData;
+class FitConfig;
+class FitData;
+class BinData;
 
 //___________________________________________________________________________________
 /**
@@ -53,7 +50,7 @@ public:
    /**
       Default constructor for an empty (non valid) fit result
    */
-   FitResult ();
+   FitResult() = default;
 
    /**
       Constructor from a fit-config for a dummy fit
@@ -63,9 +60,6 @@ public:
 
    // default copy constructor and assignment can be used
 
-   /**
-      Destructor
-   */
    virtual ~FitResult () {}
 
 
@@ -76,7 +70,7 @@ public:
       Run also Minos if requested from the configuration
     */
    void FillResult(const std::shared_ptr<ROOT::Math::Minimizer> & min, const FitConfig & fconfig,  const std::shared_ptr<IModelFunction> & f,
-              bool isValid, unsigned int sizeOfData = 0, bool binFit = true, const ROOT::Math::IMultiGenFunction *chi2func = nullptr, unsigned int ncalls = 0);
+              bool isValid, unsigned int sizeOfData = 0, int fitType = 1, const ROOT::Math::IMultiGenFunction *chi2func = nullptr, unsigned int ncalls = 0);
 
 
    /**
@@ -105,7 +99,7 @@ public:
    bool IsValid() const { return fValid; }
 
    /// True if a fit result does not exist (even invalid) with parameter values
-   bool IsEmpty() const { return (fParams.size() == 0);  }
+   bool IsEmpty() const { return (fParams.empty());  }
 
    /// Return value of the objective function (chi2 or likelihood) used in the fit
    double MinFcnValue() const { return fVal; }
@@ -146,8 +140,10 @@ public:
    const BinData * FittedBinData() const;
 
 
-   /// Chi2 fit value
-   /// in case of likelihood must be computed ?
+   /// Return the Chi2 value after fitting
+   /// In case of unbinned fits (or not defined one, see the documentation of Fitter::FitFCN) return -1
+   /// In case of binned likelihood fits (Poisson Likelihood) return the 2 * negative log-likelihood ratio
+   /// using the definition of Baker-Cousins
    double Chi2() const { return fChi2; }
 
    /// Number of degree of freedom
@@ -188,6 +184,12 @@ public:
    /// set the Minos errors for parameter i (called by the Fitter class when running Minos)
    void SetMinosError(unsigned int i, double elow, double eup);
 
+   /// Set the chi2 and the ndf
+   /// This function should be called when using an external FCN for fitting
+   /// and one provides the chi2 and the number of fitting data points) to store
+   /// and have them printed in the FitResult class
+   void SetChi2AndNdf(double chi2, unsigned int npoints);
+
    /// query if parameter i has the Minos error
    bool HasMinosError(unsigned int i) const;
 
@@ -206,7 +208,7 @@ public:
    /// retrieve covariance matrix element
    double CovMatrix (unsigned int i, unsigned int j) const {
       if ( i >= fErrors.size() || j >= fErrors.size() ) return 0;
-      if (fCovMatrix.size() == 0) return 0; // no matrix is available in case of non-valid fits
+      if (fCovMatrix.empty()) return 0; // no matrix is available in case of non-valid fits
       if ( j < i )
          return fCovMatrix[j + i* (i+1) / 2];
       else
@@ -216,7 +218,7 @@ public:
    /// retrieve correlation elements
    double Correlation(unsigned int i, unsigned int j ) const {
       if ( i >= fErrors.size() || j >= fErrors.size() ) return 0;
-      if (fCovMatrix.size() == 0) return 0; // no matrix is available in case of non-valid fits
+      if (fCovMatrix.empty()) return 0; // no matrix is available in case of non-valid fits
       double tmp = CovMatrix(i,i)*CovMatrix(j,j);
       return ( tmp > 0) ? CovMatrix(i,j)/ std::sqrt(tmp) : 0;
    }
@@ -332,22 +334,22 @@ protected:
    friend class Fitter;
 
 
-   bool fValid;             ///< flag for indicating valid fit
-   bool fNormalized;        ///< flag for indicating is errors are normalized
-   unsigned int fNFree;     ///< number of fit free parameters (total parameters are in size of parameter vector)
-   unsigned int fNdf;       ///< number of degree of freedom
-   unsigned int fNCalls;    ///< number of function calls
-   int fStatus;             ///< minimizer status code
-   int fCovStatus;          ///< covariance matrix status code
-   double fVal;             ///< minimum function value
-   double fEdm;             ///< expected distance from minimum
-   double fChi2;            ///< fit chi2 value (different than fval in case of chi2 fits)
+   bool fValid = false;      ///< flag for indicating valid fit
+   bool fNormalized = false; ///< flag for indicating is errors are normalized
+   unsigned int fNFree = 0;  ///< number of fit free parameters (total parameters are in size of parameter vector)
+   unsigned int fNdf = 0;    ///< number of degree of freedom
+   unsigned int fNCalls = 0; ///< number of function calls
+   int fStatus = -1;         ///< minimizer status code
+   int fCovStatus = 0;       ///< covariance matrix status code
+   double fVal = 0;          ///< minimum function value
+   double fEdm = -1;         ///< expected distance from minimum
+   double fChi2 = -1;        ///< fit chi2 value (different than fval in case of chi2 fits)
    std::shared_ptr<ROOT::Math::Minimizer> fMinimizer;       ///<! minimizer object used for fitting
    std::shared_ptr<ROOT::Math::IMultiGenFunction> fObjFunc; ///<! objective function used for fitting
    std::shared_ptr<IModelFunction> fFitFunc;                ///<! model function resulting  from the fit.
    std::shared_ptr<FitData>    fFitData;                    ///<! data set used in the fit
-   std::map<unsigned int, bool>           fFixedParams;     ///< list of fixed parameters
-   std::map<unsigned int, unsigned int>   fBoundParams;     ///< list of limited parameters
+   std::vector<bool>           fFixedParams;                ///< if parameters are fixed
+   std::vector<unsigned int>   fBoundParams;                ///< if parameters are limited
    std::vector<std::pair<double,double> >  fParamBounds;    ///< parameter bounds
    std::vector<double>         fParams;    ///< parameter values. Size is total number of parameters
    std::vector<double>         fErrors;    ///< errors
@@ -359,13 +361,6 @@ protected:
 
 };
 
-
-   } // end namespace Fit
-
-} // end namespace ROOT
-
-
-
-
+} // namespace ROOT::Fit
 
 #endif /* ROOT_Fit_FitResult */

@@ -16,7 +16,6 @@
 #include "TLatex.h"
 #include "TVirtualPad.h"
 
-ClassImp(TPaveLabel);
 
 /** \class TPaveLabel
 \ingroup BasicGraphics
@@ -37,8 +36,9 @@ TPaveLabel::TPaveLabel(): TPave(), TAttText()
 /// Pavelabel normal constructor.
 ///
 /// a PaveLabel is a Pave with a label centered in the Pave
-/// The Pave is by default defined bith bordersize=5 and option ="br".
+/// The Pave is by default defined with bordersize=3 and option ="br".
 /// The text size is automatically computed as a function of the pave size.
+/// To remove the shadow or border of a TPaveLabel, use the function TPave::SetBorderSize
 
 TPaveLabel::TPaveLabel(Double_t x1, Double_t y1,Double_t x2, Double_t  y2, const char *label, Option_t *option)
            :TPave(x1,y1,x2,y2,3,option), TAttText(22,0,1,gStyle->GetTextFont(),0.99)
@@ -142,17 +142,17 @@ void TPaveLabel::PaintPaveLabel(Double_t x1, Double_t y1,Double_t x2, Double_t  
    if (nch <= 0) return;
 
    // Draw label
-   Double_t wh   = (Double_t)gPad->XtoPixel(gPad->GetX2());
-   Double_t hh   = (Double_t)gPad->YtoPixel(gPad->GetY1());
+   Double_t wh   = gPad->GetPadWidth();
+   Double_t hh   = gPad->GetPadHeight();
    if (wh==0||hh==0) return;
    Double_t labelsize, textsize = GetTextSize();
    Int_t automat = 0;
    if (GetTextFont()%10 > 2) {  // fixed size font specified in pixels
       labelsize = GetTextSize();
    } else {
-      if (TMath::Abs(textsize -0.99) < 0.001) automat = 1;
+      if (std::abs(textsize -0.99) < 0.001) automat = 1;
       if (textsize == 0)   { textsize = 0.99; automat = 1;}
-      Int_t ypixel      = TMath::Abs(gPad->YtoPixel(y1) - gPad->YtoPixel(y2));
+      Int_t ypixel      = std::abs(gPad->YtoPixel(y1) - gPad->YtoPixel(y2));
       labelsize = textsize*ypixel/hh;
       if (wh < hh) labelsize *= hh/wh;
    }
@@ -167,7 +167,7 @@ void TPaveLabel::PaintPaveLabel(Double_t x1, Double_t y1,Double_t x2, Double_t  
       latex.GetTextExtent(w,h,GetTitle());
       if (!w) return;
       labelsize = h/hh;
-      Double_t wxlabel   = TMath::Abs(gPad->XtoPixel(x2) - gPad->XtoPixel(x1));
+      Double_t wxlabel   = std::abs(gPad->XtoPixel(x2) - gPad->XtoPixel(x1));
       latex.GetTextExtent(w1,h,GetTitle());
       while (w > 0.99*wxlabel) {
          labelsize *= 0.99*wxlabel/w;
@@ -197,30 +197,18 @@ void TPaveLabel::PaintPaveLabel(Double_t x1, Double_t y1,Double_t x2, Double_t  
 ////////////////////////////////////////////////////////////////////////////////
 /// Save primitive as a C++ statement(s) on output stream out
 
-void TPaveLabel::SavePrimitive(std::ostream &out, Option_t * /*= ""*/)
+void TPaveLabel::SavePrimitive(std::ostream &out, Option_t *option)
 {
-   char quote = '"';
-   out<<"   "<<std::endl;
-   if (gROOT->ClassSaved(TPaveLabel::Class())) {
-      out<<"   ";
-   } else {
-      out<<"   TPaveLabel *";
-   }
-   TString s = fLabel.Data();
-   s.ReplaceAll("\"","\\\"");
-   if (fOption.Contains("NDC")) {
-      out<<"pl = new TPaveLabel("<<fX1NDC<<","<<fY1NDC<<","<<fX2NDC<<","<<fY2NDC
-         <<","<<quote<<s.Data()<<quote<<","<<quote<<fOption<<quote<<");"<<std::endl;
-   } else {
-      out<<"pl = new TPaveLabel("<<gPad->PadtoX(fX1)<<","<<gPad->PadtoY(fY1)<<","<<gPad->PadtoX(fX2)<<","<<gPad->PadtoY(fY2)
-         <<","<<quote<<s.Data()<<quote<<","<<quote<<fOption<<quote<<");"<<std::endl;
-   }
-   if (fBorderSize != 3) {
-      out<<"   pl->SetBorderSize("<<fBorderSize<<");"<<std::endl;
-   }
-   SaveFillAttributes(out,"pl",19,1001);
-   SaveLineAttributes(out,"pl",1,1,1);
-   SaveTextAttributes(out,"pl",22,0,1,62,0);
+   TString lbl_arg = TString::Format("\"%s\"", TString(fLabel).ReplaceSpecialCppChars().Data());
+   SavePrimitiveConstructor(out, Class(), "pavelabel", GetSavePaveArgs(lbl_arg));
+   if (strcmp(GetName(), "TPave"))
+      out << "   pavelabel->SetName(\"" << GetName() << "\");\n";
+   if (fBorderSize != 3)
+      out << "   pavelabel->SetBorderSize(" << fBorderSize << ");\n";
 
-   out<<"   pl->Draw();"<<std::endl;
+   SaveFillAttributes(out, "pavelabel", -1, -1);
+   SaveLineAttributes(out, "pavelabel", 1, 1, 1);
+   SaveTextAttributes(out, "pavelabel", 22, 0, 1, 62, 0);
+
+   SavePrimitiveDraw(out, "pavelabel", option);
 }

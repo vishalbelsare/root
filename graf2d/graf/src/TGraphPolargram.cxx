@@ -45,18 +45,19 @@ End_Macro
 #include "TGaxis.h"
 #include "THLimitsFinder.h"
 #include "TVirtualPad.h"
+#include "TColor.h"
 #include "TLatex.h"
 #include "TEllipse.h"
 #include "TMath.h"
 
-ClassImp(TGraphPolargram);
+#include <string>
 
 ////////////////////////////////////////////////////////////////////////////////
 /// TGraphPolargram Constructor.
 
 TGraphPolargram::TGraphPolargram(const char* name, Double_t rmin, Double_t rmax,
-                                 Double_t tmin, Double_t tmax):
-                                 TNamed(name,"Polargram")
+                                 Double_t tmin, Double_t tmax, const char *opt):
+                                 TNamed(name, "Polargram")
 {
    Init();
    fNdivRad          = 508;
@@ -66,6 +67,22 @@ TGraphPolargram::TGraphPolargram(const char* name, Double_t rmin, Double_t rmax,
    fRwrmin           = rmin;
    fRwtmin           = tmin;
    fRwtmax           = tmax;
+
+   TString s = opt;
+   s.ToUpper();
+   if (s.Contains("R")) {
+      fRadian = kTRUE;
+      fRwtmin = 0;
+      fRwtmax = 2*TMath::Pi();
+   } else if (s.Contains("D")) {
+      fDegree = kTRUE;
+      fRwtmin = 0;
+      fRwtmax = 360;
+   } else if (s.Contains("G")) {
+      fGrad   = kTRUE;
+      fRwtmin = 0;
+      fRwtmax = 200;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,6 +128,7 @@ void TGraphPolargram::ChangeRangePolar(Double_t tmin, Double_t tmax)
 
 Int_t TGraphPolargram::DistancetoPrimitive(Int_t px, Int_t py)
 {
+   if (!gPad) return 9999;
    Int_t i;
    Double_t x = gPad->AbsPixeltoX(px);
    Double_t y = gPad->AbsPixeltoY(py);
@@ -180,93 +198,67 @@ Int_t TGraphPolargram::DistancetoPrimitive(Int_t px, Int_t py)
 
 void TGraphPolargram::Draw(Option_t* options)
 {
-   Paint(options);
+   Paint(options); // FIXME: why paint here ?
    AppendPad(options);
 }
+
+class TGraphPolargramInteractive : public TVirtualPad::TInteractive {
+   public:
+
+   Double_t angle = 0.;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Indicate that there is something to click here.
 
 void TGraphPolargram::ExecuteEvent(Int_t event, Int_t px, Int_t py)
 {
-   if (!gPad) return;
+   if (!gPad || !gPad->IsEditable())
+      return;
+
+   auto &parent = *gPad;
 
    Int_t kMaxDiff = 20;
-   static Int_t d1, d2, d3, px1, py1, px3, py3;
-   static Bool_t p1, p2, p3, p4, p5, p6, p7, p8;
-   Double_t px2, py2;
-   p2 = p3 = p4 = p5 = p6 = p7 = p8 = kFALSE;
-   if (!gPad->IsEditable()) return;
+
    switch (event) {
       case kMouseMotion:
-         px1 = gPad->XtoAbsPixel(TMath::Cos(GetAngle()));
-         py1 = gPad->YtoAbsPixel(TMath::Sin(GetAngle()));
-         d1  = TMath::Abs(px1 - px) + TMath::Abs(py1-py); //simply take sum of pixels differences
-         p1  = kFALSE;
-         px2 = gPad->XtoAbsPixel(-1);
-         py2 = gPad->YtoAbsPixel(1);
-         d2  = (Int_t)(TMath::Abs(px2 - px) + TMath::Abs(py2 - py)) ;
-         px3 = gPad->XtoAbsPixel(-1);
-         py3 = gPad->YtoAbsPixel(-1);
-         d3  = TMath::Abs(px3 - px) + TMath::Abs(py3 - py) ; //simply take sum of pixels differences
-         // check if point is close to the radial axis
+      case kButton1Down: {
+         Int_t px1 = parent.XtoAbsPixel(TMath::Cos(GetAngle()));
+         Int_t py1 = parent.YtoAbsPixel(TMath::Sin(GetAngle()));
+
+         Int_t d1  = TMath::Abs(px1 - px) + TMath::Abs(py1-py); //simply take sum of pixels differences
+
          if (d1 < kMaxDiff) {
-            gPad->SetCursor(kMove);
-            p1 = kTRUE;
-         }
-         // check if point is close to the left high axis
-         if ( d2 < kMaxDiff) {
-            gPad->SetCursor(kHand);
-            p7 = kTRUE;
-         }
-         // check if point is close to the left down axis
-         if ( d3 < kMaxDiff) {
-            gPad->SetCursor(kHand);
-            p8 = kTRUE;
-         }
-         // check if point is close to a main circle
-         if (!p1 && !p7 ) {
-            p6 = kTRUE;
-            gPad->SetCursor(kHand);
+            parent.SetCursor(kMove);
+            if (event == kButton1Down)
+               parent.MakeInteractive<TGraphPolargramInteractive>(this);
          }
          break;
-
-      case kButton1Down:
-         // Record initial coordinates
-         //px4 = px;
-         //py4 = py;
+      }
 
       case kButton1Motion:
-         if (p1) {
-            px2 = gPad->AbsPixeltoX(px);
-            py2 = gPad->AbsPixeltoY(py);
-            if ( px2 < 0 && py2 < 0)  {p2 = kTRUE;};
-            if ( px2 < 0 && py2 > 0 ) {p3 = kTRUE;};
-            if ( px2 > 0 && py2 > 0 ) {p4 = kTRUE;};
-            if ( px2 > 0 && py2 < 0 ) {p5 = kTRUE;};
-            px2 = TMath::ACos(TMath::Abs(px2));
-            py2 = TMath::ASin(TMath::Abs(py2));
-            if (p2) {
-               fAxisAngle = TMath::Pi()+(px2+py2)/2;
-               p2 = kFALSE;
-            };
-            if (p3) {
-               fAxisAngle = TMath::Pi()-(px2+py2)/2;
-               p3 = kFALSE;
-            };
-            if (p4) {
-               fAxisAngle = (px2+py2)/2;
-               p4 = kFALSE;
-            };
-            if (p5) {
-               fAxisAngle = -(px2+py2)/2;
-               p5 = kFALSE;
-            };
+         if (auto inter = parent.GetInteractive<TGraphPolargramInteractive>(this)) {
+            auto dx = parent.AbsPixeltoX(px);
+            auto dy = parent.AbsPixeltoY(py);
+            inter->angle = TMath::ATan2(dy, dx);
+
+            Double_t xx[2], yy[2];
+            xx[0] = yy[0] = 0;
+            xx[1] = TMath::Cos(inter->angle);
+            yy[1] = TMath::Sin(inter->angle);
+            TAttLine{kBlack, 1, 2}.ModifyOn(parent);
+            parent.PaintPolyLine(2, xx, yy, "ipolargram");
+            parent.UpdateAsync();
          }
          break;
 
       case kButton1Up:
-         Paint();
+         if (auto inter = parent.GetInteractive<TGraphPolargramInteractive>(this)) {
+            fAxisAngle = inter->angle;
+            parent.Modified();
+            parent.FreeInteractive(this); // remove interactive
+         }
+         break;
    }
 }
 
@@ -347,22 +339,21 @@ void TGraphPolargram::Init()
 
 void TGraphPolargram::Paint(Option_t * chopt)
 {
-   Int_t optionpoldiv, optionraddiv;
-   Bool_t optionLabels = kTRUE;
-
    TString opt = chopt;
    opt.ToUpper();
 
-   if(opt.Contains('P')) optionpoldiv=1; else optionpoldiv=0;
-   if(opt.Contains('R')) optionraddiv=1; else optionraddiv=0;
-   if(opt.Contains('O')) SetBit(TGraphPolargram::kLabelOrtho);
-   else ResetBit(TGraphPolargram::kLabelOrtho);
-   if(!opt.Contains('P') && !opt.Contains('R')) optionpoldiv=optionraddiv=1;
-   if(opt.Contains('N')) optionLabels = kFALSE;
+   Bool_t optionpoldiv = opt.Contains('P'),
+          optionraddiv = opt.Contains('R'),
+          optionLabels = !opt.Contains('N');
 
-   if(optionraddiv) PaintRadialDivisions(kTRUE);
-   else PaintRadialDivisions(kFALSE);
-   if(optionpoldiv) PaintPolarDivisions(optionLabels);
+   if (!optionpoldiv && !optionraddiv)
+      optionpoldiv = optionraddiv = kTRUE;
+
+   SetBit(TGraphPolargram::kLabelOrtho, opt.Contains('O'));
+
+   PaintRadialDivisions(optionraddiv);
+   if (optionpoldiv)
+      PaintPolarDivisions(optionLabels);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -372,6 +363,8 @@ void TGraphPolargram::Paint(Option_t * chopt)
 void TGraphPolargram::PaintCircle(Double_t x1, Double_t y1, Double_t r,
                             Double_t phimin, Double_t phimax, Double_t theta)
 {
+   if (!gPad) return;
+
    Int_t i;
    const Int_t np = 200; // Number of point to draw circle
    static Double_t x[np+3], y[np+3];
@@ -404,8 +397,8 @@ void TGraphPolargram::PaintCircle(Double_t x1, Double_t y1, Double_t r,
 
 void TGraphPolargram::PaintPolarDivisions(Bool_t optionLabels)
 {
-   Int_t i, j, rnum, rden, first, last;
    if (!gPad) return ;
+   Int_t i, j, rnum, rden, first, last;
 
    gPad->RangeAxis(-1,-1,1,1);
    gPad->Range(-1.25,-1.25,1.25,1.25);
@@ -621,6 +614,8 @@ void TGraphPolargram::PaintPolarDivisions(Bool_t optionLabels)
 
 void TGraphPolargram::PaintRadialDivisions(Bool_t drawaxis)
 {
+   if (!gPad) return ;
+
    static char chopt[8] = "";
    Int_t i,j;
    Int_t ndiv      = TMath::Abs(fNdivRad);
@@ -632,7 +627,6 @@ void TGraphPolargram::PaintRadialDivisions(Bool_t drawaxis)
    THLimitsFinder::Optimize(fRwrmin,fRwrmax,ndivMajor,frwrmin,
                                frwrmax, ndivmajor,binWidth,"");
 
-   if (!gPad) return ;
    if (!gPad->GetLogx()) {
       gPad->RangeAxis(-1,-1,1,1);
       gPad->Range(-1.25,-1.25,1.25,1.25);
@@ -944,3 +938,51 @@ void TGraphPolargram::SetTwoPi()
 {
    SetRangePolar(0,2*TMath::Pi());
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Save TGraphPolargram as primitive
+
+void TGraphPolargram::SavePrimitive(std::ostream &out, Option_t *option)
+{
+   if (!option || strcmp(option, "nodraw"))
+      return;
+
+   TString opt = "";
+   if (fDegree)
+      opt = "d";
+   else if (fGrad)
+      opt = "g";
+
+   SavePrimitiveConstructor(
+      out, Class(), "polargram",
+      TString::Format("\"%s\", %g, %g, %g, %g, \"%s\"", GetName(), fRwrmin, fRwrmax, fRwtmin, fRwtmax, opt.Data()));
+
+   SaveLineAttributes(out, "polargram", -1, -1, -1);
+   SaveTextAttributes(out, "polargram", -1, -1, -1, -1, -1);
+
+   if (fAxisAngle)
+      out << "   polargram->SetAxisAngle(" << std::to_string((int)(fAxisAngle / TMath::Pi() * 180)).c_str() << ");\n";
+
+   if (fNdivPol != 508)
+      out << "   polargram->SetNdivPolar(" << std::to_string(fNdivPol).c_str() << ");\n";
+   out << "   polargram->SetPolarLabelColor(" << TColor::SavePrimitiveColor(fPolarLabelColor) << ");\n";
+   out << "   polargram->SetPolarLabelFont(" << std::to_string(fPolarLabelFont).c_str() << ");\n";
+   out << "   polargram->SetPolarLabelSize(" << std::to_string(fPolarTextSize).c_str() << ");\n";
+   if (fPolarOffset != 0.04)
+      out << "   polargram->SetPolarOffset(" << std::to_string(fPolarOffset).c_str() << ");\n";
+   out << "   polargram->SetTickpolarSize(" << std::to_string(fTickpolarSize).c_str() << ");\n";
+   if (fPolarLabels)
+      for(Int_t n = 0; n < fNdivPol; n++)
+         if (!fPolarLabels[n].IsNull())
+            out << "   polargram->SetPolarLabel(\"" << fPolarLabels[n] << "\");\n";
+
+   if (fNdivRad != 508)
+      out << "   polargram->SetNdivRadial(" << std::to_string(fNdivRad).c_str() << ");\n";
+   out << "   polargram->SetRadialLabelColor(" << TColor::SavePrimitiveColor(fRadialLabelColor) << ");\n";
+   out << "   polargram->SetRadialLabelFont(" << std::to_string(fRadialLabelFont).c_str() << ");\n";
+   out << "   polargram->SetRadialLabelSize(" << std::to_string(fRadialTextSize).c_str() << ");\n";
+   if (fRadialOffset != 0.04)
+      out << "   polargram->SetRadialOffset(" << std::to_string(fRadialOffset).c_str() << ");\n";
+}
+

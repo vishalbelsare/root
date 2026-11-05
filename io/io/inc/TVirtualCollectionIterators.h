@@ -14,7 +14,7 @@
 
 /**
 \class TVirtualCollectionIterators
-\ingroup IO
+\ingroup io_other
 Small helper class to generically acquire and release iterators.
 */
 
@@ -189,7 +189,7 @@ inline TGenericCollectionIterator *TGenericCollectionIterator::New(void *collect
 
 /**
 \class TVirtualCollectionPtrIterators
-\ingroup IO
+\ingroup io_other
 */
 class TVirtualCollectionPtrIterators
 {
@@ -356,13 +356,8 @@ public:
          fEnd = nullptr;
          return;
       }
-      fBegin= &(*vec->begin());
-#ifdef R__VISUAL_CPLUSPLUS
-      fEnd = &(*(vec->end()-1)) + 1; // On windows we can not dererence the end iterator at all.
-#else
-      // coverity[past_the_end] Safe on other platforms
-      fEnd = &(*vec->end());
-#endif
+      fBegin= vec->data();
+      fEnd = vec->data() + vec->size(); // We can not dereference the end iterator at all.
       //fCreateIterators(collection, &fBegin, &fEnd);
    }
 };

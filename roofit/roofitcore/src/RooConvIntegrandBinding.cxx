@@ -1,3 +1,5 @@
+/// \cond ROOFIT_INTERNAL
+
 /*****************************************************************************
  * Project: RooFit                                                           *
  * Package: RooFitCore                                                       *
@@ -31,21 +33,21 @@ RooNumConvPdf
 #include "RooAbsRealLValue.h"
 #include "RooMsgService.h"
 
-#include <assert.h>
-
-using namespace std;
-
-ClassImp(RooConvIntegrandBinding);
-;
+#include <cassert>
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-RooConvIntegrandBinding::RooConvIntegrandBinding(const RooAbsReal& func, const RooAbsReal& model,
-                   RooAbsReal& xprime, RooAbsReal& x,
-                   const RooArgSet* nset, bool clipInvalid) :
+RooConvIntegrandBinding::RooConvIntegrandBinding(const RooAbsReal &func, const RooAbsReal &model, RooAbsReal &xprime,
+                                                 RooAbsReal &x, const RooArgSet *nset, bool clipInvalid)
+   :
 
-  RooAbsFunc(2), _func(&func), _model(&model), _vars(0), _nset(nset), _clipInvalid(clipInvalid)
+     RooAbsFunc(2),
+     _func(&func),
+     _model(&model),
+     _vars(new RooAbsRealLValue *[2]),
+     _nset(nset),
+     _clipInvalid(clipInvalid)
 {
   // Constructor where func and model
   //
@@ -66,22 +68,22 @@ RooConvIntegrandBinding::RooConvIntegrandBinding(const RooAbsReal& func, const R
   //
 
   // allocate memory
-  _vars= new RooAbsRealLValue*[2];
-  if(0 == _vars) {
+
+  if(nullptr == _vars) {
     _valid= false;
     return;
   }
 
   // check that all of the arguments are real valued and store them
   _vars[0]= dynamic_cast<RooAbsRealLValue*>(&xprime);
-  if(0 == _vars[0]) {
+  if(nullptr == _vars[0]) {
     oocoutE(&func,InputArguments) << "RooConvIntegrandBinding: cannot bind to ";
     xprime.Print("1");
     _valid= false;
   }
 
   _vars[1]= dynamic_cast<RooAbsRealLValue*>(&x);
-  if(0 == _vars[1]) {
+  if(nullptr == _vars[1]) {
     oocoutE(&func,InputArguments) << "RooConvIntegrandBinding: cannot bind to ";
     x.Print("1");
     _valid= false;
@@ -97,7 +99,7 @@ RooConvIntegrandBinding::RooConvIntegrandBinding(const RooAbsReal& func, const R
 
 RooConvIntegrandBinding::~RooConvIntegrandBinding()
 {
-  if(0 != _vars) delete[] _vars;
+  if(nullptr != _vars) delete[] _vars;
 }
 
 
@@ -111,7 +113,6 @@ void RooConvIntegrandBinding::loadValues(const double xvector[], bool clipInvali
     if (clipInvalid && !_vars[index]->isValidReal(xvector[index])) {
       _xvecValid = false ;
     } else {
-      //cout << "RooConvBasBinding::loadValues[" << index << "] loading value " << xvector[index] << endl ;
       _vars[index]->setVal(xvector[index]);
     }
   }
@@ -129,7 +130,6 @@ double RooConvIntegrandBinding::operator()(const double xvector[]) const
   // First evaluate function at x'
   loadValues(xvector);
   if (!_xvecValid) return 0 ;
-  //cout << "RooConvIntegrandBinding::operator(): evaluating f(x') at x' = " << xvector[0] << endl ;
   double f_xp = _func->getVal(_nset) ;
 
   // Next evaluate model at x-x'
@@ -137,12 +137,6 @@ double RooConvIntegrandBinding::operator()(const double xvector[]) const
   loadValues(xvec_tmp,true);
   if (!_xvecValid) return 0 ;
   double g_xmxp = _model->getVal(_nset) ;
-
-  //cout << "RooConvIntegrandBinding::operator(): evaluating g(x-x') at x-x' = " << _vars[0]->getVal() << " = " << g_xmxp << endl ;
-  //cout << "RooConvIntegrandBinding::operator(): return value = " << f_xp << " * " << g_xmxp << " = " << f_xp*g_xmxp << endl ;
-
-  //cout << "_vars[0] = " << _vars[0]->getVal() << " _vars[1] = " << _vars[1]->getVal() << endl ;
-  //cout << "_xvec[0] = " <<  xvector[0]        << " _xvec[1] = " <<  xvector[1] << endl ;
 
   return f_xp*g_xmxp ;
 }
@@ -166,3 +160,5 @@ double RooConvIntegrandBinding::getMaxLimit(UInt_t index) const
   assert(isValid());
   return _vars[index]->getMax();
 }
+
+/// \endcond

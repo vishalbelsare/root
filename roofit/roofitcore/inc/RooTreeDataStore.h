@@ -17,9 +17,8 @@
 #define ROO_TREE_DATA_STORE
 
 #include "RooAbsDataStore.h"
-#include "RunContext.h"
 
-#include "ROOT/RStringView.hxx"
+#include <string_view>
 
 #include <vector>
 #include <list>
@@ -38,7 +37,7 @@ public:
   RooTreeDataStore() ;
   RooTreeDataStore(TTree* t, const RooArgSet& vars, const char* wgtVarName=nullptr) ;
 
-  // Empty ctor
+  // Empty constructor
   RooTreeDataStore(RooStringView name, RooStringView title, const RooArgSet& vars, const char* wgtVarName=nullptr) ;
   RooAbsDataStore* clone(const char* newname=nullptr) const override { return new RooTreeDataStore(*this,newname) ; }
   RooAbsDataStore* clone(const RooArgSet& vars, const char* newname=nullptr) const override { return new RooTreeDataStore(*this,vars,newname) ; }
@@ -81,7 +80,7 @@ public:
     (void)first; (void)len;
     return {};
   }
-  RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const override;
+  std::span<const double> getWeightBatch(std::size_t first, std::size_t len) const override;
 
   // Change observable name
   bool changeObservableName(const char* from, const char* to) override ;
@@ -106,22 +105,8 @@ public:
   void restoreAlternateBuffers() ;
 
   // Tree access
-  TTree& tree() { return *_tree ; }
-  const TTree* tree() const override { return _tree ; }
-
-  // Forwarded from TTree
-  Stat_t GetEntries() const;
-  void Reset(Option_t* option=nullptr);
-  Int_t Fill();
-  Int_t GetEntry(Int_t entry = 0, Int_t getall = 0);
-
-  void   Draw(Option_t* option = "") override ;
-
-  // Constant term  optimizer interface
-  void cacheArgs(const RooAbsArg* owner, RooArgSet& varSet, const RooArgSet* nset=nullptr, bool skipZeroWeights=false) override ;
-  const RooAbsArg* cacheOwner() override { return _cacheOwner ; }
-  void setArgStatus(const RooArgSet& set, bool active) override ;
-  void resetCache() override ;
+  TTree* tree() { return _tree ; }
+  TTree const *tree() const { return _tree ; }
 
   void loadValues(const TTree *t, const RooFormulaVar* select=nullptr, const char* rangeName=nullptr, Int_t nStart=0, Int_t nStop=2000000000)  ;
   void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=nullptr, const char* rangeName=nullptr,
@@ -147,7 +132,6 @@ public:
   RooRealVar* weightVar(const RooArgSet& allVars, const char* wgtName=nullptr) ;
 
   void initialize();
-  void attachCache(const RooAbsArg* newOwner, const RooArgSet& cachedVars) override ;
 
   // TTree Branch buffer size control
   void setBranchBufferSize(Int_t size) { _defTreeBufSize = size ; }
@@ -159,9 +143,7 @@ public:
 
   void createTree(RooStringView name, RooStringView title) ;
   TTree *_tree = nullptr;                 // TTree holding the data points
-  TTree *_cacheTree = nullptr;            //! TTree holding the cached function values
-  const RooAbsArg* _cacheOwner = nullptr; //! Object owning cache contents
-  mutable bool _defCtor = false;        //! Was object constructed with default ctor?
+  mutable bool _defCtor = false;        ///<! Was object constructed with default ctor?
 
   RooArgSet _varsww ;
   RooRealVar* _wgtVar = nullptr;     // Pointer to weight variable (if set)
@@ -170,7 +152,7 @@ public:
   const double* _extWgtErrLoArray{nullptr};    ///<! External weight array - low error
   const double* _extWgtErrHiArray{nullptr};    ///<! External weight array - high error
   const double* _extSumW2Array{nullptr};       ///<! External sum of weights array
-  mutable std::unique_ptr<std::vector<double>> _weightBuffer; //! Buffer for weights in case a batch of values is requested.
+  mutable std::unique_ptr<std::vector<double>> _weightBuffer; ///<! Buffer for weights in case a batch of values is requested.
 
   mutable double  _curWgt = 1.0;      ///< Weight of current event
   mutable double  _curWgtErrLo = 0.0; ///< Weight of current event

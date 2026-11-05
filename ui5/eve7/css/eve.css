@@ -67,6 +67,15 @@
    color: lightgray;
 }
 
+.geomColorBox {                /* style the CSS class that has been written by the renderer method */
+   display: inline-block;      /* enable squares to appear next to each other within one line */
+   position: absolute;
+   top: 1px;
+   bottom: 1px;
+   left: 1px;
+   right: 1px;
+}
+
 .eve_tooltip {
   position:      absolute;
   min-width:     50px;
@@ -82,7 +91,20 @@
   white-space:   pre;
 }
 
+#posDatGUI
+{
+   position: relative;
+   float: right;
+}
 
 .eveNoSelectionCheckBox .sapMLIBSelectM {
    display: none;
+}
+
+/* GL view: toolbar on top, canvas div takes the remaining height, see
+   GlViewerRCore.createRCoreRenderer(). Skipped on a hidden router page,
+   which sap.m.NavContainer hides with display:none. */
+.sapUiView.eveGlView:not(.sapMNavItemHidden) {
+	display: flex;
+	flex-direction: column;
 }

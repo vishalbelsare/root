@@ -92,20 +92,20 @@ REveDigitSet::REveDigitSet(const char* n, const char* t) :
    fAntiFlick      (kTRUE),
    fDetIdsAsSecondaryIndices         (kFALSE),
    fPlex           (),
-   fLastDigit      (0),
+   fLastDigit      (nullptr),
    fLastIdx        (-1),
 
    fColor          (kWhite),
-   fFrame          (0),
-   fPalette        (0),
+   fFrame          (nullptr),
+   fPalette        (nullptr),
    fRenderMode     (kRM_AsIs),
    fSelectViaFrame (kFALSE),
    fHighlightFrame (kFALSE),
    fDisableLighting(kTRUE),
    fHistoButtons   (kTRUE),
    fEmitSignals    (kFALSE),
-   fCallbackFoo    (0),
-   fTooltipCBFoo   (0)
+   fCallbackFoo    (nullptr),
+   fTooltipCBFoo   (nullptr)
 {
    // Constructor.
 
@@ -121,8 +121,8 @@ REveDigitSet::REveDigitSet(const char* n, const char* t) :
 
 REveDigitSet::~REveDigitSet()
 {
-   SetFrame(0);
-   SetPalette(0);
+   SetFrame(nullptr);
+   SetPalette(nullptr);
    if (fDetIdsAsSecondaryIndices)
       ReleaseIds();
 }
@@ -171,11 +171,12 @@ void REveDigitSet::SetMainColor(Color_t color)
    if (fSingleColor)
    {
       REveElement::SetMainColor(color);
+      StampObjProps();
    }
    else if (fFrame)
    {
       fFrame->SetFrameColor(color);
-      fFrame->StampBackPtrElements(kCBColorSelection);
+      fFrame->StampBackPtrElements(kCBCoreJson);
    }
 }
 
@@ -345,7 +346,7 @@ void REveDigitSet::DigitId(Int_t n, TObject* id)
 
 TObject* REveDigitSet::GetId(Int_t n) const
 {
-   return fDigitIds ? fDigitIds->At(n) : 0;
+   return fDigitIds ? fDigitIds->At(n) : nullptr;
 }
 
 /*
@@ -417,9 +418,17 @@ void REveDigitSet::SetFrame(REveFrameBox* b)
 void REveDigitSet::SetPalette(REveRGBAPalette* p)
 {
    if (fPalette == p) return;
-   if (fPalette) fPalette->DecRefCount();
+   if (fPalette)
+   {
+       fPalette->DecRefCount();
+       fPalette->RemoveNiece(this);
+   }
    fPalette = p;
-   if (fPalette) fPalette->IncRefCount();
+   if (fPalette)
+   {
+       fPalette->IncRefCount();
+       fPalette->AddNiece(this);
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -429,7 +438,7 @@ void REveDigitSet::SetPalette(REveRGBAPalette* p)
 
 REveRGBAPalette* REveDigitSet::AssertPalette()
 {
-   if (fPalette == 0) {
+   if (fPalette == nullptr) {
       fPalette = new REveRGBAPalette;
       if (!fValueIsColor) {
          Int_t min, max;
@@ -451,7 +460,19 @@ bool REveDigitSet::IsDigitVisible(const DigitBase_t *d) const
       return d->fValue ? true : false;
    } else {
       if (fPalette)
-         return d->fValue > fPalette->GetMinVal() && d->fValue < fPalette->GetMaxVal();
+      {
+         if (d->fValue <= fPalette->GetMinVal())
+         {
+            return (fPalette->GetUnderflowAction() != REveRGBAPalette::kLA_Cut);
+         }
+         else if (d->fValue >= fPalette->GetMaxVal())
+         {
+            return (fPalette->GetOverflowAction() != REveRGBAPalette::kLA_Cut);
+         }
+         else {
+            return (d->fValue > fPalette->GetMinVal() && d->fValue < fPalette->GetMaxVal());
+         }
+      }
       else {
          printf("Error REveDigitSet::IsDigitVisible() unhadled case\n");
          return true;
@@ -504,7 +525,7 @@ int REveDigitSet::GetShapeIdxFromAtomIdx(int iAtomIdx) const
       }
    }
 
-   printf("REveDigitSet::GetShapeIdxFromAtomIdx:: Atom with idx %d dose not have a visible shape \n", iAtomIdx);
+   printf("REveDigitSet::GetShapeIdxFromAtomIdx:: Atom with idx %d does not have a visible shape \n", iAtomIdx);
    return -1;
 }
 

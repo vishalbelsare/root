@@ -30,9 +30,9 @@ Implements GUI for editing text attributes.
 #include "TGNumberEntry.h"
 #include "TCanvas.h"
 #include "TROOT.h"
-#include "snprintf.h"
 
-ClassImp(TAttTextEditor);
+#include <cstdio>
+
 
 enum ETextWid {
    kCOLOR,

@@ -51,6 +51,8 @@ protected:
    UInt_t           fHeight;       // item height
    ///@}
 
+   virtual TString SaveTreeItem(std::ostream &, const char *, const char *) { return ""; }
+
 public:
    TGListTreeItem(TGClient *client = gClient);
    virtual ~TGListTreeItem() {}
@@ -117,8 +119,6 @@ public:
    virtual void    HandleDrag() {}
    virtual void    HandleDrop() {}
 
-   virtual void    SavePrimitive(std::ostream&, Option_t*, Int_t) {}
-
    ClassDef(TGListTreeItem,0)  // Abstract base-class for items that go into a TGListTree container.
 };
 
@@ -144,11 +144,15 @@ private:
    TGListTreeItemStd(const TGListTreeItemStd&) = delete;
    TGListTreeItemStd& operator=(const TGListTreeItemStd&) = delete;
 
+protected:
+
+   TString         SaveTreeItem(std::ostream &out, const char *treevarname, const char *parent_var_name) override;
+
 public:
    TGListTreeItemStd(TGClient *fClient = gClient, const char *name = nullptr,
                      const TGPicture *opened = nullptr, const TGPicture *closed = nullptr,
                      Bool_t checkbox = kFALSE);
-   virtual ~TGListTreeItemStd();
+   ~TGListTreeItemStd() override;
 
    Pixel_t         GetActiveColor() const override;
    Bool_t          IsActive() const override { return fActive; }
@@ -186,8 +190,6 @@ public:
    void            SetColor(Color_t color) override { fHasColor = true;fColor = color; }
    void            ClearColor() override { fHasColor = false; }
 
-   void            SavePrimitive(std::ostream &out, Option_t *option, Int_t n) override;
-
    ClassDefOverride(TGListTreeItemStd,0)  //Item that goes into a TGListTree container
 };
 
@@ -197,7 +199,15 @@ class TGListTree : public TGContainer {
 public:
    //---- color markup mode of tree items
    enum EColorMarkupMode {
+// clang++ <v20 (-Wshadow) complains about shadowing TSystem.h global enum ESendRecvOptions. Let's silence warning:
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+#endif
       kDefault        = 0,
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic pop
+#endif
       kColorUnderline = BIT(0),
       kColorBox       = BIT(1)
    };
@@ -272,7 +282,7 @@ protected:
    void  DrawNode(Handle_t id, TGListTreeItem *item, Int_t x, Int_t y);
    virtual void UpdateChecked(TGListTreeItem *item, Bool_t redraw = kFALSE);
 
-   void  SaveChildren(std::ostream &out, TGListTreeItem *item, Int_t &n);
+   void  SaveChildren(std::ostream &out, const char *parent_var_name, TGListTreeItem *item);
    void  RemoveReference(TGListTreeItem *item);
    void  PDeleteItem(TGListTreeItem *item);
    void  PDeleteChildren(TGListTreeItem *item);
@@ -308,7 +318,7 @@ public:
               UInt_t options = 0, Pixel_t back = GetWhitePixel());
    TGListTree(TGCanvas *p, UInt_t options, Pixel_t back = GetWhitePixel());
 
-   virtual ~TGListTree();
+   ~TGListTree() override;
 
    Bool_t HandleButton(Event_t *event) override;
    Bool_t HandleDoubleClick(Event_t *event) override;

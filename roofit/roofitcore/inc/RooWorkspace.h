@@ -45,34 +45,36 @@ public:
 
   RooWorkspace() ;
   RooWorkspace(const char* name, bool doCINTExport)
-  R__SUGGEST_ALTERNATIVE("The \"doCINTExprot\" argument has no effect anymore since ROOT 6."
+  R__SUGGEST_ALTERNATIVE("The \"doCINTExport\" argument has no effect anymore since ROOT 6."
           "Consider using RooWorkspace(const char* name, const char* title=nullptr).");
   RooWorkspace(const char* name, const char* title=nullptr) ;
   RooWorkspace(const RooWorkspace& other) ;
   ~RooWorkspace() override ;
+
+  TObject *Clone(const char *newname="") const override;
 
   bool importClassCode(const char* pat="*", bool doReplace=false) ;
   bool importClassCode(TClass* theClass, bool doReplace=false) ;
 
   // Import functions for dataset, functions, generic objects
   bool import(const RooAbsArg& arg,
-      const RooCmdArg& arg1=RooCmdArg(),const RooCmdArg& arg2=RooCmdArg(),const RooCmdArg& arg3=RooCmdArg(),
-      const RooCmdArg& arg4=RooCmdArg(),const RooCmdArg& arg5=RooCmdArg(),const RooCmdArg& arg6=RooCmdArg(),
-      const RooCmdArg& arg7=RooCmdArg(),const RooCmdArg& arg8=RooCmdArg(),const RooCmdArg& arg9=RooCmdArg()) ;
+      const RooCmdArg& arg1={},const RooCmdArg& arg2={},const RooCmdArg& arg3={},
+      const RooCmdArg& arg4={},const RooCmdArg& arg5={},const RooCmdArg& arg6={},
+      const RooCmdArg& arg7={},const RooCmdArg& arg8={},const RooCmdArg& arg9={}) ;
   bool import(const RooArgSet& args,
-      const RooCmdArg& arg1=RooCmdArg(),const RooCmdArg& arg2=RooCmdArg(),const RooCmdArg& arg3=RooCmdArg(),
-      const RooCmdArg& arg4=RooCmdArg(),const RooCmdArg& arg5=RooCmdArg(),const RooCmdArg& arg6=RooCmdArg(),
-      const RooCmdArg& arg7=RooCmdArg(),const RooCmdArg& arg8=RooCmdArg(),const RooCmdArg& arg9=RooCmdArg()) ;
-  bool import(RooAbsData& data,
-      const RooCmdArg& arg1=RooCmdArg(),const RooCmdArg& arg2=RooCmdArg(),const RooCmdArg& arg3=RooCmdArg(),
-      const RooCmdArg& arg4=RooCmdArg(),const RooCmdArg& arg5=RooCmdArg(),const RooCmdArg& arg6=RooCmdArg(),
-      const RooCmdArg& arg7=RooCmdArg(),const RooCmdArg& arg8=RooCmdArg(),const RooCmdArg& arg9=RooCmdArg()) ;
+      const RooCmdArg& arg1={},const RooCmdArg& arg2={},const RooCmdArg& arg3={},
+      const RooCmdArg& arg4={},const RooCmdArg& arg5={},const RooCmdArg& arg6={},
+      const RooCmdArg& arg7={},const RooCmdArg& arg8={},const RooCmdArg& arg9={}) ;
+  bool import(RooAbsData const& data,
+      const RooCmdArg& arg1={},const RooCmdArg& arg2={},const RooCmdArg& arg3={},
+      const RooCmdArg& arg4={},const RooCmdArg& arg5={},const RooCmdArg& arg6={},
+      const RooCmdArg& arg7={},const RooCmdArg& arg8={},const RooCmdArg& arg9={}) ;
   bool import(const char *fileSpec,
-      const RooCmdArg& arg1=RooCmdArg(),const RooCmdArg& arg2=RooCmdArg(),const RooCmdArg& arg3=RooCmdArg(),
-      const RooCmdArg& arg4=RooCmdArg(),const RooCmdArg& arg5=RooCmdArg(),const RooCmdArg& arg6=RooCmdArg(),
-      const RooCmdArg& arg7=RooCmdArg(),const RooCmdArg& arg8=RooCmdArg(),const RooCmdArg& arg9=RooCmdArg()) ;
-  bool import(TObject& object, bool replaceExisting=false) ;
-  bool import(TObject& object, const char* aliasName, bool replaceExisting=false) ;
+      const RooCmdArg& arg1={},const RooCmdArg& arg2={},const RooCmdArg& arg3={},
+      const RooCmdArg& arg4={},const RooCmdArg& arg5={},const RooCmdArg& arg6={},
+      const RooCmdArg& arg7={},const RooCmdArg& arg8={},const RooCmdArg& arg9={}) ;
+  bool import(TObject const& object, bool replaceExisting=false) ;
+  bool import(TObject const& object, const char* aliasName, bool replaceExisting=false) ;
 
   // Transaction management interface for multi-step import operations
   bool startTransaction() ;
@@ -85,18 +87,17 @@ public:
   bool extendSet(const char* name, const char* newContents) ;
   bool renameSet(const char* name, const char* newName) ;
   bool removeSet(const char* name) ;
-  const RooArgSet* set(const char* name) ;
+  const RooArgSet* set(RooStringView name) ;
+  inline const std::map<std::string,RooArgSet>& sets() const { return _namedSets; }
 
   // Import, load and save parameter value snapshots
-  bool saveSnapshot(const char* name, const char* paramNames) ;
-  bool saveSnapshot(const char* name, const RooArgSet& params, bool importValues=false) ;
+  bool saveSnapshot(RooStringView, const char* paramNames) ;
+  bool saveSnapshot(RooStringView, const RooArgSet& params, bool importValues=false) ;
   bool loadSnapshot(const char* name) ;
   const RooArgSet* getSnapshot(const char* name) const ;
 
   // Retrieve list of parameter snapshots
-  RooLinkedList getSnapshots(){ return _snapshots; }
-
-  void merge(const RooWorkspace& /*other*/) {} ;
+  RooLinkedList const& getSnapshots() const { return _snapshots; }
 
   // Accessor functions
   RooAbsPdf* pdf(RooStringView name) const ;
@@ -109,9 +110,6 @@ public:
   RooAbsArg* arg(RooStringView name) const ;
   RooAbsArg* fundArg(RooStringView name) const ;
   RooArgSet argSet(RooStringView nameList) const ;
-  TIterator* componentIterator() const
-  R__SUGGEST_ALTERNATIVE("Better iterate over RooWorkspace::components() with range-based loop instead of using RooWorkspace::componentIterator().")
-  { return _allOwnedNodes.createIterator() ; }
   const RooArgSet& components() const { return _allOwnedNodes ; }
   TObject* genobj(RooStringView name) const ;
   TObject* obj(RooStringView name) const ;
@@ -176,8 +174,6 @@ public:
           _ehmap(other._ehmap),
           _compiledOK(other._compiledOK) {} ;
 
-    ~CodeRepo() override {} ;
-
     bool autoImportClass(TClass* tc, bool doReplace=false) ;
     bool compileClasses() ;
 
@@ -214,7 +210,7 @@ public:
     std::map<TString,ClassRelInfo> _c2fmap ; // List of contained classes
     std::map<TString,ClassFiles> _fmap ; // List of contained files
     std::map<TString,ExtraHeader> _ehmap ; // List of extra header files
-    bool _compiledOK ; //! Flag indicating that classes compiled OK
+    bool _compiledOK ; ///<! Flag indicating that classes compiled OK
 
     ClassDefOverride(CodeRepo,2) ; // Code repository for RooWorkspace
   } ;
@@ -237,7 +233,7 @@ public:
   protected:
     friend class RooWorkspace ;
     void InternalAppend(TObject* obj) ;
-    RooWorkspace* _wspace ; //! do not persist
+    RooWorkspace* _wspace ; ///<! do not persist
 
     ClassDefOverride(WSDir,1) ; // TDirectory representation of RooWorkspace
   } ;
@@ -274,9 +270,6 @@ public:
     RooExpensiveObjectCache _eocache; ///< Cache for expensive objects
 
     std::unique_ptr<RooFactoryWSTool> _factory; ///<! Factory tool associated with workspace
-
-    bool _doExport;          ///<! Export contents of workspace to CINT?
-    std::string _exportNSName; ///<! Name of CINT namespace to which contents are exported
 
     bool _openTrans = false; ///<! Is there a transaction open?
     RooArgSet _sandboxNodes; ///<! Sandbox for incoming objects in a transaction

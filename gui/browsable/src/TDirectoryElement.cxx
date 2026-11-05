@@ -29,7 +29,7 @@
 
 using namespace std::string_literals;
 
-using namespace ROOT::Experimental::Browsable;
+using namespace ROOT::Browsable;
 
 
 /** \class TDirectoryLevelIter
@@ -42,8 +42,7 @@ Iterator over keys in TDirectory
 class TDirectoryLevelIter : public RLevelIter {
    TDirectory *fDir{nullptr};         ///<! current directory handle
    std::unique_ptr<TIterator> fIter;  ///<! created iterator
-   Bool_t fKeysIter{kTRUE};           ///<! iterating over keys list (default)
-   Bool_t fOnlyLastCycle{kFALSE};     ///<! show only last cycle in list of keys
+   bool fKeysIter{true};              ///<! iterating over keys list (default)
    TKey *fKey{nullptr};               ///<! currently selected key
    TObject *fObj{nullptr};            ///<! currently selected object
    std::string fCurrentName;          ///<! current key name
@@ -86,6 +85,17 @@ class TDirectoryLevelIter : public RLevelIter {
          }
       }
       if (!fKeysIter) {
+         // exclude object with duplicated name as keys
+         while (fObj) {
+            if (!fDir->GetListOfKeys()->FindObject(fObj->GetName()))
+               break;
+            fObj = fIter->Next();
+         }
+         if (!fObj) {
+            fIter.reset();
+            return false;
+         }
+
          fCurrentName = fObj->GetName();
          return true;
       }
@@ -99,7 +109,8 @@ class TDirectoryLevelIter : public RLevelIter {
             return false;
          }
 
-         if (!fOnlyLastCycle) break;
+         if (!RElement::IsLastKeyCycle())
+            break;
 
          TIter iter(fDir->GetListOfKeys());
          TKey *key = nullptr;
@@ -126,24 +137,10 @@ class TDirectoryLevelIter : public RLevelIter {
 public:
    explicit TDirectoryLevelIter(TDirectory *dir) : fDir(dir)
    {
-      const char *undef = "<undefined>";
-      const char *value = gEnv->GetValue("WebGui.LastCycle", undef);
-      if (value) {
-         std::string svalue = value;
-         if (svalue != undef) {
-            if (svalue == "yes")
-               fOnlyLastCycle = kTRUE;
-            else if (svalue == "no")
-               fOnlyLastCycle = kFALSE;
-            else
-               R__LOG_ERROR(ROOT::Experimental::BrowsableLog()) << "WebGui.LastCycle must be yes or no";
-         }
-      }
-
       CreateIter();
    }
 
-   virtual ~TDirectoryLevelIter() = default;
+   ~TDirectoryLevelIter() override = default;
 
    bool Next() override { return NextDirEntry(); }
 
@@ -177,11 +174,15 @@ public:
          return elem ? elem->CreateItem() : nullptr;
       }
 
-      return GetElement()->CreateItem();
+      auto item = GetDirElement(false)->CreateItem();
+      item->SetName(fCurrentName);
+      return item;
    }
 
+   std::shared_ptr<RElement> GetDirElement(bool read_dir);
+
    /** Returns full information for current element */
-   std::shared_ptr<RElement> GetElement() override;
+   std::shared_ptr<RElement> GetElement() override { return GetDirElement(true); }
 };
 
 // ===============================================================================================================
@@ -200,12 +201,19 @@ protected:
 
    const TObject *CheckObject() const override
    {
+      // during TROOT destructor just forget about file reference
+      if (!gROOT || gROOT->TestBit(TObject::kInvalidObject)) {
+         ForgetObject();
+         return nullptr;
+      }
+
       if (!TObjectElement::CheckObject())
          return nullptr;
 
-      if (fIsFile && !gROOT->GetListOfFiles()->FindObject(fObj))
-         ForgetObject();
-      else if (!gROOT->GetListOfFiles()->FindObject(((TDirectory *) fObj)->GetFile()))
+      if (fIsFile) {
+         if (!gROOT->GetListOfFiles()->FindObject(fObj))
+            ForgetObject();
+      } else if (!gROOT->GetListOfFiles()->FindObject(((TDirectory *) fObj)->GetFile()))
          ForgetObject();
 
       return fObj;
@@ -240,7 +248,7 @@ public:
       }
    }
 
-   virtual ~TDirectoryElement() = default;
+   ~TDirectoryElement() override = default;
 
    /** Name of TDirectoryElement */
    std::string GetName() const override
@@ -304,6 +312,14 @@ public:
       return ""s;
    }
 
+   std::string GetContent(const std::string &kind) override
+   {
+      if (GetContentKind(kind) == kFileName)
+         return fFileName;
+
+      return ""s;
+   }
+
 };
 
 // ===============================================================================================================
@@ -336,7 +352,7 @@ public:
       fKeyObjSize = key->GetNbytes();
    }
 
-   virtual ~TKeyElement() = default;
+   ~TKeyElement() override = default;
 
    /** Name of TKeyElement, includes key cycle */
    std::string GetName() const override
@@ -401,7 +417,7 @@ public:
          return nullptr;
 
       if (!obj_class->HasDictionary()) {
-         R__LOG_ERROR(ROOT::Experimental::BrowsableLog()) << "Class " << fKeyClass << " does not have dictionary, object " << fKeyName << " cannot be read";
+         R__LOG_ERROR(ROOT::BrowsableLog()) << "Class " << fKeyClass << " does not have dictionary, object " << fKeyName << " cannot be read";
          return nullptr;
       }
       auto dir = GetDir();
@@ -418,10 +434,13 @@ public:
       TObject *tobj = (TObject *) obj_class->DynamicCast(TObject::Class(), obj);
 
       if (tobj) {
-         if (dir->FindObject(tobj))
+         bool in_dir = dir->FindObject(tobj) != nullptr,
+              special_class = (fKeyClass == "TGeoManager"s) || (fKeyClass == "TTree"s) || (fKeyClass == "TNtuple"s);
+
+         if (in_dir && !special_class)
             dir->Remove(tobj);
 
-         return std::make_unique<TObjectHolder>(tobj, fKeyClass != "TGeoManager"s);
+         return std::make_unique<TObjectHolder>(tobj, !special_class);
       }
 
       return std::make_unique<RAnyObjectHolder>(obj_class, obj, true);
@@ -516,16 +535,16 @@ public:
 /////////////////////////////////////////////////////////////////////////////////
 /// Return element for current TKey object in TDirectory
 
-std::shared_ptr<RElement> TDirectoryLevelIter::GetElement()
+std::shared_ptr<RElement> TDirectoryLevelIter::GetDirElement(bool read_dir)
 {
    if (!fKeysIter && fObj)
       return std::make_shared<TObjectElement>(fObj);
 
-   if ("ROOT::Experimental::RNTuple"s == fKey->GetClassName())
+   if ("ROOT::RNTuple"s == fKey->GetClassName())
       return RProvider::BrowseNTuple(fKey->GetName(), fDir->GetFile()->GetName());
 
    std::string key_class = fKey->GetClassName();
-   if (key_class.find("TDirectory") == 0) {
+   if (read_dir && (key_class.find("TDirectory") == 0)) {
       auto subdir = fDir->GetDirectory(fKey->GetName());
       if (subdir) return std::make_shared<TDirectoryElement>("", subdir);
    }

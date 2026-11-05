@@ -36,11 +36,11 @@ namespace {
                  Bool_t respectAxisRange);
       ~THnBinIter() override { delete [] fCounter; }
 
-      Long64_t Next(Int_t* coord = 0) override;
+      Long64_t Next(Int_t* coord = nullptr) override;
       Int_t GetCoord(Int_t dim) const override { return fCounter[dim].i; }
    private:
-      THnBinIter(const THnBinIter&); // intentionally unimplemented
-      THnBinIter& operator=(const THnBinIter&); // intentionally unimplemented
+      THnBinIter(const THnBinIter&) = delete; // intentionally unimplemented
+      THnBinIter& operator=(const THnBinIter&) = delete; // intentionally unimplemented
 
    public:
       Int_t fNdimensions;
@@ -138,7 +138,7 @@ classes:
 
     THnD (typedef for THnT<Double_t>): bin content held by a Double_t,
     THnF (typedef for THnT<Float_t>): bin content held by a Float_t,
-    THnL (typedef for THnT<Long_t>): bin content held by a Long_t,
+    THnL (typedef for THnT<Long64_t>): bin content held by a Long64_t,
     THnI (typedef for THnT<Int_t>): bin content held by an Int_t,
     THnS (typedef for THnT<Short_t>): bin content held by a Short_t,
     THnC (typedef for THnT<Char_t>): bin content held by a Char_t,
@@ -174,7 +174,6 @@ created THn will have compatble storage type, i.e. calling CreateHn() on
 a TH2F will create a THnF.
 */
 
-ClassImp(THn);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct a THn.
@@ -183,13 +182,22 @@ THn::THn(const char* name, const char* title,
          Int_t dim, const Int_t* nbins,
          const Double_t* xmin, const Double_t* xmax):
    THnBase(name, title, dim, nbins, xmin, xmax),
-   fSumw2(dim, nbins, kTRUE /*overflow*/),
-   fCoordBuf() {
+   fSumw2(dim, nbins, kTRUE /*overflow*/)
+{
+}
+
+THn::THn(const char *name, const char *title, const std::vector<TAxis> &axes) : THnBase(name, title, axes)
+{
+   const Int_t dim = axes.size();
+   std::vector<Int_t> nbins(dim);
+   for (Int_t i = 0; i < dim; i++)
+      nbins[i] = axes.at(i).GetNbins();
+   fSumw2 = TNDArrayT<Double_t>(dim, nbins.data(), kTRUE /*overflow*/);
 }
 
 THn::THn(const char *name, const char *title, Int_t dim, const Int_t *nbins,
          const std::vector<std::vector<double>> &xbins)
-   : THnBase(name, title, dim, nbins, xbins), fSumw2(dim, nbins, kTRUE /*overflow*/), fCoordBuf()
+   : THnBase(name, title, dim, nbins, xbins), fSumw2(dim, nbins, kTRUE /*overflow*/)
 {
 }
 

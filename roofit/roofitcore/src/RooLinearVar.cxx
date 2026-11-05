@@ -48,7 +48,6 @@
 #include "RooMsgService.h"
 
 
-ClassImp(RooLinearVar);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -123,7 +122,7 @@ double RooLinearVar::evaluate() const
 
 void RooLinearVar::setVal(double value)
 {
-  //cout << "RooLinearVar::setVal(" << GetName() << "): new value = " << value << endl ;
+  //cout << "RooLinearVar::setVal(" << GetName() << "): new value = " << value << std::endl ;
 
   // Prevent DIV0 problems
   if (_slope == 0.) {
@@ -152,12 +151,12 @@ bool RooLinearVar::isJacobianOK(const RooArgSet& depList) const
   for(RooAbsArg* arg : depList) {
     if (arg->IsA()->InheritsFrom(RooAbsReal::Class())) {
       if (_slope->dependsOnValue(*arg)) {
-//    cout << "RooLinearVar::isJacobianOK(" << GetName() << ") return false because slope depends on value of " << arg->GetName() << endl ;
+//    std::cout << "RooLinearVar::isJacobianOK(" << GetName() << ") return false because slope depends on value of " << arg->GetName() << std::endl ;
    return false ;
       }
     }
   }
-  //   cout << "RooLinearVar::isJacobianOK(" << GetName() << ") return true" << endl ;
+  //   std::cout << "RooLinearVar::isJacobianOK(" << GetName() << ") return true" << std::endl ;
   return true ;
 }
 
@@ -203,10 +202,10 @@ void RooLinearVar::writeToStream(std::ostream& os, bool compact) const
 /// binning exists on the input variable, it will also exist on this linear transformation,
 /// and a binning adaptor object is created on the fly.
 
- RooAbsBinning& RooLinearVar::getBinning(const char* name, bool verbose, bool createOnTheFly)
+ RooAbsBinning& RooLinearVar::getBinning(const char* name, bool verbose, bool createOnTheFly, bool)
 {
   // Normalization binning
-  if (name==0) {
+  if (name==nullptr) {
     _binning.updateInput(_var->getBinning(),_slope,_offset) ;
     return _binning ;
   }
@@ -235,7 +234,7 @@ void RooLinearVar::writeToStream(std::ostream& os, bool compact) const
 ////////////////////////////////////////////////////////////////////////////////
 /// Const version of getBinning()
 
-const RooAbsBinning& RooLinearVar::getBinning(const char* name, bool verbose, bool createOnTheFly) const
+const RooAbsBinning& RooLinearVar::getBinning(const char* name, bool verbose, bool createOnTheFly, bool) const
 {
   return const_cast<RooLinearVar*>(this)->getBinning(name,verbose,createOnTheFly) ;
 }

@@ -50,14 +50,14 @@ of TUUIDs.
 #include "TExMap.h"
 #include "TVirtualMutex.h"
 #include "TError.h"
-#include "snprintf.h"
+
+#include <cstdio>
 
 TObjArray  *TProcessID::fgPIDs   = nullptr; //pointer to the list of TProcessID
 TProcessID *TProcessID::fgPID    = nullptr; //pointer to the TProcessID of the current session
 std::atomic_uint TProcessID::fgNumber(0); //Current referenced object instance count
 TExMap     *TProcessID::fgObjPIDs = nullptr; //Table (pointer,pids)
 
-ClassImp(TProcessID);
 
 static std::atomic<TProcessID *> gIsValidCache;
 using PIDCacheContent_t = std::pair<Int_t, TProcessID*>;

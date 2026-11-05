@@ -17,7 +17,6 @@
 #include "TVirtualFitter.h"
 #include "THLimitsFinder.h"
 
-ClassImp(TGraph2DErrors);
 
 /** \class TGraph2DErrors
     \ingroup Graphs
@@ -32,34 +31,26 @@ following example shows how to use it:
 Begin_Macro(source)
 {
    auto c = new TCanvas("c","TGraph2DErrors example",0,0,600,600);
+
    Double_t P = 6.;
-   Int_t np   = 200;
-
-   Double_t *rx=0, *ry=0, *rz=0;
-   Double_t *ex=0, *ey=0, *ez=0;
-
-   rx = new Double_t[np];
-   ry = new Double_t[np];
-   rz = new Double_t[np];
-   ex = new Double_t[np];
-   ey = new Double_t[np];
-   ez = new Double_t[np];
-
-   auto r = new TRandom();
+   const Int_t np   = 200;
+   std::vector<Double_t> rx(np), ry(np), rz(np), ex(np), ey(np), ez(np);
+   TRandom r;
 
    for (Int_t N=0; N<np;N++) {
-      rx[N] = 2*P*(r->Rndm(N))-P;
-      ry[N] = 2*P*(r->Rndm(N))-P;
+      rx[N] = 2*P*(r.Rndm(N))-P;
+      ry[N] = 2*P*(r.Rndm(N))-P;
       rz[N] = rx[N]*rx[N]-ry[N]*ry[N];
-      rx[N] = 10.+rx[N];
-      ry[N] = 10.+ry[N];
-      rz[N] = 40.+rz[N];
-      ex[N] = r->Rndm(N);
-      ey[N] = r->Rndm(N);
-      ez[N] = 10*r->Rndm(N);
+      rx[N] += 10.;
+      ry[N] += 10.;
+      rz[N] += 40.;
+      ex[N] = r.Rndm(N);
+      ey[N] = r.Rndm(N);
+      ez[N] = 10*r.Rndm(N);
    }
 
-   TGraph2DErrors *g = new TGraph2DErrors(np, rx, ry, rz, ex, ey, ez);
+   auto g = new TGraph2DErrors(np, rx.data(), ry.data(), rz.data(), ex.data(), ey.data(), ez.data());
+
    g->SetTitle("TGraph2D with error bars: option \"ERR\"");
    g->SetFillColor(29);
    g->SetMarkerSize(0.8);
@@ -77,9 +68,7 @@ End_Macro
 ////////////////////////////////////////////////////////////////////////////////
 /// TGraph2DErrors default constructor
 
-TGraph2DErrors::TGraph2DErrors(): TGraph2D()
-{
-}
+TGraph2DErrors::TGraph2DErrors() {}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -89,14 +78,20 @@ TGraph2DErrors::TGraph2DErrors(): TGraph2D()
 TGraph2DErrors::TGraph2DErrors(Int_t n)
                : TGraph2D(n)
 {
-   if (n <= 0) {
+   if (n < 0) {
       Error("TGraph2DErrors", "Invalid number of points (%d)", n);
       return;
    }
 
-   fEX = new Double_t[n];
-   fEY = new Double_t[n];
-   fEZ = new Double_t[n];
+   if (n>0) {
+      fEX = new Double_t[n];
+      fEY = new Double_t[n];
+      fEZ = new Double_t[n];
+   } else {
+      fEX = nullptr;
+      fEY = nullptr;
+      fEZ = nullptr;
+   }
 
    for (Int_t i=0;i<n;i++) {
       fEX[i] = 0;
@@ -113,14 +108,20 @@ TGraph2DErrors::TGraph2DErrors(Int_t n, Double_t *x, Double_t *y, Double_t *z,
                                Double_t *ex, Double_t *ey, Double_t *ez, Option_t *)
                :TGraph2D(n, x, y, z)
 {
-   if (n <= 0) {
+   if (n < 0) {
       Error("TGraph2DErrors", "Invalid number of points (%d)", n);
       return;
    }
 
-   fEX = new Double_t[n];
-   fEY = new Double_t[n];
-   fEZ = new Double_t[n];
+   if (n>0) {
+      fEX = new Double_t[n];
+      fEY = new Double_t[n];
+      fEZ = new Double_t[n];
+   } else {
+      fEX = nullptr;
+      fEY = nullptr;
+      fEZ = nullptr;
+   }
 
    for (Int_t i=0;i<n;i++) {
       if (ex) fEX[i] = ex[i];
@@ -148,7 +149,7 @@ TGraph2DErrors::~TGraph2DErrors()
 /// Copy everything except list of functions
 
 TGraph2DErrors::TGraph2DErrors(const TGraph2DErrors &g)
-: TGraph2D(g), fEX(0), fEY(0), fEZ(0)
+: TGraph2D(g), fEX(nullptr), fEY(nullptr), fEZ(nullptr)
 {
    if (fSize > 0) {
       fEX = new Double_t[fSize];
@@ -191,6 +192,16 @@ TGraph2DErrors &TGraph2DErrors::operator=(const TGraph2DErrors &g)
    }
    return *this;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Add a point with errorbars to the graph.
+
+void TGraph2DErrors::AddPointError(Double_t x, Double_t y, Double_t z, Double_t ex, Double_t ey, Double_t ez)
+{
+   AddPoint(x, y, z); // this will increase fNpoints by one
+   SetPointError(fNpoints - 1, ex, ey, ez);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /// This function is called by Graph2DFitChisquare.
 /// It returns the error along X at point i.
@@ -447,6 +458,46 @@ void TGraph2DErrors::SetPointError(Int_t i, Double_t ex, Double_t ey, Double_t e
    fEZ[i] = ez;
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// Saves primitive as a C++ statement(s) on output stream out
+
+void TGraph2DErrors::SavePrimitive(std::ostream &out, Option_t *option)
+{
+   TString arrx = SavePrimitiveVector(out, "gr2derr_x", fNpoints, fX, kTRUE);
+   TString arry = SavePrimitiveVector(out, "gr2derr_y", fNpoints, fY);
+   TString arrz = SavePrimitiveVector(out, "gr2derr_z", fNpoints, fZ);
+   TString arrex = SavePrimitiveVector(out, "gr2derr_ex", fNpoints, fEX, 111);
+   TString arrey = SavePrimitiveVector(out, "gr2derr_ey", fNpoints, fEY, 111);
+   TString arrez = SavePrimitiveVector(out, "gr2derr_ez", fNpoints, fEZ, 111);
+
+   SavePrimitiveConstructor(out, Class(), "gr2derr",
+                            TString::Format("%d, %s.data(), %s.data(), %s.data(), %s, %s, %s",
+                                            fNpoints, arrx.Data(), arry.Data(), arrz.Data(), arrex.Data(), arrey.Data(),
+                                            arrez.Data()),
+                            kFALSE);
+
+   if (strcmp(GetName(), "Graph2D"))
+      out << "   gr2derr->SetName(\"" << TString(GetName()).ReplaceSpecialCppChars() << "\");\n";
+
+   TString title = GetTitle();
+   if (fHistogram)
+      title = TString(fHistogram->GetTitle()) + ";" + fHistogram->GetXaxis()->GetTitle() + ";" +
+              fHistogram->GetYaxis()->GetTitle() + ";" + fHistogram->GetZaxis()->GetTitle();
+
+   out << "   gr2derr->SetTitle(\"" << title.ReplaceSpecialCppChars() << "\");\n";
+
+   if (!fDirectory)
+      out << "   gr2derr->SetDirectory(nullptr);\n";
+
+   SaveFillAttributes(out, "gr2derr", 0, 1001);
+   SaveLineAttributes(out, "gr2derr", 1, 1, 1);
+   SaveMarkerAttributes(out, "gr2derr", 1, 1, 1);
+
+   TH1::SavePrimitiveFunctions(out, "gr2derr", fFunctions);
+
+   SavePrimitiveDraw(out, "gr2derr", option);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Stream an object of class TGraph2DErrors.

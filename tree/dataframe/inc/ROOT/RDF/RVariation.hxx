@@ -11,13 +11,12 @@
 #ifndef ROOT_RDF_RVARIATION
 #define ROOT_RDF_RVARIATION
 
-#include "Utils.hxx" // IsRVec
 #include "ColumnReaderUtils.hxx"
 #include "RColumnReaderBase.hxx"
 #include "RLoopManager.hxx"
 #include "RVariationBase.hxx"
 
-#include <ROOT/RStringView.hxx>
+#include <string_view>
 #include <ROOT/TypeTraits.hxx>
 #include <Rtypes.h> // R__CLING_PTRCHECK, Long64_t
 
@@ -160,11 +159,23 @@ class R__CLING_PTRCHECK(off) RVariation final : public RVariationBase {
    /// Column readers per slot and per input column
    std::vector<std::array<RColumnReaderBase *, ColumnTypes_t::list_size>> fValues;
 
+   template <typename ColType>
+   auto GetValueChecked(unsigned int slot, std::size_t readerIdx, Long64_t entry) -> ColType &
+   {
+      if (auto *val = fValues[slot][readerIdx]->template TryGet<ColType>(entry))
+         return *val;
+
+      throw std::out_of_range{"RDataFrame: Could not retrieve value for variation '" + fColNames[readerIdx] +
+                              "' for entry " + std::to_string(entry) +
+                              ". You can use the DefaultValueFor operation to provide a default value, or "
+                              "FilterAvailable/FilterMissing to discard/keep entries with missing values instead."};
+   }
+
    template <typename... ColTypes, std::size_t... S>
    void UpdateHelper(unsigned int slot, Long64_t entry, TypeList<ColTypes...>, std::index_sequence<S...>)
    {
       // fExpression must return an RVec<T>
-      auto &&results = fExpression(fValues[slot][S]->template Get<ColTypes>(entry)...);
+      auto &&results = fExpression(GetValueChecked<ColTypes>(slot, S, entry)...);
       (void)entry; // avoid unused parameter warnings (gcc 12.1)
 
       if (!ResultsSizeEq(results, fVariationNames.size(), fColNames.size(),
@@ -183,13 +194,14 @@ public:
               const std::vector<std::string> &variationTags, std::string_view type, const RColumnRegister &defines,
               RLoopManager &lm, const ColumnNames_t &inputColNames)
       : RVariationBase(colNames, variationName, variationTags, type, defines, lm, inputColNames),
-        fExpression(std::move(expression)), fLastResults(lm.GetNSlots() * RDFInternal::CacheLineStep<Result_t>()),
+        fExpression(std::move(expression)),
+        fLastResults(lm.GetNSlots() * CacheLineStep<Result_t>()),
         fValues(lm.GetNSlots())
    {
       fLoopManager->Register(this);
 
       for (auto i = 0u; i < lm.GetNSlots(); ++i)
-         ResizeResults(fLastResults[i * RDFInternal::CacheLineStep<Result_t>()], colNames.size(), variationTags.size());
+         ResizeResults(fLastResults[i * CacheLineStep<Result_t>()], colNames.size(), variationTags.size());
    }
 
    RVariation(const RVariation &) = delete;

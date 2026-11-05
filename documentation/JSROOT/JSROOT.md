@@ -17,7 +17,12 @@ When required, there are following alternatives to install JSROOT on other web s
    - use [npm](https://npmjs.com/package/jsroot) package manager and invoke `npm install jsroot`
    - clone master branch from [repository](https://github.com/root-project/jsroot/)
 
-To use ROOT files with ZSTD compression, one have to copy https://root.cern/js/zstd/zstd-codec.min.js file to "zstd" subfolder in the same directory where jsroot itself is installed. If jsroot url is "https://server/sub/jsroot/", one should copy codec file into "https://server/sub/zstd/" subfolder. It is not required when JSROOT used with node.js
+When Apache server will be used one need to add following entry to `.htaccess` file:
+```
+<FilesMatch "\.mjs">
+  ForceType text/javascript
+</FilesMatch>
+```
 
 
 ## Drawing objects in JSROOT
@@ -28,7 +33,6 @@ To automate files loading and objects drawing, one can provide number of URL par
 
 - file - name of the file, which will be automatically open with page loading
 - files - array of file names for loading
-- localfile - automatically activate dialog for selecting local ROOT files
 - json - name of JSON file with stored ROOT object like histogram or canvas
 - item - item name to be displayed
 - opt - drawing option for the item
@@ -37,40 +41,50 @@ To automate files loading and objects drawing, one can provide number of URL par
 - expand - item name(s) to be expanded in the hierarchy browser
 - focus - item name to be focused on in the hierarchy browser
 - title - set browser title
-- layout - can be 'simple', 'flex', 'collapsible', 'tabs', 'gridNxM', 'horizNMK', 'vertNMK'
+- dir - list files in directory on http server, see https://github.com/root-project/jsroot/issues/283
+- layout - can be 'simple', 'flex', 'tabs', 'gridNxM', 'horizNMK', 'vertNMK'
 - browser - layout of the browser 'fix' (default), 'float', 'no' (hidden), 'off' (fully disabled)
 - nobrowser - do not display file browser (same as browser=no)
 - float - display floating browser (same as browser=float)
 - status - configure status line 'no' (default), 'off' (completely disable), 'size'
-- load - name of extra JavaScript to load
+- inject - name of extra JavaScript to load, see several examples in demo/ subdir
 - optimize - drawing optimization 0:off, 1:only large histograms (default), 2:always
-- paltte - id of default color palette, 51..121 - new ROOT6 palette  (default 57)
+- palette - id of default color palette, 51..121 - new ROOT6 palette  (default 57)
 - interactive - enable/disable interactive functions 0 - disable all, 1 - enable all
 - noselect - hide file-selection part in the browser (only when file name is specified)
+- info - information text displayed on the top of hierarchy browser
 - mathjax - use MathJax for latex output
 - latex - 'off', 'symbols', 'normal', 'mathjax', 'alwaysmath' control of TLatex processor
 - style - name of TStyle object to define global JSROOT style
 - toolbar - show canvas tool buttons 'off', 'on' and 'popup', 'left' or 'right' for position, 'vert' for vertical
-- divsize - fixed size in pixels for main div element like &dvisize=700x400
+- divsize - fixed size in pixels for main div element like &dvisize=1500x800
+- canvsize - default canvas size in pixels like &canvsize=1200x800
 - optstat -  settings for stat box, default 1111 (see TStyle::SetOptStat)
 - optfit - fit parameters settings for stat box, default 0 (see TStyle::SetOptFit)
 - statfmt - formatting for float values in stat box, default 6.4g (see TStyle::SetStatFormat)
 - fitfmt - formatting for fit values in stat box, default 5.4g (see TStyle::SetFitFormat)
-- nomenu - disable content menu
+- optdate - plot specified date on the canvas, 1 - current time, 2 - file creation date, 3 - file modification date
+- utc - select timeZone to 'UTC'
+- datex     - X position of date
+- datey     - Y position of date
+- optfile - plot file name on the canvas, 1 - file name, 2 - full file URL, 3 - object item name
+- opttitle - disable/enable drawing of object title in the canvas
+- nomenu - disable context menu
 - notouch - disable touch events handling
-- noprogress - do not show progress messages like scripts loading
+- progress - switch progress display mode between 'off', 'on' and 'modal'
 
 
 For instance:
 
-- <https://root.cern/js/latest/?file=../files/hsimple.root&item=hpx;1>
-- <https://root.cern/js/latest/?file=../files/hsimple.root&nobrowser&item=hpxpy;1&opt=colz>
-- <https://root.cern/js/latest/?file=../files/hsimple.root&noselect&layout=grid2x2&item=hprof;1>
+- <https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=hpx;1>
+- <https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&nobrowser&item=hpxpy;1&opt=colz>
+- <https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&noselect&layout=grid2x2&item=hprof;1>
 
 Following layouts are supported:
 
   - simple - available space used for single object (default)
   - [flex](https://root.cern/js/latest/api.htm#url_syntax_flexible_layout) - creates as many frames as necessary, each can be individually moved/enlarged
+  - [tabs](https://root.cern/js/latest/api.htm#url_syntax_tabs_layout) - tabs for each object drawing
   - [gridNxM](https://root.cern/js/latest/api.htm#url_syntax_grid_layout) - fixed-size grid with NxM frames
   - vertN - N frames sorted in vertical direction (like gridi1xN)
   - horizN - N frames sorted in horizontal direction (like gridiNx1)
@@ -111,7 +125,11 @@ List of supported classes and draw options:
 [e4](https://root.cern/js/latest/examples.htm#th1_e4),
 [lego](https://root.cern/js/latest/examples.htm#th1_lego),
 [text](https://root.cern/js/latest/examples.htm#th1_text),
-[X+Y+](https://root.cern/js/latest/examples.htm#th1_x+y+)
+[X+Y+](https://root.cern/js/latest/examples.htm#th1_x+y+),
+[tickxy](https://root.cern/js/latest/examples.htm#th1_tickxy),
+[xticks](https://root.cern/js/latest/examples.htm#th1_xticks),
+[logy](https://root.cern/js/latest/examples.htm#th1_logy),
+[mly](https://root.cern/js/latest/examples.htm#th1_mly)
 - TH2 : [scat](https://root.cern/js/latest/examples.htm#th2),
 [col](https://root.cern/js/latest/examples.htm#th2_col),
 [colz](https://root.cern/js/latest/examples.htm#th2_colz),
@@ -137,7 +155,10 @@ List of supported classes and draw options:
 [lego1](https://root.cern/js/latest/examples.htm#th2_lego1),
 [lego2](https://root.cern/js/latest/examples.htm#th2_lego2),
 [lego3](https://root.cern/js/latest/examples.htm#th2_lego3),
-[lego4](https://root.cern/js/latest/examples.htm#th2_lego4)
+[lego4](https://root.cern/js/latest/examples.htm#th2_lego4),
+[circ](https://root.cern/js/latest/examples.htm#th2_circ),
+[chord](https://root.cern/js/latest/examples.htm#th2_chord),
+[xyticks](https://root.cern/js/latest/examples.htm#th2_xyticks)
 - TH2Poly : [col](https://root.cern/js/latest/examples.htm#th2poly_honeycomb),
 [lego](https://root.cern/js/latest/examples.htm#th2poly_lego),
 [europe](https://root.cern/js/latest/examples.htm#th2poly_europe),
@@ -199,6 +220,34 @@ List of supported classes and draw options:
 
 More examples of supported classes can be found on: <https://root.cern/js/latest/examples.htm>
 
+One can change some histograms colors using draw options:
+
+- `line_N` [line color](https://root.cern/js/latest/examples.htm#th1_line_n)
+- `fill_N` [fill color](https://root.cern/js/latest/examples.htm#th1_fill_n)
+- `htitle:value` [histogram title](https://root.cern/js/latest/examples.htm#th1_htitle)
+- `xaxis_N` [X axis color](https://root.cern/js/latest/examples.htm#th1_xaxis_n)
+- `yaxis_N` [Y axis color](https://root.cern/js/latest/examples.htm#th1_yaxis_n)
+
+One also can modify histogram axes attributes by following option:
+- `ctx` center title of X axis
+- `cty` center title of Y axis
+- `ctz` center title of Z axis
+- `otx` place X axis title in opposite to normal corner
+- `oty` place Y axis title in opposite to normal corner
+- `otz` place Z axis title in opposite to normal corner
+- `noex` no exponent for X axis labels
+- `noey` no exponent for Y axis labels
+- `noez` no exponent for Z axis labels
+- `mlx` more log labels on X axis
+- `mly` more log labels on Y axis
+- `mlz` more log labels on Y axis
+- `xtitle:value` set title for X axis
+- `ytitle:value` set title for Y axis
+- `ztitle:value` set title for Z axis
+
+Here N can be existing ROOT color index or hex6/hex8 values like [line_ff00ff](https://root.cern/js/latest/?nobrowser&file=https://root.cern/js//files/hsimple.root&item=hpx;1&opt=line_ff00ff) or [fill_7733ff34](https://root.cern/js/latest/?nobrowser&file=https://root.cern/js//files/hsimple.root&item=hpx;1&opt=fill_7733ff34).
+
+
 There are special JSROOT draw options which only can be used with for `TCanvas` or `TPad` objects:
 
 - logx - enable log10 scale for X axis
@@ -232,39 +281,39 @@ There are special JSROOT draw options which only can be used with for `TCanvas` 
 
 In the URL string one could use "+" sign to specify objects superposition:
 
-   - [item=hpx+hprof](https://root.cern/js/latest/?file=../files/hsimple.root&item=hpx+hprof)
+   - [item=hpx+hprof](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=hpx+hprof)
 
 With similar syntax one could specify individual draw options for superimposed objects
 
-   - [item=hpx+hprof&opt=logy+hist](https://root.cern/js/latest/?file=../files/hsimple.root&item=hpx+hprof&opt=logy+hist)
+   - [item=hpx+hprof&opt=logy+hist](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=hpx+hprof&opt=logy+hist)
 
 Here "logy" option will be used for "hpx1" item and "hist" option for "hprof;1" item.
 
 While draw option can include "+" sign itself, for superposition one could specify arrays of items and draw options like:
 
-   - [item=[hpx;1,hprof;1]&opt=[logy,hist]](https://root.cern/js/latest/?file=../files/hsimple.root&item=[hpx;1,hprof;1]&opt=[logy,hist])
+   - [item=[hpx;1,hprof;1]&opt=[logy,hist]](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=[hpx;1,hprof;1]&opt=[logy,hist])
 
 
 ## TTree draw
 
 JSROOT provides possibility to display TTree data, using [TTree::Draw](https://root.cern/doc/master/classTTree.html) syntax:
 
-   - [opt=px](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple;1&opt=px)
-   - [opt=px:py](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple;1&opt=px:py)
-   - [opt=px:py:pz](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple;1&opt=px:py:pz)
+   - [opt=px](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple;1&opt=px)
+   - [opt=px:py](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple;1&opt=px:py)
+   - [opt=px:py:pz](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple;1&opt=px:py:pz)
 
 It is also possible to use branch by id number specifying name like "br_0", "br_1" and so on:
 
-   - [opt=br_0:br_1](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=br_0:br_1)
+   - [opt=br_0:br_1](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=br_0:br_1)
 
 Histogram ranges and binning defined after reading first 1000 entries from the tree.
 Like in ROOT, one could configure histogram binning and range directly:
 
-   - [opt=px:py>>h(50,-5,5,50,-5,5)](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=px:py>>h%2850,-5,5,50,-5,5%29)
+   - [opt=px:py>>h(50,-5,5,50,-5,5)](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=px:py>>h%2850,-5,5,50,-5,5%29)
 
 One and two dimensional draw expressions can be resulted into TGraph object, using ">>Graph" as output:
 
-   - [opt=px:py>>Graph](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=px:py>>Graph)
+   - [opt=px:py>>Graph](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=px:py>>Graph)
 
 For any integer value one can accumulate histogram with value bits distribution, specifying as output ">>bits(16)" or ">>bits":
 
@@ -276,29 +325,34 @@ There is special handling of TBits objects:
 
 It is allowed to use different expressions with branch values:
 
-   - [opt=px+py:px-py](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=px+py:px-py)
+   - [opt=px+py:px-py](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=px+py:px-py)
 
 Such expression can include arithmetical operations and all methods, provided in JavaScript [Math](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math) class:
 
-   - [opt=Math.abs(px+py)](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=Math.abs%28px+py%29)
+   - [opt=Math.abs(px+py)](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=Math.abs%28px+py%29)
 
 In the expression one could use "Entry$" and "Entries$" variables.
 
 One also could specify cut condition, separating it with "::" from the rest draw expression like:
 
-   - [opt=px:py::pz>5](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=px:py::pz>5)
+   - [opt=px:py::pz>5](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=px:py::pz>5)
 
 Contrary to the normal ROOT, JSROOT allows to use "(expr?res1:res2)" operator (placed into brackets):
 
-   - [opt=px:py::(pz>5?2:1)](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=px:py::%28pz>5?2:1%29)
+   - [opt=px:py::(pz>5?2:1)](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=px:py::%28pz>5?2:1%29)
 
 It is possible to "dump" content of any branch (by default - first 10 entries):
 
-   - [item=ntuple/px&opt=dump](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple/px&opt=dump)
+   - [item=ntuple/px&opt=dump](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple/px&opt=dump)
 
 Or one could dump values produced with draw expression (also first 10 entries by default):
 
-   - [opt=px:py::pz>>dump](https://root.cern/js/latest/?file=../files/hsimple.root&item=ntuple&opt=px:py::pz>>dump)
+   - [opt=px:py::pz>>dump](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=px:py::pz>>dump)
+
+One also can dump list of entries which match cut expression and use these entries ids to perform other draw operations:
+
+   - [opt=::pz>5>>elist](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=::pz>5>>elist)
+   - [opt=px:py;elist:[7..12,20,35..49]](https://root.cern/js/latest/?file=https://root.cern/js/files/hsimple.root&item=ntuple&opt=px:py;elist:[7..12,20,35..49])
 
 Working with array indexes is supported. By default, all elements in array are used for the drawing.
 One could specify index for any array dimension (-1 means last element in the array). For instance, dump last element from `event.fTracks` array:
@@ -316,6 +370,9 @@ At the end of expression one can add several parameters with the syntax:
 Following parameters are supported:
   - "first" - id of the first entry to process
   - "entries" - number of entries to process
+  - "elist" - array of selected entries like `[7,12..25,40]`
+  - "nmatch" - abort processing after accumulated number of matched entries
+  - "staged" - first search entries with cut selection and then performed TTree::Draw
   - "monitor" - periodically show intermediate draw results (interval in milliseconds)
   - "maxrange" - maximal number of ranges in single HTTP request
   - "accum" - number of accumulated values before creating histogram
@@ -331,8 +388,8 @@ Example - [opt=event.fTracks[].fTriggerBits;entries:1000;first:200;maxrange:25](
 
 JSROOT implements display of TGeo objects like:
 
-  - [file=rootgeom.root&item=simple1](https://root.cern/js/latest/?file=../files/geom/rootgeom.root&item=simple1)
-  - [file=building.root&item=geom&opt=z](https://root.cern/js/latest/?nobrowser&file=../files/geom/building.root&item=geom;1&opt=z)
+  - [file=rootgeom.root&item=simple1](https://root.cern/js/latest/?file=https://root.cern/js/files/geom/rootgeom.root&item=simple1)
+  - [file=building.root&item=geom&opt=z](https://root.cern/js/latest/?nobrowser&file=https://root.cern/js/files/geom/building.root&item=geom;1&opt=z)
 
 Following classes are supported by geometry viewer:
   - TGeoVolume
@@ -348,9 +405,10 @@ Following draw options could be specified (separated by semicolon or ';'):
    - ssao - enable Smooth Lighting Shader (or Screen Space Ambient Occlusion)
    - wire - instead of filled surfaces only wireframe will be drawn
    - vislvlN - maximal hierarchy depth of visible nodes (like vislvl6)
-   - more  - show 2 times more volumes as usual (normally ~2000 volumes or ~100000 elementary faces are shown)
-   - more3 - show 3 times more volumes as usual
+   - moreN - show N times more volumes as usual (normally ~10000 nodes and ~200000 elementary faces are shown)
    - all - try to display all geometry volumes (may lead to browser hanging)
+   - maxnodesN - configure maximal number of rendered nodes (like maxnodes100K)
+   - maxfacesN - configure maximal number of rendered faces (like maxfaces3M)
    - highlight - force highlighting of selected volume, normally activated for moderate-size geometries
    - nohighlight - disable volumes highlighting (can be activated via context menu)
    - hscene - enable highlight of extra objects like tracks or hits
@@ -386,11 +444,11 @@ In the URL string several global settings can be changed:
 
 It is possible to display only part of geometry model. For instance, one could select sub-item like:
 
-- [file=rootgeom.root&item=simple1/TOP/REPLICA_1](https://root.cern/js/latest/?file=../files/geom/rootgeom.root&item=simple1/TOP/REPLICA_1)
+- [file=rootgeom.root&item=simple1/TOP/REPLICA_1](https://root.cern/js/latest/?file=https://root.cern/js/files/geom/rootgeom.root&item=simple1/TOP/REPLICA_1)
 
 Or one can use simple selection syntax (work only with first-level volumes):
 
-- [item=simple1&opt=-bar1-bar2](https://root.cern/js/latest/?file=../files/geom/rootgeom.root&item=simple1;1&opt=-bar1-bar2)
+- [item=simple1&opt=-bar1-bar2](https://root.cern/js/latest/?file=https://root.cern/js/files/geom/rootgeom.root&item=simple1;1&opt=-bar1-bar2)
 
 Syntax uses '+' sign to enable visibility flag of specified volume and '-' sign to disable visibility.
 One could use wildcard symbol like '+TUBE1*'.
@@ -431,7 +489,7 @@ Example of major LHC detectors:
  * LHCb: [full](https://root.cern/js/latest/?file=https://root.cern/files/lhcbfull.root&item=Geometry;1&opt=all;dflt)
 
 Other detectors examples:
- * HADES: [full](https://root.cern/js/latest/?file=https://root.cern/files/hades2.root&item=CBMGeom;1&opt=all;dflt), [preselected](https://root.cern/js/latest/?json=../files/geom/hades.json.gz)
+ * HADES: [full](https://root.cern/js/latest/?file=https://root.cern/files/hades2.root&item=CBMGeom;1&opt=all;dflt), [preselected](https://root.cern/js/latest/?json=https://root.cern/js/files/geom/hades.json.gz)
  * BABAR: [full](https://root.cern/js/latest/?file=https://root.cern/files/babar.root&item=babar;1&opt=macro:https://root.cern/files/babar_all.C), [emca](https://root.cern/js/latest/?file=https://root.cern/files/babar.root&item=babar;1&opt=macro:https://root.cern/files/babar_emca.C)
  * STAR: [full](https://root.cern/js/latest/?file=https://root.cern/files/star.root&item=star;1&opt=macro:https://root.cern/files/star_all.C;clipxyz), [svtt](https://root.cern/js/latest/?file=https://root.cern/files/star.root&item=star;1&opt=macro:https://root.cern/files/star_svtt.C)
  * D0: [full](https://root.cern/js/latest/?file=https://root.cern/files/d0.root&item=d0;1&opt=clipxyz)
@@ -442,7 +500,7 @@ Other detectors examples:
 Together with geometry one could display tracks (TEveTrack) and hits (TEvePointSet, TPolyMarker3D) objects.
 Either one do it interactively by drag and drop, or superimpose drawing with `+` sign like:
 
-- [item=simple_alice.json.gz+tracks_hits.root/tracks+tracks_hits.root/hits](https://root.cern/js/latest/?nobrowser&json=../files/geom/simple_alice.json.gz&file=../files/geom/tracks_hits.root&item=simple_alice.json.gz+tracks_hits.root/tracks+tracks_hits.root/hits)
+- [item=simple_alice.json.gz+tracks_hits.root/tracks+tracks_hits.root/hits](https://root.cern/js/latest/?nobrowser&json=https://root.cern/js/files/geom/simple_alice.json.gz&file=https://root.cern/js/files/geom/tracks_hits.root&item=simple_alice.json.gz+tracks_hits.root/tracks+tracks_hits.root/hits)
 
 
 There is a problem of correct rendering of transparent volumes. To solve problem in general is very expensive (in terms of computing power), therefore several approximation solution can be applied:
@@ -469,7 +527,7 @@ To enable CORS on Apache web server, hosting ROOT files, one should add followin
          Header set Access-Control-Allow-Origin "*"
          Header set Access-Control-Allow-Headers "range"
          Header set Access-Control-Expose-Headers "content-range,content-length,accept-ranges"
-         Header set Access-Control-Allow-Methods "HEAD,GET"
+         Header set Access-Control-Allow-Methods "GET"
       </FilesMatch>
     </IfModule>
 
@@ -501,12 +559,6 @@ JSROOT can read files from local file system using HTML5 FileReader functionalit
 Main limitation here - user should interactively select files for reading.
 There is button __"..."__ on the main JSROOT page, which starts file selection dialog.
 If valid ROOT file is selected, JSROOT will be able to normally read content of such file.
-
-One could try to invoke such dialog with "localfile" parameter in URL string:
-
-   - <https://root.cern/js/latest/?localfile>
-
-It could happen, that due to security limitations automatic popup will be blocked.
 
 
 ## JSROOT with THttpServer
@@ -548,12 +600,12 @@ which is capable to convert any (beside TTree) ROOT object into JSON. Any ROOT a
 create JSON files for selected objects and write such files in a directory,
 which can be accessed via web server. Then one can use JSROOT to read such files and display objects in a web browser.
 
-There is a demonstration page showing such functionality: <https://root.cern/js/latest/demo/demo.htm>.
+There is a demonstration page showing such functionality: <https://root.cern/js/latest/demo/update_draw.htm>.
 This demo page reads in cycle 20 json files and displays them.
 
 If one has a web server which already provides such JSON file, one could specify the URL to this file like:
 
-<https://root.cern/js/latest/demo/demo.htm?addr=../httpserver.C/Canvases/c1/root.json.gz>
+<https://root.cern/js/latest/demo/update_draw.htm?addr=../httpserver.C/Canvases/c1/root.json.gz>
 
 Here the same problem with [Cross-Origin Request](https://developer.mozilla.org/en/http_access_control) can appear. If the web server configuration cannot be changed, just copy JSROOT to the web server itself.
 
@@ -571,7 +623,7 @@ therefore there is no guarantee that the file content is not changed/replaced be
 
 If somebody still wants to use monitoring of data from ROOT files, could try link like:
 
-- <https://root.cern/js/latest/?nobrowser&file=../files/hsimple.root+&item=hpx;1&monitoring=2000>
+- <https://root.cern/js/latest/?nobrowser&file=https://root.cern/js/files/hsimple.root+&item=hpx;1&monitoring=2000>
 
 In this particular case, the histogram is not changing.
 
@@ -604,7 +656,7 @@ When JSROOT is used with THttpServer, the address looks like:
 <script type='module'>
    import { httpRequest, draw } from 'http://your_root_server:8080/jsrootsys/modules/main.mjs';
    let obj = await httpRequest('http://your_root_server:8080/Objects/hist/root.json','object');
-   await draw("drawing", obj, "hist");
+   await draw('drawing', obj, 'hist');
 </script>
 ```
 
@@ -622,8 +674,8 @@ One also can load some special components directly like:
    h.setDisplay("simple", "myMainDiv");
 
    // open file and display element
-   await h.openRootFile("../../files/hsimple.root");
-   await h.display("hpxpy;1","colz");
+   await h.openRootFile('https://root.cern/js/files/hsimple.root');
+   await h.display('hpxpy;1","colz');
 </script>
 ```
 
@@ -633,7 +685,7 @@ to change stat format using to display value in stats box:
 
 ```javascript
 import { gStyle } from 'https://root.cern/js/latest/modules/main.mjs';
-gStyle.fStatFormat = "7.5g";
+gStyle.fStatFormat = '7.5g';
 ```
 
 There is also `settings` object which contains all other JSROOT settings. For instance,
@@ -641,8 +693,8 @@ one can configure custom format for different axes:
 
 ```javascript
 import { settings } from 'https://root.cern/js/latest/modules/main.mjs';
-settings.XValuesFormat = "4.2g";
-settings.YValuesFormat = "6.1f";
+settings.XValuesFormat = '4.2g';
+settings.YValuesFormat = '6.1f';
 ```
 
 One also can use `build/jsroot.js` bundle to load all functionality at one and access it via `JSROOT` global handle:
@@ -652,7 +704,7 @@ One also can use `build/jsroot.js` bundle to load all functionality at one and a
 <script>
    // getting json string from somewhere
    let obj = JSROOT.parse(root_json);
-   JSROOT.draw("plain", obj, "colz");
+   JSROOT.draw('plain', obj, 'colz');
 </script>
 ```
 
@@ -676,7 +728,7 @@ For instance to receive object from a THttpServer server one could do:
 ```javascript
 import { httpRequest } from 'https://root.cern/js/latest/modules/main.mjs';
 let obj = await httpRequest("http://your_root_server:8080/Canvases/c1/root.json", "object")
-console.log('Read object of type ', obj._typename);
+console.log('Read object of type', obj._typename);
 ```
 
 Function returns Promise, which provides parsed object (or Error in case of failure).
@@ -742,7 +794,7 @@ resize("drawing");
  As second argument one could specify exact size for draw elements like:
 
 ```javascript
-resize("drawing", { width: 500, height: 200 } );
+resize("drawing", { width: 500, height: 200 });
 ```
 
 To correctly cleanup JSROOT drawings from HTML element, one should call:
@@ -765,7 +817,7 @@ let filename = "https://root.cern/js/files/hsimple.root";
 let file = await openFile(filename);
 let obj = await file.readObject("hpxpy;1");
 await draw("drawing", obj, "colz");
-console.log("drawing completed");
+console.log('drawing completed');
 ```
 
 Here is [running example](https://root.cern/js/latest/api.htm#custom_html_read_root_file) and [source code](https://github.com/root-project/jsroot/blob/master/demo/read_file.htm)
@@ -811,7 +863,8 @@ selector.Process = function() {
 }
 
 selector.Terminate = function(res) {
-   if (!res || (cnt===0)) return;
+   if (!res || (cnt === 0))
+      return;
    let meanpx = sumpx/cnt, meanpy = sumpy/cnt;
    console.log(`Results meanpx = ${meanpx} meanpy = ${meanpy}`);
 }
@@ -832,6 +885,32 @@ As third parameter of treeProcess() function one could provide object with argum
 let args = { numentries: 1000, firstentry: 500 };
 treeProcess(tree, selector, args);
 ```
+
+In some applications access to TTree can be optimized using 'staged' approach.
+It means that on the first stage interesting entries identified in the TTree and
+on the second stage data only for these entries are read. This can boost performance a lot.
+
+To get list of entries which match to some condition, one can use `>>elist` redirection in draw expression.
+
+```javascript
+const entries = await treeDraw(tree, '::pz>5>>elist');
+```
+
+Here only cut condition `pz>5` is specified - no any normal draw expression is configured.
+On the second stage one simply use entries for drawing. Like:
+
+```javascript
+const hist = await treeDraw(tree, `px:py;elist:[${entries}]`);
+```
+
+Such 'staged' approach directly implemented in the tree drawing:
+
+```javascript
+const hist2 = await treeDraw(tree, 'px:py::pz>5;staged');
+```
+
+In the [tree_staged.js](https://github.com/root-project/jsroot/blob/master/demo/node/tree_staged.js) macro
+one can see different possibilities to use staged approach for TTree processing
 
 
 ### TGeo API
@@ -867,6 +946,13 @@ produceRenderOrder(scene, camera.position, 'box');
 Following methods can be applied: "box", "pnt", "size", "ray" and "dflt". See more info in draw options description for TGeo classes.
 
 Here is [running example](https://root.cern/js/latest/api.htm#custom_html_geometry) and [source code](https://github.com/root-project/jsroot/blob/master/demo/tgeo_build.htm).
+
+
+### Custom user class
+
+There is [code example](https://github.com/root-project/jsroot/tree/master/demo/custom) how custom user class can be implemented.
+It shows usage of different draw options for the class and ability to access sub-elements of the object using specialized `expand` function.
+
 
 
 ### Use with Node.js
@@ -941,7 +1027,7 @@ JSROOT provides `loadOpenui5` function to load supported OpenUI5:
 </script>
 ```
 
-JSROOT uses <https://openui5.hana.ondemand.com> when no other source is specified.
+JSROOT uses <https://openui5.hana.ondemand.com/1.152.0/> when no other source is specified.
 
 There are small details when using OpenUI5 with THttpServer. First of all, location of JSROOT modules should be specified
 as `/jsrootsys/modules/main.mjs`. And then trying to access files from local disk, one should specify `/currentdir/` folder:
@@ -959,7 +1045,7 @@ JSROOT provides [example](https://root.cern/js/latest/demo/openui5/) showing usa
    * Core functionality should be imported from `main.mjs` module like:
 
 ```javascript
-import { create, parse, createHistogram, redraw } from 'https://root.cern/js/7.0.0/modules/main.mjs';
+import { create, parse, createHistogram, redraw } from 'https://root.cern/js/7.9.0/modules/main.mjs';
 ```
 
    * It is still possible to use `JSRoot.core.js` script, which provides very similar (but not identical!) functionality as with `v6` via global `JSROOT` object
@@ -971,20 +1057,20 @@ import { create, parse, createHistogram, redraw } from 'https://root.cern/js/7.0
    * Global hierarchy painter `JSROOT.hpainter` no longer existing, one can use `getHPainter` function:
 
 ```javascript
-import { getHPainter } from 'https://root.cern/js/7.0.0/modules/main.mjs';
+import { getHPainter } from 'https://root.cern/js/7.9.0/modules/main.mjs';
 let hpainter = getHPainter();
 ```
 
    * All math functions previously available via `JSROOT.Math` should be imported from `base/math.mjs` module:
 
 ```javascript
-import * as math from 'https://root.cern/js/7.0.0/modules/base/math.mjs';
+import * as math from 'https://root.cern/js/7.9.0/modules/base/math.mjs';
 ```
 
    * Indication of batch mode `JSROOT.batch_mode` should be accessed via functions:
 
 ```javascript
-import { isBatchMode, setBatchMode } from 'https://root.cern/js/7.0.0/modules/main.mjs';
+import { isBatchMode, setBatchMode } from 'https://root.cern/js/7.9.0/modules/main.mjs';
 let was_batch = isBatchMode();
 if (!was_batch) setBatchMode(true);
 ```

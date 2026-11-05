@@ -33,10 +33,6 @@ of the unblind parameter
 #include "RooUnblindCPAsymVar.h"
 
 
-using namespace std;
-
-ClassImp(RooUnblindCPAsymVar);
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor
 

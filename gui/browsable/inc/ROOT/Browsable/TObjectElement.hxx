@@ -15,7 +15,6 @@ class TObject;
 class TCollection;
 
 namespace ROOT {
-namespace Experimental {
 namespace Browsable {
 
 
@@ -24,7 +23,6 @@ namespace Browsable {
 \brief Access to TObject basic properties for RBrowsable
 \author Sergey Linev <S.Linev@gsi.de>
 \date 2021-01-11
-\warning This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 */
 
 
@@ -93,7 +91,6 @@ public:
 };
 
 } // namespace Browsable
-} // namespace Experimental
 } // namespace ROOT
 
 

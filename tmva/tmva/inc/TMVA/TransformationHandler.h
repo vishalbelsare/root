@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : TransformationHandler                                                 *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Contains all the data information                                         *
@@ -25,7 +25,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_TransformationHandler
@@ -125,8 +125,8 @@ namespace TMVA {
       DataSet* Data() { return fDataSetInfo.GetDataSet(); }
 
       DataSetInfo&          fDataSetInfo;                     // pointer to the datasetinfo
-      TList                 fTransformations;                 //! list of transformations
-      std::vector< Int_t >  fTransformationsReferenceClasses; //! reference classes for the transformations
+      TList                 fTransformations;                 ///<! list of transformations
+      std::vector< Int_t >  fTransformationsReferenceClasses; ///<! reference classes for the transformations
       std::vector<std::vector<TMVA::TransformationHandler::VariableStat> >  fVariableStats; // first the variables, then the targets
 
       Int_t                 fNumC;               ///< number of categories (#classes +1)

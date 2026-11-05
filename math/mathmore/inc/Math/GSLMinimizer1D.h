@@ -70,7 +70,7 @@ Implemented using GSL, for detailed description see:
 <A HREF="http://www.gnu.org/software/gsl/manual/html_node/One-dimensional-Minimization.html">GSL online doc</A>
 
 The algorithms uspported are only bracketing algorithm which do not use derivatives information.
-The algorithms which can be chosen at construction time are  GOLDENSECTION, whic is the simplest method
+The algorithms which can be chosen at construction time are GOLDENSECTION, which is the simplest method
 but the slowest and BRENT (the default one) which combines the golden section with a parabolic interpolation.
 
 
@@ -93,12 +93,11 @@ This class does not support copying
       */
       ~GSLMinimizer1D() override;
 
-   private:
-      // usually copying is non trivial, so we make this unaccessible
-      GSLMinimizer1D(const GSLMinimizer1D &);
-      GSLMinimizer1D & operator = (const GSLMinimizer1D &);
-
-   public:
+      // usually copying is non trivial, so we delete this
+      GSLMinimizer1D(const GSLMinimizer1D &) = delete;
+      GSLMinimizer1D & operator = (const GSLMinimizer1D &) = delete;
+      GSLMinimizer1D(GSLMinimizer1D &&) = delete;
+      GSLMinimizer1D & operator = (GSLMinimizer1D &&) = delete;
 
 
       /**
@@ -121,7 +120,7 @@ This class does not support copying
 
       /**
           Perform a minimizer iteration and
-          if an unexepcted problem occurr then an error code will be returned
+          if an unexpected problem occurs then an error code will be returned
       */
       int Iterate();
 
@@ -160,7 +159,7 @@ This class does not support copying
       /**
          Find minimum position iterating until convergence specified by the absolute and relative tolerance or
          the maximum number of iteration is reached
-         Return true is result is successfull
+         Return true is result is successful
          \@param maxIter maximum number of iteration
          \@param absTol desired absolute error in the minimum position
          \@param absTol desired relative error in the minimum position

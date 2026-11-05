@@ -31,7 +31,6 @@
 #include <fstream>
 
 
-ClassImp(TGraphAsymmErrors);
 
 /** \class TGraphAsymmErrors
     \ingroup Graphs
@@ -69,9 +68,7 @@ End_Macro
 ////////////////////////////////////////////////////////////////////////////////
 /// TGraphAsymmErrors default constructor.
 
-TGraphAsymmErrors::TGraphAsymmErrors(): TGraph()
-{
-}
+TGraphAsymmErrors::TGraphAsymmErrors() {}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,7 +184,6 @@ TGraphAsymmErrors::TGraphAsymmErrors(Int_t n, const Double_t *x, const Double_t 
 /// in vx and vy.
 
 TGraphAsymmErrors::TGraphAsymmErrors(const TVectorF  &vx, const TVectorF  &vy, const TVectorF  &vexl, const TVectorF  &vexh, const TVectorF  &veyl, const TVectorF  &veyh)
-                  :TGraph()
 {
    fNpoints = TMath::Min(vx.GetNrows(), vy.GetNrows());
    if (!TGraph::CtorAllocate()) return;
@@ -217,7 +213,6 @@ TGraphAsymmErrors::TGraphAsymmErrors(const TVectorF  &vx, const TVectorF  &vy, c
 /// in vx and vy.
 
 TGraphAsymmErrors::TGraphAsymmErrors(const TVectorD &vx, const TVectorD &vy, const TVectorD &vexl, const TVectorD &vexh, const TVectorD &veyl, const TVectorD &veyh)
-                  :TGraph()
 {
    fNpoints = TMath::Min(vx.GetNrows(), vy.GetNrows());
    if (!TGraph::CtorAllocate()) return;
@@ -252,7 +247,7 @@ TGraphAsymmErrors::TGraphAsymmErrors(const TH1 *h)
       fEXlow[i]  = h->GetBinWidth(i+1)*gStyle->GetErrorX();
       fEXhigh[i] = fEXlow[i];
       fEYlow[i]  = h->GetBinErrorLow(i+1);
-      fEYhigh[i] = h->GetBinErrorUp(i+1);;
+      fEYhigh[i] = h->GetBinErrorUp(i+1);
    }
 }
 
@@ -288,17 +283,21 @@ TGraphAsymmErrors::TGraphAsymmErrors(const TH1* pass, const TH1* total, Option_t
 /// TGraphAsymmErrors constructor reading input from filename
 /// filename is assumed to contain at least 2 columns of numbers
 ///
-/// convention for format (default=`"%lg %lg %lg %lg %lg %lg"`)
-///  - format = `"%lg %lg"`         read only 2 first columns into X, Y
-///  - format = `"%lg %lg %lg %lg"`     read only 4 first columns into X, Y,  ELY, EHY
-///  - format = `"%lg %lg %lg %lg %lg %lg"` read only 6 first columns into X, Y, EXL, EYH, EYL, EHY
+/// Convention for format (default=`"%lg %lg %lg %lg %lg %lg"`)
 ///
-/// For files separated by a specific delimiter different from `' '` and `'\\t'` (e.g. `';'` in csv files)
-/// you can avoid using `%*s` to bypass this delimiter by explicitly specify the `"option" argument,
-/// e.g. `option=" \\t,;"` for columns of figures separated by any of these characters `(' ', '\\t', ',', ';')`
-/// used once `(e.g. "1;1")` or in a combined way `(" 1;,;;  1")`.
+///  - format = `"%lg %lg"` read only 2 first columns into X, Y
+///  - format = `"%lg %lg %lg %lg"` read only 4 first columns into X, Y, EYL, EYH
+///  - format = `"%lg %lg %lg %lg %lg %lg"` read only 6 first columns into X, Y, EXL, EXH, EYL, EYH
+///
+/// If format string is empty, suitable value will be provided based on file extension
+///
+/// For files separated by a specific delimiter different from ' ' and `\\t` (e.g. `;` in csv files)
+/// you can avoid using `%*s` to bypass this delimiter by explicitly specify the `option` argument,
+/// e.g. `option=" \\t,;"` for columns of figures separated by any of these characters (`' ', '\\t', ',', ';'`)
+/// used once (e.g. `"1;1"`) or in a combined way (`" 1;,;;  1"`).
+///
 /// Note in that case, the instantiation is about 2 times slower.
-/// In case a delimiter is specified, the format `"%lg %lg %lg"` will read X,Y,EX.
+/// In case a delimiter is specified, the format `"%lg %lg %lg"` will read X,Y,EXL.
 
 TGraphAsymmErrors::TGraphAsymmErrors(const char *filename, const char *format, Option_t *option)
    : TGraph(100)
@@ -317,18 +316,30 @@ TGraphAsymmErrors::TGraphAsymmErrors(const char *filename, const char *format, O
    std::string line;
    Int_t np = 0;
 
-   if (strcmp(option, "") == 0) { // No delimiters specified (standard constructor).
+   TString format_ = format;
 
-      Int_t ncol = TGraphErrors::CalculateScanfFields(format);  //count number of columns in format
+   if (!option || !*option) {  // No delimiters specified (standard constructor).
+
+      Int_t ncol = 6;
+      if (format_.IsNull()) {
+         if (fname.EndsWith(".txt", TString::kIgnoreCase))
+            format_ = "%lg %lg %lg %lg %lg %lg";
+         else if (fname.EndsWith(".tsv", TString::kIgnoreCase))
+            format_ = "%lg\t%lg\t%lg\t%lg\t%lg\t%lg";
+         else
+            format_ = "%lg,%lg,%lg,%lg,%lg,%lg";
+      } else
+         ncol = TGraphErrors::CalculateScanfFields(format);  //count number of columns in format
+
       Int_t res;
       while (std::getline(infile, line, '\n')) {
          exl = exh = eyl = eyh = 0.;
          if (ncol < 3) {
-            res = sscanf(line.c_str(), format, &x, &y);
+            res = sscanf(line.c_str(), format_.Data(), &x, &y);
          } else if (ncol < 5) {
-            res = sscanf(line.c_str(), format, &x, &y, &eyl, &eyh);
+            res = sscanf(line.c_str(), format_.Data(), &x, &y, &eyl, &eyh);
          } else {
-            res = sscanf(line.c_str(), format, &x, &y, &exl, &exh, &eyl, &eyh);
+            res = sscanf(line.c_str(), format_.Data(), &x, &y, &exl, &exh, &eyl, &eyh);
          }
          if (res < 2) {
             continue; //skip empty and ill-formed lines
@@ -342,7 +353,6 @@ TGraphAsymmErrors::TGraphAsymmErrors(const char *filename, const char *format, O
    } else { // A delimiter has been specified in "option"
 
       // Checking format and creating its boolean equivalent
-      TString format_ = TString(format) ;
       format_.ReplaceAll(" ", "") ;
       format_.ReplaceAll("\t", "") ;
       format_.ReplaceAll("lg", "") ;
@@ -366,8 +376,8 @@ TGraphAsymmErrors::TGraphAsymmErrors(const char *filename, const char *format, O
             ntokensToBeSaved++ ;
          }
       }
-      if (ntokens >= 2 && (ntokensToBeSaved < 2 || ntokensToBeSaved > 4)) { //first condition not to repeat the previous error message
-         Error("TGraphAsymmErrors", "Incorrect input format! There are %d \"%%lg\" tag(s) in format whereas 2,3 or 4 are expected!", ntokensToBeSaved);
+      if (ntokens >= 2 && (ntokensToBeSaved < 2 || ntokensToBeSaved > 6)) { //first condition not to repeat the previous error message
+         Error("TGraphAsymmErrors", "Incorrect input format! There are %d \"%%lg\" tag(s) in format whereas 2, 3, 4, 5 or 6 are expected!", ntokensToBeSaved);
          delete [] isTokenToBeSaved;
          return ;
       }
@@ -385,7 +395,7 @@ TGraphAsymmErrors::TGraphAsymmErrors(const char *filename, const char *format, O
       // Looping
       char *rest;
       while (std::getline(infile, line, '\n')) {
-         if (line != "") {
+         if (!line.empty()) {
             if (line[line.size() - 1] == char(13)) {  // removing DOS CR character
                line.erase(line.end() - 1, line.end()) ;
             }
@@ -405,7 +415,7 @@ TGraphAsymmErrors::TGraphAsymmErrors(const char *filename, const char *format, O
                token = R__STRTOK_R(nullptr, option, &rest); // next token
                token_idx++ ;
             }
-            if (!isLineToBeSkipped && value_idx > 1) { //i.e. 2,3 or 4
+            if (!isLineToBeSkipped && value_idx > 1) { //i.e. 2, 3, 4, 5 or 6
                x = value[0];
                y = value[1];
                exl = value[2];
@@ -447,6 +457,15 @@ TGraphAsymmErrors::~TGraphAsymmErrors()
 
 Double_t** TGraphAsymmErrors::Allocate(Int_t size) {
    return AllocateArrays(6, size);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Add a point with asymmetric errorbars to the graph.
+
+void TGraphAsymmErrors::AddPointError(Double_t x, Double_t y, Double_t exl, Double_t exh, Double_t eyl, Double_t eyh)
+{
+   AddPoint(x, y);
+   SetPointError(fNpoints - 1, exl, exh, eyl, eyh);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1028,7 +1047,7 @@ void TGraphAsymmErrors::CopyAndRelease(Double_t **newarrays,
 Bool_t TGraphAsymmErrors::CopyPoints(Double_t **arrays,
                                      Int_t ibegin, Int_t iend, Int_t obegin)
 {
-   if (TGraph::CopyPoints(arrays ? arrays+4 : 0, ibegin, iend, obegin)) {
+   if (TGraph::CopyPoints(arrays ? arrays+4 : nullptr, ibegin, iend, obegin)) {
       Int_t n = (iend - ibegin)*sizeof(Double_t);
       if (arrays) {
          memmove(&arrays[0][obegin], &fEXlow[ibegin], n);
@@ -1235,86 +1254,20 @@ void TGraphAsymmErrors::Print(Option_t *) const
 
 void TGraphAsymmErrors::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   char quote = '"';
-   out << "   " << std::endl;
-   static Int_t frameNumber = 3000;
-   frameNumber++;
+   auto xname  = SavePrimitiveVector(out, "grae_fx", fNpoints, fX, kTRUE);
+   auto yname  = SavePrimitiveVector(out, "grae_fy", fNpoints, fY);
+   auto exlname = SavePrimitiveVector(out, "grae_fexl", fNpoints, fEXlow, 111);
+   auto exhname = SavePrimitiveVector(out, "grae_fexh", fNpoints, fEXhigh, 111);
+   auto eylname = SavePrimitiveVector(out, "grae_feyl", fNpoints, fEYlow, 111);
+   auto eyhname = SavePrimitiveVector(out, "grae_feyh", fNpoints, fEYhigh, 111);
 
-   Int_t i;
-   TString fXName   = TString(GetName()) + Form("_fx%d",frameNumber);
-   TString fYName   = TString(GetName()) + Form("_fy%d",frameNumber);
-   TString fElXName = TString(GetName()) + Form("_felx%d",frameNumber);
-   TString fElYName = TString(GetName()) + Form("_fely%d",frameNumber);
-   TString fEhXName = TString(GetName()) + Form("_fehx%d",frameNumber);
-   TString fEhYName = TString(GetName()) + Form("_fehy%d",frameNumber);
-   out << "   Double_t " << fXName << "[" << fNpoints << "] = {" << std::endl;
-   for (i = 0; i < fNpoints-1; i++) out << "   " << fX[i] << "," << std::endl;
-   out << "   " << fX[fNpoints-1] << "};" << std::endl;
-   out << "   Double_t " << fYName << "[" << fNpoints << "] = {" << std::endl;
-   for (i = 0; i < fNpoints-1; i++) out << "   " << fY[i] << "," << std::endl;
-   out << "   " << fY[fNpoints-1] << "};" << std::endl;
-   out << "   Double_t " << fElXName << "[" << fNpoints << "] = {" << std::endl;
-   for (i = 0; i < fNpoints-1; i++) out << "   " << fEXlow[i] << "," << std::endl;
-   out << "   " << fEXlow[fNpoints-1] << "};" << std::endl;
-   out << "   Double_t " << fElYName << "[" << fNpoints << "] = {" << std::endl;
-   for (i = 0; i < fNpoints-1; i++) out << "   " << fEYlow[i] << "," << std::endl;
-   out << "   " << fEYlow[fNpoints-1] << "};" << std::endl;
-   out << "   Double_t " << fEhXName << "[" << fNpoints << "] = {" << std::endl;
-   for (i = 0; i < fNpoints-1; i++) out << "   " << fEXhigh[i] << "," << std::endl;
-   out << "   " << fEXhigh[fNpoints-1] << "};" << std::endl;
-   out << "   Double_t " << fEhYName << "[" << fNpoints << "] = {" << std::endl;
-   for (i = 0; i < fNpoints-1; i++) out << "   " << fEYhigh[i] << "," << std::endl;
-   out << "   " << fEYhigh[fNpoints-1] << "};" << std::endl;
+   SavePrimitiveConstructor(out, Class(), "grae",
+                            TString::Format("%d, %s.data(), %s.data(), %s, %s, %s, %s",
+                                            fNpoints, xname.Data(), yname.Data(), exlname.Data(), exhname.Data(),
+                                            eylname.Data(), eyhname.Data()),
+                            kFALSE);
 
-   if (gROOT->ClassSaved(TGraphAsymmErrors::Class())) out<<"   ";
-   else out << "   TGraphAsymmErrors *";
-   out << "grae = new TGraphAsymmErrors("<< fNpoints << ","
-                                    << fXName   << ","  << fYName  << ","
-                                    << fElXName  << ","  << fEhXName << ","
-                                    << fElYName  << ","  << fEhYName << ");"
-                                    << std::endl;
-
-   out << "   grae->SetName(" << quote << GetName() << quote << ");" << std::endl;
-   out << "   grae->SetTitle(" << quote << GetTitle() << quote << ");" << std::endl;
-
-   SaveFillAttributes(out, "grae", 0, 1001);
-   SaveLineAttributes(out, "grae", 1, 1, 1);
-   SaveMarkerAttributes(out, "grae", 1, 1, 1);
-
-   if (fHistogram) {
-      TString hname = fHistogram->GetName();
-      hname += frameNumber;
-      fHistogram->SetName(Form("Graph_%s",hname.Data()));
-      fHistogram->SavePrimitive(out,"nodraw");
-      out<<"   grae->SetHistogram("<<fHistogram->GetName()<<");"<<std::endl;
-      out<<"   "<<std::endl;
-   }
-
-   // save list of functions
-   TIter next(fFunctions);
-   TObject *obj;
-   while ((obj = next())) {
-      obj->SavePrimitive(out, Form("nodraw #%d\n",++frameNumber));
-      if (obj->InheritsFrom("TPaveStats")) {
-         out << "   grae->GetListOfFunctions()->Add(ptstats);" << std::endl;
-         out << "   ptstats->SetParent(grae->GetListOfFunctions());" << std::endl;
-      } else {
-         TString objname;
-         objname.Form("%s%d",obj->GetName(),frameNumber);
-         if (obj->InheritsFrom("TF1")) {
-            out << "   " << objname << "->SetParent(grae);\n";
-         }
-         out << "   grae->GetListOfFunctions()->Add("
-             << objname << ");" << std::endl;
-      }
-   }
-
-   const char *l = strstr(option,"multigraph");
-   if (l) {
-      out<<"   multigraph->Add(grae,"<<quote<<l+10<<quote<<");"<<std::endl;
-   } else {
-      out<<"   grae->Draw("<<quote<<option<<quote<<");"<<std::endl;
-   }
+   SaveHistogramAndFunctions(out, "grae", option);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1351,6 +1304,11 @@ void TGraphAsymmErrors::Scale(Double_t c1, Option_t *option)
 
 void TGraphAsymmErrors::SetPointError(Double_t exl, Double_t exh, Double_t eyl, Double_t eyh)
 {
+   if (!gPad) {
+      Error("SetPointError", "Cannot be used without gPad, requires last mouse position");
+      return;
+   }
+
    Int_t px = gPad->GetEventX();
    Int_t py = gPad->GetEventY();
 
@@ -1380,7 +1338,7 @@ void TGraphAsymmErrors::SetPointError(Int_t i, Double_t exl, Double_t exh, Doubl
 {
    if (i < 0) return;
    if (i >= fNpoints) {
-   // re-allocate the object
+      // re-allocate the object
       TGraphAsymmErrors::SetPoint(i,0,0);
    }
    fEXlow[i]  = exl;
@@ -1397,7 +1355,7 @@ void TGraphAsymmErrors::SetPointEXlow(Int_t i, Double_t exl)
 {
    if (i < 0) return;
    if (i >= fNpoints) {
-   // re-allocate the object
+      // re-allocate the object
       TGraphAsymmErrors::SetPoint(i,0,0);
    }
    fEXlow[i]  = exl;
@@ -1411,7 +1369,7 @@ void TGraphAsymmErrors::SetPointEXhigh(Int_t i, Double_t exh)
 {
    if (i < 0) return;
    if (i >= fNpoints) {
-   // re-allocate the object
+      // re-allocate the object
       TGraphAsymmErrors::SetPoint(i,0,0);
    }
    fEXhigh[i]  = exh;
@@ -1508,4 +1466,33 @@ void TGraphAsymmErrors::SwapPoints(Int_t pos1, Int_t pos2)
    SwapValues(fEYlow,  pos1, pos2);
    SwapValues(fEYhigh, pos1, pos2);
    TGraph::SwapPoints(pos1, pos2);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Update the fX, fY, fEXlow, fEXhigh, fEYlow and fEYhigh arrays with the sorted values.
+
+void TGraphAsymmErrors::UpdateArrays(const std::vector<Int_t> &sorting_indices, Int_t numSortedPoints, Int_t low)
+{
+   std::vector<Double_t> fEXlowSorted(numSortedPoints);
+   std::vector<Double_t> fEXhighSorted(numSortedPoints);
+   std::vector<Double_t> fEYlowSorted(numSortedPoints);
+   std::vector<Double_t> fEYhighSorted(numSortedPoints);
+
+   // Fill the sorted X and Y error values based on the sorted indices
+   std::generate(fEXlowSorted.begin(), fEXlowSorted.end(),
+                 [begin = low, &sorting_indices, this]() mutable { return fEXlow[sorting_indices[begin++]]; });
+   std::generate(fEXhighSorted.begin(), fEXhighSorted.end(),
+                 [begin = low, &sorting_indices, this]() mutable { return fEXhigh[sorting_indices[begin++]]; });
+   std::generate(fEYlowSorted.begin(), fEYlowSorted.end(),
+                 [begin = low, &sorting_indices, this]() mutable { return fEYlow[sorting_indices[begin++]]; });
+   std::generate(fEYhighSorted.begin(), fEYhighSorted.end(),
+                 [begin = low, &sorting_indices, this]() mutable { return fEYhigh[sorting_indices[begin++]]; });
+
+   // Copy the sorted X and Y error values back to the original arrays
+   std::copy(fEXlowSorted.begin(), fEXlowSorted.end(), fEXlow + low);
+   std::copy(fEXhighSorted.begin(), fEXhighSorted.end(), fEXhigh + low);
+   std::copy(fEYlowSorted.begin(), fEYlowSorted.end(), fEYlow + low);
+   std::copy(fEYhighSorted.begin(), fEYhighSorted.end(), fEYhigh + low);
+
+   TGraph::UpdateArrays(sorting_indices, numSortedPoints, low);
 }

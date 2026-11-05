@@ -19,7 +19,7 @@
 \class RooSuperCategory
 \ingroup Roofitcore
 
-The RooSuperCategory can join several RooAbsCategoryLValue objects into
+Joins several RooAbsCategoryLValue objects into
 a single category. For this, it uses a RooMultiCategory, which takes care
 of enumerating all the permutations of possible states.
 In addition, the super category derives from RooAbsCategoryLValue, *i.e.*, it allows for
@@ -31,8 +31,6 @@ supercategory will propagate to its input categories.
 
 #include "RooSuperCategory.h"
 
-#include "Riostream.h"
-#include "RooStreamParser.h"
 #include "RooArgSet.h"
 #include "RooAbsCategoryLValue.h"
 #include "RooMsgService.h"
@@ -40,13 +38,11 @@ supercategory will propagate to its input categories.
 #include "TString.h"
 #include "TClass.h"
 
-using namespace std;
+#include <ostream>
+using std::endl, std::ostream;
 
-ClassImp(RooSuperCategory);
 
-RooSuperCategory::RooSuperCategory() :
-  RooAbsCategoryLValue(),
-  _multiCat("MultiCatProxy", "Stores a RooMultiCategory", this, true, true, true) { }
+RooSuperCategory::RooSuperCategory() = default;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct a super category from other categories.
@@ -57,13 +53,13 @@ RooSuperCategory::RooSuperCategory() :
 RooSuperCategory::RooSuperCategory(const char *name, const char *title, const RooArgSet& inputCategories) :
   RooAbsCategoryLValue(name, title),
   _multiCat("MultiCatProxy", "Stores a RooMultiCategory", this,
-      *new RooMultiCategory((std::string(name) + "_internalMultiCat").c_str(), title, inputCategories), true, true, true)
+      std::make_unique<RooMultiCategory>((std::string(name) + "_internalMultiCat").c_str(), title, inputCategories), true, true)
 {
   // Check category list
   for (const auto arg : inputCategories) {
     if (!arg->IsA()->InheritsFrom(RooAbsCategoryLValue::Class())) {
       coutE(InputArguments) << "RooSuperCategory::RooSuperCategory(" << GetName() << "): input category " << arg->GetName()
-             << " is not an lvalue. Use RooMultiCategory instead." << endl ;
+             << " is not an lvalue. Use RooMultiCategory instead." << std::endl ;
       throw std::invalid_argument("Arguments of RooSuperCategory must be lvalues.");
     }
   }
@@ -96,12 +92,12 @@ bool RooSuperCategory::setIndex(Int_t index, bool printError)
   }
 
   bool error = false;
-  for (auto arg : _multiCat->_catSet) {
-    auto cat = static_cast<RooAbsCategoryLValue*>(arg);
+  for (auto* cat : static_range_cast<RooAbsCategoryLValue*>(_multiCat->_catSet)) {
     if (cat->empty()) {
-      if (printError)
-        coutE(InputArguments) << __func__ << ": Found a category with zero states. Cannot set state for '"
-            << cat->GetName() << "'." << std::endl;
+      if (printError) {
+         coutE(InputArguments) << __func__ << ": Found a category with zero states. Cannot set state for '"
+                               << cat->GetName() << "'." << std::endl;
+      }
       continue;
     }
     const value_type thisIndex = index % cat->size();

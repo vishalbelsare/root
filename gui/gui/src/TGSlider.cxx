@@ -64,14 +64,12 @@ Releasing the mouse will generate the event:
 #include "TGSlider.h"
 #include "TGPicture.h"
 #include "TImage.h"
+#include "TASUtils.h"
 #include "TEnv.h"
 #include "TVirtualX.h"
 
 #include <iostream>
 
-ClassImp(TGSlider);
-ClassImp(TGVSlider);
-ClassImp(TGHSlider);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -132,26 +130,21 @@ void TGSlider::CreateDisabledPicture()
 {
    if (!fSliderPic) return;
 
-   TImage *img = TImage::Create();
-   if (!img) return;
-   TImage *img2 = TImage::Create();
-   if (!img2) {
-      if (img) delete img;
+   std::unique_ptr<TImage> img2(TImage::Create());
+   if (!img2)
       return;
-   }
    TString back = gEnv->GetValue("Gui.BackgroundColor", "#c0c0c0");
    img2->FillRectangle(back.Data(), 0, 0, fSliderPic->GetWidth(),
                        fSliderPic->GetHeight());
-   img->SetImage(fSliderPic->GetPicture(), fSliderPic->GetMask());
-   Pixmap_t mask = img->GetMask();
-   img2->Merge(img, "overlay");
+   auto img = TASUtils::FromPixmap(fSliderPic->GetPicture(), fSliderPic->GetMask());
+   if (!img)
+      return;
+   Pixmap_t mask = TASUtils::GetMask(img.get());
+   img2->Merge(img.get(), "overlay");
 
    TString name = "disbl_";
-   name += fSliderPic->GetName();
-   fDisabledPic = fClient->GetPicturePool()->GetPicture(name.Data(),
-                                             img2->GetPixmap(), mask);
-   delete img;
-   delete img2;
+   name.Append(fSliderPic->GetName());
+   fDisabledPic = fClient->GetPicturePool()->GetPicture(name.Data(), TASUtils::GetPixmap(img2.get()), mask);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -581,6 +574,9 @@ TString TGSlider::GetTypeString() const
          else                     stype += " | kScaleBoth";
       }
    }
+
+   if (stype.Length() == 0)
+      stype = "0";
    return stype;
 }
 
@@ -589,36 +585,26 @@ TString TGSlider::GetTypeString() const
 
 void TGHSlider::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   if (fBackground != GetDefaultFrameBackground()) SaveUserColor(out, option);
+   // save options and color if not default
+   auto extra_args = SaveCtorArgs(out);
 
-   out <<"   TGHSlider *";
-   out << GetName() << " = new TGHSlider(" << fParent->GetName()
-       << "," << GetWidth() << ",";
-   out << GetTypeString() << "," << WidgetId();
+   out <<"   TGHSlider *" << GetName() << " = new TGHSlider(" << fParent->GetName()
+       << "," << GetWidth() << "," << GetTypeString() << "," << WidgetId() << extra_args << ");\n";
 
-   if (fBackground == GetDefaultFrameBackground()) {
-      if (!GetOptions()) {
-         out <<");" << std::endl;
-      } else {
-         out << "," << GetOptionString() <<");" << std::endl;
-      }
-   } else {
-      out << "," << GetOptionString() << ",ucolor);" << std::endl;
-   }
    if (option && strstr(option, "keep_names"))
-      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");" << std::endl;
+      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");\n";
 
    if (fVmin != 0 || fVmax != (Int_t)fWidth)
-      out << "   " << GetName() <<"->SetRange(" << fVmin << "," << fVmax << ");" << std::endl;
+      out << "   " << GetName() <<"->SetRange(" << fVmin << "," << fVmax << ");\n";
 
    if (fPos != (Int_t)fWidth/2)
-      out << "   " << GetName() <<"->SetPosition(" << GetPosition() << ");" << std::endl;
+      out << "   " << GetName() <<"->SetPosition(" << GetPosition() << ");\n";
 
    if (fScale != 10)
-      out << "   " << GetName() <<"->SetScale(" << fScale << ");" << std::endl;
+      out << "   " << GetName() <<"->SetScale(" << fScale << ");\n";
 
    if (!IsEnabled())
-      out << "   " << GetName() <<"->SetState(kFALSE);" << std::endl;
+      out << "   " << GetName() <<"->SetState(kFALSE);\n";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -626,35 +612,24 @@ void TGHSlider::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 
 void TGVSlider::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   if (fBackground != GetDefaultFrameBackground()) SaveUserColor(out, option);
+   // save options and color if not default
+   auto extra_args = SaveCtorArgs(out);
 
-   out<<"   TGVSlider *";
-   out << GetName() <<" = new TGVSlider("<< fParent->GetName()
-       << "," << GetHeight() << ",";
-   out << GetTypeString() << "," << WidgetId();
+   out << "   TGVSlider *" << GetName() << " = new TGVSlider(" << fParent->GetName() << "," << GetHeight() << ","
+       << GetTypeString() << "," << WidgetId() << extra_args << ");\n";
 
-   if (fBackground == GetDefaultFrameBackground()) {
-
-      if (!GetOptions()) {
-         out <<");" << std::endl;
-      } else {
-         out << "," << GetOptionString() <<");" << std::endl;
-      }
-   } else {
-      out << "," << GetOptionString() << ",ucolor);" << std::endl;
-   }
    if (option && strstr(option, "keep_names"))
-      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");" << std::endl;
+      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");\n";
 
    if (fVmin != 0 || fVmax != (Int_t)fHeight)
-      out << "   " << GetName() <<"->SetRange(" << fVmin << "," << fVmax << ");" << std::endl;
+      out << "   " << GetName() << "->SetRange(" << fVmin << "," << fVmax << ");\n";
 
-   if (fPos != (Int_t)fHeight/2)
-      out << "   " << GetName() <<"->SetPosition(" << GetPosition() << ");" << std::endl;
+   if (fPos != (Int_t)fHeight / 2)
+      out << "   " << GetName() << "->SetPosition(" << GetPosition() << ");\n";
 
    if (fScale != 10)
-      out << "   " << GetName() <<"->SetScale(" << fScale << ");" << std::endl;
+      out << "   " << GetName() << "->SetScale(" << fScale << ");\n";
 
    if (!IsEnabled())
-      out << "   " << GetName() <<"->SetState(kFALSE);" << std::endl;
+      out << "   " << GetName() << "->SetState(kFALSE);\n";
 }

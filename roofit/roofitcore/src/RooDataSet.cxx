@@ -19,7 +19,7 @@
 \class RooDataSet
 \ingroup Roofitcore
 
-RooDataSet is a container class to hold unbinned data. The binned equivalent is
+Container class to hold unbinned data. The binned equivalent is
 RooDataHist. In RooDataSet, each data point in N-dimensional space is represented
 by a RooArgSet of RooRealVar, RooCategory or RooStringVar objects, which can be
 retrieved using get().
@@ -47,10 +47,8 @@ See RooAbsData::plotOn().
 There are two storage backends:
 - RooVectorDataStore (default): std::vectors in memory. They are fast, but they
 cannot be serialised if the dataset exceeds a size of 1 Gb
-- RooTreeDataStore: Uses a TTree, which can be file backed if a file is opened
-before creating the dataset. This significantly reduces the memory pressure, as the
-baskets of the tree can be written to a file, and only the basket that's currently
-being read stays in RAM.
+- RooTreeDataStore: Uses a TTree under the hood. Note that the TTree is not
+attached to any currently-opened TFile in order to avoid double-ownership.
   - Enable tree-backed storage similar to this:
   ```
   TFile outputFile("filename.root", "RECREATE");
@@ -69,7 +67,7 @@ For the inverse conversion, see `RooAbsData::convertToVectorStore()`.
 
 
 ### Creating a dataset using RDataFrame
-\see RooAbsDataHelper, rf408_RDataFrameToRooFit.C
+See RooAbsDataHelper, rf408_RDataFrameToRooFit.C
 
 ### Uniquely identifying RooDataSet objects
 
@@ -88,6 +86,7 @@ the new `RooAbsData::uniqueId()`.
 #include "RooAbsReal.h"
 #include "Roo1DTable.h"
 #include "RooCategory.h"
+#include "RooFormulaUtils.h"
 #include "RooFormulaVar.h"
 #include "RooArgList.h"
 #include "RooRealVar.h"
@@ -99,8 +98,7 @@ the new `RooAbsData::uniqueId()`.
 #include "RooVectorDataStore.h"
 #include "RooCompositeDataStore.h"
 #include "RooSentinel.h"
-#include "RooTrace.h"
-#include "RooHelpers.h"
+#include "RooFitImplHelpers.h"
 
 #include "ROOT/StringUtils.hxx"
 
@@ -109,85 +107,128 @@ the new `RooAbsData::uniqueId()`.
 #include "TFile.h"
 #include "TBuffer.h"
 #include "strlcpy.h"
-#include "snprintf.h"
 
+#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <fstream>
 
 
-using namespace std;
+using std::endl, std::string, std::map, std::list, std::ifstream, std::ofstream, std::ostream;
 
-ClassImp(RooDataSet);
 
-#ifndef USEMEMPOOLFORDATASET
 void RooDataSet::cleanup() {}
-#else
-
-#include "MemPoolForRooSets.h"
-
-RooDataSet::MemPool* RooDataSet::memPool() {
-  RooSentinel::activate();
-  static auto * memPool = new RooDataSet::MemPool();
-  return memPool;
-}
-
-void RooDataSet::cleanup() {
-  auto pool = memPool();
-  pool->teardown();
-
-  //The pool will have to leak if it's not empty at this point.
-  if (pool->empty())
-    delete pool;
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Overloaded new operator guarantees that all RooDataSets allocated with new
-/// have a unique address, a property that is exploited in several places
-/// in roofit to quickly index contents on normalization set pointers.
-/// The memory pool only allocates space for the class itself. The elements
-/// stored in the set are stored outside the pool.
-
-void* RooDataSet::operator new (size_t bytes)
-{
-  //This will fail if a derived class uses this operator
-  assert(sizeof(RooDataSet) == bytes);
-
-  return memPool()->allocate(bytes);
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Memory is owned by pool, we need to do nothing to release it
-
-void RooDataSet::operator delete (void* ptr)
-{
-  // Decrease use count in pool that ptr is on
-  if (memPool()->deallocate(ptr))
-    return;
-
-  std::cerr << __func__ << " " << ptr << " is not in any of the pools." << std::endl;
-
-  // Not part of any pool; use global op delete:
-  ::operator delete(ptr);
-}
-
-#endif
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor for persistence
 
-RooDataSet::RooDataSet() : _wgtVar(0)
+RooDataSet::RooDataSet()
 {
-  TRACE_CREATE
 }
 
+namespace {
 
+struct FinalizeVarsOutput {
+   RooArgSet finalVars;
+   std::unique_ptr<RooRealVar> weight;
+   std::string weightVarName;
+   RooArgSet errorSet;
+};
 
+FinalizeVarsOutput finalizeVars(RooArgSet const &vars,
+                                RooAbsArg * indexCat,
+                                const char* wgtVarName,
+                                RooAbsData* impData,
+                                RooLinkedList const &impSliceData,
+                                RooArgSet * errorSet)
+{
+   FinalizeVarsOutput out;
+   out.finalVars.add(vars);
 
+   // Gather all imported weighted datasets to infer the weight variable name
+   // and whether we need weight errors
+   std::vector<RooAbsData*> weightedImpDatasets;
+   if(impData && impData->isWeighted()) weightedImpDatasets.push_back(impData);
+   for(auto * data : static_range_cast<RooAbsData*>(impSliceData)) {
+      if(data->isWeighted()) {
+         weightedImpDatasets.push_back(data);
+      }
+   }
+
+   bool needsWeightErrors = false;
+
+   // Figure out if the weight needs to store errors
+   for(RooAbsData * data : weightedImpDatasets) {
+      if(dynamic_cast<RooDataHist const*>(data)) {
+         needsWeightErrors = true;
+      }
+   }
+
+   if (indexCat) {
+      out.finalVars.add(*indexCat, true);
+   }
+
+   out.weightVarName = wgtVarName ? wgtVarName : "";
+
+   if(out.weightVarName.empty()) {
+      // Even if no weight variable is specified, we want to have one if we are
+      // importing weighted datasets
+      for(RooAbsData * data : weightedImpDatasets) {
+         if(auto ds = dynamic_cast<RooDataSet const*>(data)) {
+            // If the imported data is a RooDataSet, we take over its weight variable name
+            out.weightVarName = ds->weightVar()->GetName();
+            break;
+         } else {
+            out.weightVarName = RooFit::WeightVar().getString(0); // to get the default weight variable name
+            // Don't break here! The next imported data might be a RooDataSet,
+            // and in that case we want to take over its weight name instead of
+            // using the default one.
+         }
+      }
+   }
+
+   // If the weight variable is required but is not in the set, create and add
+   // it on the fly
+   RooAbsArg * wgtVar = out.finalVars.find(out.weightVarName.c_str());
+   if (!out.weightVarName.empty() && !wgtVar) {
+      const char* name = out.weightVarName.c_str();
+      out.weight = std::make_unique<RooRealVar>(name, name, 1.0);
+      wgtVar = out.weight.get();
+      out.finalVars.add(*out.weight);
+   }
+
+   if(needsWeightErrors) {
+      out.errorSet.add(*wgtVar);
+   }
+
+   // Combine the error set figured out by finalizeVars and the ones passed by the user
+   if(errorSet) out.errorSet.add(*errorSet, /*silent=*/true);
+
+   return out;
+}
+
+// generating an unbinned dataset from a binned one
+std::unique_ptr<RooDataSet> makeDataSetFromDataHist(RooDataHist const &hist)
+{
+   using namespace RooFit;
+
+   RooCmdArg const& wgtVarCmdArg = RooFit::WeightVar();
+   const char* wgtName = wgtVarCmdArg.getString(0);
+   // Instantiate weight variable here such that we can pass it to StoreError()
+   RooRealVar wgtVar{wgtName, wgtName, 1.0};
+
+   RooArgSet vars{*hist.get(), wgtVar};
+
+   // We have to explicitly store the errors that are implied by the sum of weights squared.
+   auto data = std::make_unique<RooDataSet>(hist.GetName(), hist.GetTitle(), vars, wgtVarCmdArg, StoreError(wgtVar));
+   for (int i = 0; i < hist.numEntries(); ++i) {
+      data->add(*hist.get(i), hist.weight(i), std::sqrt(hist.weightSquared(i)));
+   }
+
+   return data;
+}
+
+} // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct an unbinned dataset from a RooArgSet defining the dimensions of the data space. Optionally, data
@@ -195,16 +236,16 @@ RooDataSet::RooDataSet() : _wgtVar(0)
 ///
 /// <table>
 /// <tr><th> %RooCmdArg <th> Effect
-/// <tr><td> Import(TTree*)              <td> Import contents of given TTree. Only braches of the TTree that have names
+/// <tr><td> Import(TTree&)   <td> Import contents of given TTree. Only branches of the TTree that have names
 ///                                corresponding to those of the RooAbsArgs that define the RooDataSet are
 ///                                imported.
 /// <tr><td> ImportFromFile(const char* fileName, const char* treeName) <td> Import tree with given name from file with given name.
-/// <tr><td> Import(RooDataSet&)
-///     <td> Import contents of given RooDataSet. Only observables that are common with the definition of this dataset will be imported
+/// <tr><td> Import(RooAbsData&)
+///     <td> Import contents of given RooDataSet or RooDataHist. Only observables that are common with the definition of this dataset will be imported
 /// <tr><td> Index(RooCategory&)         <td> Prepare import of datasets into a N+1 dimensional RooDataSet
 ///                                where the extra discrete dimension labels the source of the imported histogram.
-/// <tr><td> Import(const char*, RooDataSet&)
-///     <td> Import a dataset to be associated with the given state name of the index category
+/// <tr><td> Import(const char*, RooAbsData&)
+///     <td> Import a RooDataSet or RooDataHist to be associated with the given state name of the index category
 ///                    specified in Index(). If the given state name is not yet defined in the index
 ///                    category it will be added on the fly. The import command can be specified multiple times.
 /// <tr><td> Link(const char*, RooDataSet&) <td> Link contents of supplied RooDataSet to this dataset for given index category state name.
@@ -212,8 +253,8 @@ RooDataSet::RooDataSet() : _wgtVar(0)
 ///                                   of this dataset. Note that link is active for both reading and writing, so modifications
 ///                                   to the aggregate dataset will also modify its components. Link() and Import() are mutually exclusive.
 /// <tr><td> OwnLinked()                    <td> Take ownership of all linked datasets
-/// <tr><td> Import(map<string,RooDataSet*>&) <td> As above, but allows specification of many imports in a single operation
-/// <tr><td> Link(map<string,RooDataSet*>&)   <td> As above, but allows specification of many links in a single operation
+/// <tr><td> Import(std::map<string,RooAbsData*>&) <td> As above, but allows specification of many imports in a single operation
+/// <tr><td> Link(std::map<string,RooDataSet*>&)   <td> As above, but allows specification of many links in a single operation
 /// <tr><td> Cut(const char*) <br>
 ///     Cut(RooFormulaVar&)
 ///     <td> Apply the given cut specification when importing data
@@ -230,17 +271,18 @@ RooDataSet::RooDataSet() : _wgtVar(0)
 
 RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet& vars, const RooCmdArg& arg1, const RooCmdArg& arg2, const RooCmdArg& arg3,
              const RooCmdArg& arg4,const RooCmdArg& arg5,const RooCmdArg& arg6,const RooCmdArg& arg7,const RooCmdArg& arg8)  :
-  RooAbsData(name,title,RooArgSet(vars,(RooAbsArg*)RooCmdConfig::decodeObjOnTheFly("RooDataSet::RooDataSet", "IndexCat",0,0,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8)))
+  RooAbsData(name,title,{})
 {
+
   // Define configuration for this method
-  RooCmdConfig pc(Form("RooDataSet::ctor(%s)",GetName())) ;
+  RooCmdConfig pc("RooDataSet::ctor(" + std::string(GetName()) + ")");
   pc.defineInt("ownLinked","OwnLinked",0) ;
   pc.defineObject("impTree","ImportTree",0) ;
   pc.defineObject("impData","ImportData",0) ;
   pc.defineObject("indexCat","IndexCat",0) ;
-  pc.defineObject("impSliceData","ImportDataSlice",0,0,true) ; // array
+  pc.defineObject("impSliceData","ImportDataSlice",0,nullptr,true) ; // array
   pc.defineString("impSliceState","ImportDataSlice",0,"",true) ; // array
-  pc.defineObject("lnkSliceData","LinkDataSlice",0,0,true) ; // array
+  pc.defineObject("lnkSliceData","LinkDataSlice",0,nullptr,true) ; // array
   pc.defineString("lnkSliceState","LinkDataSlice",0,"",true) ; // array
   pc.defineString("cutSpec","CutSpec",0,"") ;
   pc.defineObject("cutVar","CutVar",0) ;
@@ -255,7 +297,7 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
   pc.defineObject("dummy2","LinkDataSliceMany",0) ;
   pc.defineSet("errorSet","StoreError",0) ;
   pc.defineSet("asymErrSet","StoreAsymError",0) ;
-  pc.defineSet("glObs","GlobalObservables",0,0) ;
+  pc.defineSet("glObs","GlobalObservables",0,nullptr) ;
   pc.defineMutex("ImportTree","ImportData","ImportDataSlice","LinkDataSlice","ImportFromFile") ;
   pc.defineMutex("CutSpec","CutVar") ;
   pc.defineMutex("WeightVarName","WeightVar") ;
@@ -273,15 +315,16 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
   // Process & check varargs
   pc.process(l) ;
   if (!pc.ok(true)) {
-    assert(0) ;
-    return ;
+    const std::string errMsg = "Error in RooDataSet constructor: command argument list could not be processed";
+    coutE(InputArguments) << errMsg << std::endl;
+    throw std::invalid_argument(errMsg);
   }
 
   if(pc.getSet("glObs")) setGlobalObservables(*pc.getSet("glObs"));
 
   // Extract relevant objects
   TTree* impTree = static_cast<TTree*>(pc.getObject("impTree")) ;
-  RooDataSet* impData = static_cast<RooDataSet*>(pc.getObject("impData")) ;
+  auto impData = static_cast<RooAbsData*>(pc.getObject("impData")) ;
   RooFormulaVar* cutVar = static_cast<RooFormulaVar*>(pc.getObject("cutVar")) ;
   const char* cutSpec = pc.getString("cutSpec","",true) ;
   const char* cutRange = pc.getString("cutRange","",true) ;
@@ -292,12 +335,24 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
   const char* lnkSliceNames = pc.getString("lnkSliceState","",true) ;
   const RooLinkedList& lnkSliceData = pc.getObjectList("lnkSliceData") ;
   RooCategory* indexCat = static_cast<RooCategory*>(pc.getObject("indexCat")) ;
-  RooArgSet* errorSet = pc.getSet("errorSet") ;
   RooArgSet* asymErrorSet = pc.getSet("asymErrSet") ;
   const char* fname = pc.getString("fname") ;
   const char* tname = pc.getString("tname") ;
   Int_t ownLinked = pc.getInt("ownLinked") ;
   Int_t newWeight = pc.getInt("newWeight1") + pc.getInt("newWeight2") ;
+
+  // Lookup name of weight variable if it was specified by object reference
+  if(wgtVar) {
+    wgtVarName = wgtVar->GetName();
+  }
+
+  auto finalVarsInfo = finalizeVars(vars,indexCat,wgtVarName,impData,impSliceData, pc.getSet("errorSet"));
+  initializeVars(finalVarsInfo.finalVars);
+  if(!finalVarsInfo.weightVarName.empty()) {
+    wgtVarName = finalVarsInfo.weightVarName.c_str();
+  }
+
+  RooArgSet* errorSet =  finalVarsInfo.errorSet.empty() ? nullptr : &finalVarsInfo.errorSet;
 
   // Case 1 --- Link multiple dataset as slices
   if (lnkSliceNames) {
@@ -311,24 +366,16 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
       auto hiter = lnkSliceData.begin();
       while (token) {
         hmap[token] = static_cast<RooAbsData *>(*hiter);
-        token = strtok(0, ",");
+        token = strtok(nullptr, ",");
         ++hiter;
       }
     }
 
-    // Lookup name of weight variable if it was specified by object reference
-    if (wgtVar) {
-      // coverity[UNUSED_VALUE]
-      wgtVarName = wgtVar->GetName() ;
-    }
-
-    appendToDir(this,true) ;
-
     // Initialize RooDataSet with optional weight variable
-    initialize(0) ;
+    initialize(nullptr) ;
 
     map<string,RooAbsDataStore*> storeMap ;
-    RooCategory* icat = (RooCategory*) (indexCat ? _vars.find(indexCat->GetName()) : 0 ) ;
+    RooCategory* icat = static_cast<RooCategory*> (indexCat ? _vars.find(indexCat->GetName()) : nullptr ) ;
     if (!icat) {
       throw std::string("RooDataSet::RooDataSet() ERROR in constructor, cannot find index category") ;
     }
@@ -336,7 +383,7 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
       // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
       if (indexCat && !indexCat->hasLabel(hiter->first)) {
         indexCat->defineType(hiter->first) ;
-        coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
+        coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << std::endl ;
       }
       if (icat && !icat->hasLabel(hiter->first)) {
         icat->defineType(hiter->first) ;
@@ -353,18 +400,8 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
     // Create composite datastore
     _dstore = std::make_unique<RooCompositeDataStore>(name,title,_vars,*icat,storeMap) ;
 
-  } else {
-
-    if (wgtVar) {
-      wgtVarName = wgtVar->GetName() ;
-    }
-
-    // Clone weight variable of imported dataset if we are not weighted
-    if (!wgtVar && !wgtVarName && impData && impData->_wgtVar) {
-      _wgtVar = (RooRealVar*) impData->_wgtVar->createFundamental() ;
-      _vars.addOwned(*_wgtVar) ;
-      wgtVarName = _wgtVar->GetName() ;
-    }
+    return;
+  }
 
     // Create empty datastore
     RooTreeDataStore* tstore = nullptr;
@@ -383,10 +420,21 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
 
 
     // Make import mapping if index category is specified
-    map<string,RooDataSet*> hmap ;
+    std::map<string,RooAbsData*> hmap ;
     if (indexCat) {
       auto hiter = impSliceData.begin() ;
       for (const auto& token : ROOT::Split(impSliceNames, ",")) {
+
+        if (!indexCat->hasLabel(token)) {
+           std::stringstream errorMsgStream;
+           errorMsgStream << "RooDataSet::RooDataSet(\"" << GetName() << "\") "
+                          << "you are providing import data for the category state \"" << token
+                          << "\", but the index category \"" << indexCat->GetName() << "\" has no such state!";
+           const std::string errorMsg = errorMsgStream.str();
+           coutE(InputArguments) << errorMsg << std::endl;
+           throw std::invalid_argument(errorMsg);
+        }
+
         hmap[token] = static_cast<RooDataSet*>(*hiter);
         ++hiter;
       }
@@ -394,389 +442,84 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet&
 
     // process StoreError requests
     if (errorSet) {
-      std::unique_ptr<RooArgSet> intErrorSet{static_cast<RooArgSet*>(_vars.selectCommon(*errorSet))};
+      std::unique_ptr<RooArgSet> intErrorSet{_vars.selectCommon(*errorSet)};
       intErrorSet->setAttribAll("StoreError") ;
       for(RooAbsArg* arg : *intErrorSet) {
         arg->attachToStore(*_dstore) ;
       }
     }
     if (asymErrorSet) {
-      std::unique_ptr<RooArgSet> intAsymErrorSet{static_cast<RooArgSet*>(_vars.selectCommon(*asymErrorSet))};
+      std::unique_ptr<RooArgSet> intAsymErrorSet{_vars.selectCommon(*asymErrorSet)};
       intAsymErrorSet->setAttribAll("StoreAsymError") ;
       for(RooAbsArg* arg : *intAsymErrorSet) {
         arg->attachToStore(*_dstore) ;
       }
     }
 
-    // Lookup name of weight variable if it was specified by object reference
-    if (wgtVar) {
-      wgtVarName = wgtVar->GetName() ;
-    }
-
-
-    appendToDir(this,true) ;
-
     // Initialize RooDataSet with optional weight variable
-    if (wgtVarName && *wgtVarName) {
-      // Use the supplied weight column
-      initialize(wgtVarName) ;
+    initialize(wgtVarName);
 
-    } else {
-      if (impData && impData->_wgtVar && vars.find(impData->_wgtVar->GetName())) {
+   // Import one or more datasets
+   std::unique_ptr<RooFormulaVar> cutVarTmp;
 
-        // Use the weight column of the source data set
-        initialize(impData->_wgtVar->GetName()) ;
+   if (indexCat) {
+      // Case 2 --- Import multiple RooDataSets as slices
+      loadValuesFromSlices(*indexCat, hmap, cutRange, cutVar, cutSpec);
+   } else if (impData) {
+      // Case 3 --- Import RooDataSet
+      std::unique_ptr<RooDataSet> impDataSet;
 
-      } else if (indexCat) {
+      // If we are importing a RooDataHist, first convert it to a RooDataSet
+      if(impData->InheritsFrom(RooDataHist::Class())) {
+         impDataSet = makeDataSetFromDataHist(static_cast<RooDataHist const &>(*impData));
+         impData = impDataSet.get();
+      }
+      if (cutSpec) {
+         cutVarTmp = std::make_unique<RooFormulaVar>(cutSpec, cutSpec, *impData->get(), /*checkVariables=*/false);
+         cutVar = cutVarTmp.get();
+      }
+      _dstore->loadValues(impData->store(), cutVar, cutRange);
 
-        RooDataSet* firstDS = hmap.begin()->second ;
-        if (firstDS->_wgtVar && vars.find(firstDS->_wgtVar->GetName())) {
-          initialize(firstDS->_wgtVar->GetName()) ;
-        } else {
-          initialize(0) ;
-        }
+   } else if (impTree || (fname && strlen(fname))) {
+      // Case 4 --- Import TTree from memory / file
+      std::unique_ptr<TFile> file;
+
+      if (impTree == nullptr) {
+         file.reset(TFile::Open(fname));
+         if (!file) {
+            std::stringstream ss;
+            ss << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname
+               << "' cannot be opened or does not exist";
+            const std::string errMsg = ss.str();
+            coutE(InputArguments) << errMsg << std::endl;
+            throw std::invalid_argument(errMsg);
+         }
+
+         file->GetObject(tname, impTree);
+         if (!impTree) {
+            std::stringstream ss;
+            ss << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname
+               << "' does not contain a TTree named '" << tname << "'";
+            const std::string errMsg = ss.str();
+            coutE(InputArguments) << errMsg << std::endl;
+            throw std::invalid_argument(errMsg);
+         }
+      }
+
+      if (cutSpec) {
+         cutVarTmp = std::make_unique<RooFormulaVar>(cutSpec, cutSpec, _vars, /*checkVariables=*/false);
+         cutVar = cutVarTmp.get();
+      }
+
+      if (tstore) {
+         tstore->loadValues(impTree, cutVar, cutRange);
       } else {
-        initialize(0) ;
+         RooTreeDataStore tmpstore(name, title, _vars, wgtVarName);
+         tmpstore.loadValues(impTree, cutVar, cutRange);
+         _dstore->append(tmpstore);
       }
-    }
-
-    // Import one or more datasets with a cut specification
-    if (cutSpec && *cutSpec) {
-
-      // Create a RooFormulaVar cut from given cut expression
-      if (indexCat) {
-
-        // Case 2a --- Import multiple RooDataSets as slices with cutspec
-        RooCategory* icat = (RooCategory*) _vars.find(indexCat->GetName()) ;
-        for (map<string,RooDataSet*>::iterator hiter = hmap.begin() ; hiter!=hmap.end() ; ++hiter) {
-          // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
-          if (!indexCat->hasLabel(hiter->first)) {
-            indexCat->defineType(hiter->first) ;
-            coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
-          }
-          if (!icat->hasLabel(hiter->first)) {
-            icat->defineType(hiter->first) ;
-          }
-          icat->setLabel(hiter->first.c_str()) ;
-
-          RooFormulaVar cutVarTmp(cutSpec,cutSpec,hiter->second->_vars) ;
-          _dstore->loadValues(hiter->second->store(),&cutVarTmp,cutRange) ;
-        }
-
-      } else if (impData) {
-
-        // Case 3a --- Import RooDataSet with cutspec
-        RooFormulaVar cutVarTmp(cutSpec,cutSpec,impData->_vars) ;
-        _dstore->loadValues(impData->store(),&cutVarTmp,cutRange);
-      } else if (impTree) {
-
-        // Case 4a --- Import TTree from memory with cutspec
-        RooFormulaVar cutVarTmp(cutSpec,cutSpec,_vars) ;
-        if (tstore) {
-          tstore->loadValues(impTree,&cutVarTmp,cutRange);
-        } else {
-          RooTreeDataStore tmpstore(name,title,_vars,wgtVarName) ;
-          tmpstore.loadValues(impTree,&cutVarTmp,cutRange) ;
-          _dstore->append(tmpstore) ;
-        }
-      } else if (fname && strlen(fname)) {
-
-        // Case 5a --- Import TTree from file with cutspec
-        std::unique_ptr<TFile> f{TFile::Open(fname)};
-        if (!f) {
-          coutE(InputArguments) << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname << "' cannot be opened or does not exist" << endl ;
-          throw string(Form("RooDataSet::ctor(%s) ERROR file %s cannot be opened or does not exist",GetName(),fname)) ;
-        }
-        TTree* t = dynamic_cast<TTree*>(f->Get(tname)) ;
-        if (!t) {
-          coutE(InputArguments) << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname << "' does not contain a TTree named '" << tname << "'" << endl ;
-          throw string(Form("RooDataSet::ctor(%s) ERROR file %s does not contain a TTree named %s",GetName(),fname,tname)) ;
-        }
-        RooFormulaVar cutVarTmp(cutSpec,cutSpec,_vars) ;
-        if (tstore) {
-          tstore->loadValues(t,&cutVarTmp,cutRange);
-        } else {
-          RooTreeDataStore tmpstore(name,title,_vars,wgtVarName) ;
-          tmpstore.loadValues(t,&cutVarTmp,cutRange) ;
-          _dstore->append(tmpstore) ;
-        }
-        f->Close() ;
-
-      }
-
-      // Import one or more datasets with a cut formula
-    } else if (cutVar) {
-
-      if (indexCat) {
-
-        // Case 2b --- Import multiple RooDataSets as slices with cutvar
-
-        RooCategory* icat = (RooCategory*) _vars.find(indexCat->GetName()) ;
-        for (map<string,RooDataSet*>::iterator hiter = hmap.begin() ; hiter!=hmap.end() ; ++hiter) {
-          // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
-          if (!indexCat->hasLabel(hiter->first)) {
-            indexCat->defineType(hiter->first) ;
-            coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
-          }
-          if (!icat->hasLabel(hiter->first)) {
-            icat->defineType(hiter->first) ;
-          }
-          icat->setLabel(hiter->first.c_str()) ;
-          _dstore->loadValues(hiter->second->store(),cutVar,cutRange) ;
-        }
-
-
-      } else if (impData) {
-        // Case 3b --- Import RooDataSet with cutvar
-        _dstore->loadValues(impData->store(),cutVar,cutRange);
-      } else if (impTree) {
-        // Case 4b --- Import TTree from memory with cutvar
-        if (tstore) {
-          tstore->loadValues(impTree,cutVar,cutRange);
-        } else {
-          RooTreeDataStore tmpstore(name,title,_vars,wgtVarName) ;
-          tmpstore.loadValues(impTree,cutVar,cutRange) ;
-          _dstore->append(tmpstore) ;
-        }
-      } else if (fname && strlen(fname)) {
-        // Case 5b --- Import TTree from file with cutvar
-        std::unique_ptr<TFile> f{TFile::Open(fname)};
-        if (!f) {
-          coutE(InputArguments) << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname << "' cannot be opened or does not exist" << endl ;
-          throw string(Form("RooDataSet::ctor(%s) ERROR file %s cannot be opened or does not exist",GetName(),fname)) ;
-        }
-        TTree* t = dynamic_cast<TTree*>(f->Get(tname)) ;
-        if (!t) {
-          coutE(InputArguments) << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname << "' does not contain a TTree named '" << tname << "'" << endl ;
-          throw string(Form("RooDataSet::ctor(%s) ERROR file %s does not contain a TTree named %s",GetName(),fname,tname)) ;
-        }
-        if (tstore) {
-          tstore->loadValues(t,cutVar,cutRange);
-        } else {
-          RooTreeDataStore tmpstore(name,title,_vars,wgtVarName) ;
-          tmpstore.loadValues(t,cutVar,cutRange) ;
-          _dstore->append(tmpstore) ;
-        }
-
-        f->Close() ;
-      }
-
-      // Import one or more datasets without cuts
-    } else {
-
-      if (indexCat) {
-
-        RooCategory* icat = (RooCategory*) _vars.find(indexCat->GetName()) ;
-        for (map<string,RooDataSet*>::iterator hiter = hmap.begin() ; hiter!=hmap.end() ; ++hiter) {
-          // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
-          if (!indexCat->hasLabel(hiter->first)) {
-            indexCat->defineType(hiter->first) ;
-            coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << hiter->first << "\" in index category " << indexCat->GetName() << endl ;
-          }
-          if (!icat->hasLabel(hiter->first)) {
-            icat->defineType(hiter->first) ;
-          }
-          icat->setLabel(hiter->first.c_str()) ;
-          // Case 2c --- Import multiple RooDataSets as slices
-          _dstore->loadValues(hiter->second->store(),0,cutRange) ;
-        }
-
-      } else if (impData) {
-        // Case 3c --- Import RooDataSet
-        _dstore->loadValues(impData->store(),0,cutRange);
-
-      } else if (impTree || (fname && strlen(fname))) {
-        // Case 4c --- Import TTree from memory / file
-        std::unique_ptr<TFile> file;
-
-        if (impTree == nullptr) {
-          file.reset(TFile::Open(fname));
-          if (!file) {
-            coutE(InputArguments) << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname << "' cannot be opened or does not exist" << endl ;
-            throw std::invalid_argument(Form("RooDataSet::ctor(%s) ERROR file %s cannot be opened or does not exist",GetName(),fname)) ;
-          }
-
-          file->GetObject(tname, impTree);
-          if (!impTree) {
-            coutE(InputArguments) << "RooDataSet::ctor(" << GetName() << ") ERROR file '" << fname << "' does not contain a TTree named '" << tname << "'" << endl ;
-            throw std::invalid_argument(Form("RooDataSet::ctor(%s) ERROR file %s does not contain a TTree named %s",GetName(),fname,tname)) ;
-          }
-        }
-
-        if (tstore) {
-          tstore->loadValues(impTree,0,cutRange);
-        } else {
-          RooTreeDataStore tmpstore(name,title,_vars,wgtVarName) ;
-          tmpstore.loadValues(impTree,0,cutRange) ;
-          _dstore->append(tmpstore) ;
-        }
-      }
-    }
-
-  }
-  TRACE_CREATE
+   }
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor of an empty data set from a RooArgSet defining the dimensions
-/// of the data space.
-
-RooDataSet::RooDataSet(RooStringView name, RooStringView title, const RooArgSet& vars, const char* wgtVarName) :
-  RooAbsData(name,title,vars)
-{
-//   cout << "RooDataSet::ctor(" << this << ") storageType = " << ((defaultStorageType==Tree)?"Tree":"Vector") << endl ;
-  _dstore = defaultStorageType==Tree ? static_cast<std::unique_ptr<RooAbsDataStore>>(std::make_unique<RooTreeDataStore>(name,title,_vars,wgtVarName)) :
-                                       static_cast<std::unique_ptr<RooAbsDataStore>>(std::make_unique<RooVectorDataStore>(name,title,_vars,wgtVarName)) ;
-
-  appendToDir(this,true) ;
-  initialize(wgtVarName) ;
-  TRACE_CREATE
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor of a data set from (part of) an existing data
-/// set. The dimensions of the data set are defined by the 'vars'
-/// RooArgSet, which can be identical to 'dset' dimensions, or a
-/// subset thereof. The 'cuts' string is an optional RooFormula
-/// expression and can be used to select the subset of the data
-/// points in 'dset' to be copied. The cut expression can refer to
-/// any variable in the source dataset. For cuts involving variables
-/// other than those contained in the source data set, such as
-/// intermediate formula objects, use the equivalent constructor
-/// accepting RooFormulaVar reference as cut specification.
-///
-/// For most uses the RooAbsData::reduce() wrapper function, which
-/// uses this constructor, is the most convenient way to create a
-/// subset of an existing data
-
-RooDataSet::RooDataSet(RooStringView name, RooStringView title, RooDataSet *dset,
-             const RooArgSet& vars, const char *cuts, const char* wgtVarName) :
-  RooAbsData(name,title,vars)
-{
-  // Initialize datastore
-  if(defaultStorageType == Tree) {
-    _dstore = std::make_unique<RooTreeDataStore>(name,title,_vars,*dset->_dstore,cuts,wgtVarName);
-  } else {
-    std::unique_ptr<RooFormulaVar> cutVar;
-    if (cuts && strlen(cuts) != 0) {
-      // Create a RooFormulaVar cut from given cut expression
-      cutVar = std::make_unique<RooFormulaVar>(cuts, cuts, _vars, /*checkVariables=*/false);
-    }
-    _dstore = std::make_unique<RooVectorDataStore>(name,title,
-            /*tds=*/*dset->_dstore,
-            /*vars=*/_vars,
-            /*cutVar=*/cutVar.get(),
-            /*cutRange=*/nullptr,
-            /*nStart=*/0,
-            /*nStop=*/dset->numEntries(),
-            /*wgtVarName=*/wgtVarName);
-  }
-
-  appendToDir(this,true) ;
-
-  if (wgtVarName) {
-    // Use the supplied weight column
-    initialize(wgtVarName) ;
-  } else {
-    if (dset->_wgtVar && vars.find(dset->_wgtVar->GetName())) {
-      // Use the weight column of the source data set
-      initialize(dset->_wgtVar->GetName()) ;
-    } else {
-      initialize(0) ;
-    }
-  }
-  TRACE_CREATE
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor of a data set from (part of) an existing data
-/// set. The dimensions of the data set are defined by the 'vars'
-/// RooArgSet, which can be identical to 'dset' dimensions, or a
-/// subset thereof. The 'cutVar' formula variable is used to select
-/// the subset of data points to be copied.  For subsets without
-/// selection on the data points, or involving cuts operating
-/// exclusively and directly on the data set dimensions, the
-/// equivalent constructor with a string based cut expression is
-/// recommended.
-///
-/// For most uses the RooAbsData::reduce() wrapper function, which
-/// uses this constructor, is the most convenient way to create a
-/// subset of an existing data
-
-RooDataSet::RooDataSet(RooStringView name, RooStringView title, RooDataSet *dset,
-             const RooArgSet& vars, const RooFormulaVar& cutVar, const char* wgtVarName)
-  : RooDataSet{name, title, dset, vars, cutVar.expression(), wgtVarName} {}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor of a data set from (part of) an ROOT TTree. The dimensions
-/// of the data set are defined by the 'vars' RooArgSet. For each dimension
-/// specified, the TTree must have a branch with the same name. For category
-/// branches, this branch should contain the numeric index value. Real dimensions
-/// can be constructed from either 'double' or 'Float_t' tree branches. In the
-/// latter case, an automatic conversion is applied.
-///
-/// The 'cutVar' formula variable
-/// is used to select the subset of data points to be copied.
-/// For subsets without selection on the data points, or involving cuts
-/// operating exclusively and directly on the data set dimensions, the equivalent
-/// constructor with a string based cut expression is recommended.
-
-RooDataSet::RooDataSet(RooStringView name, RooStringView title, TTree *theTree,
-    const RooArgSet& vars, const RooFormulaVar& cutVar, const char* wgtVarName)
-  : RooDataSet{name, title, theTree, vars, cutVar.expression(), wgtVarName} {}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor of a data set from (part of) a ROOT TTree.
-///
-/// \param[in] name Name of this dataset.
-/// \param[in] title Title for e.g. plotting.
-/// \param[in] theTree Tree to be imported.
-/// \param[in] vars Defines the columns of the data set. For each dimension
-/// specified, the TTree must have a branch with the same name. For category
-/// branches, this branch should contain the numeric index value. Real dimensions
-/// can be constructed from either 'double' or 'Float_t' tree branches. In the
-/// latter case, an automatic conversion is applied.
-/// \param[in] cuts Optional RooFormula expression to select the subset of the data points
-/// to be imported. The cut expression can refer to any variable in `vars`.
-/// \warning The expression only evaluates variables that are also in `vars`.
-/// Passing e.g.
-/// ```
-/// RooDataSet("data", "data", tree, RooArgSet(x), "x>y")
-/// ```
-/// Will load `x` from the tree, but leave `y` at an undefined value.
-/// If other expressions are needed, such as intermediate formula objects, use
-/// RooDataSet::RooDataSet(const char*,const char*,TTree*,const RooArgSet&,const RooFormulaVar&,const char*)
-/// \param[in] wgtVarName Name of the variable in `vars` that represents an event weight.
-RooDataSet::RooDataSet(RooStringView name, RooStringView title, TTree* theTree,
-    const RooArgSet& vars, const char* cuts, const char* wgtVarName) :
-  RooAbsData(name,title,vars)
-{
-  // Create tree version of datastore
-  auto tstore = std::make_unique<RooTreeDataStore>(name,title,_vars,*theTree,cuts,wgtVarName);
-
-  // Convert to vector datastore if needed
-  if (defaultStorageType==Tree) {
-    _dstore = std::move(tstore);
-  } else if (defaultStorageType==Vector) {
-    _dstore = std::make_unique<RooVectorDataStore>(name,title,_vars,wgtVarName);
-    static_cast<RooVectorDataStore&>(*_dstore).append(*tstore) ;
-  }
-
-  appendToDir(this,true) ;
-
-  initialize(wgtVarName) ;
-  TRACE_CREATE
-}
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy constructor
@@ -784,66 +527,48 @@ RooDataSet::RooDataSet(RooStringView name, RooStringView title, TTree* theTree,
 RooDataSet::RooDataSet(RooDataSet const & other, const char* newname) :
   RooAbsData(other,newname), RooDirItem()
 {
-  appendToDir(this,true) ;
-  initialize(other._wgtVar?other._wgtVar->GetName():0) ;
-  TRACE_CREATE
+   initialize(other._wgtVar ? other._wgtVar->GetName() : nullptr);
 }
-
-////////////////////////////////////////////////////////////////////////////////
-/// Protected constructor for internal use only
-
-RooDataSet::RooDataSet(RooStringView name, RooStringView title, RooDataSet *dset,
-             const RooArgSet& vars, const RooFormulaVar* cutVar, const char* cutRange,
-             std::size_t nStart, std::size_t nStop) :
-  RooAbsData(name,title,vars)
-{
-  _dstore = dset->_dstore->reduce(name, title, _vars, cutVar, cutRange, nStart, nStop);
-
-   _cachedVars.add(_dstore->cachedVars());
-
-   appendToDir(this, true);
-   initialize(dset->_wgtVar ? dset->_wgtVar->GetName() : 0);
-   TRACE_CREATE
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Helper function for constructor that adds optional weight variable to construct
-/// total set of observables
-
-RooArgSet RooDataSet::addWgtVar(const RooArgSet& origVars, const RooAbsArg* wgtVar)
-{
-  RooArgSet tmp(origVars) ;
-  if (wgtVar) tmp.add(*wgtVar) ;
-  return tmp ;
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Return an empty clone of this dataset. If vars is not null, only the variables in vars
 /// are added to the definition of the empty clone
 
-RooAbsData* RooDataSet::emptyClone(const char* newName, const char* newTitle, const RooArgSet* vars, const char* wgtVarName) const
+RooFit::OwningPtr<RooAbsData> RooDataSet::emptyClone(const char* newName, const char* newTitle, const RooArgSet* vars, const char* wgtVarName) const
 {
-  // If variables are given, be sure to include weight variable if it exists and is not included
-  RooArgSet vars2 ;
-  RooRealVar* tmpWgtVar = _wgtVar ;
-  if (wgtVarName && vars && !_wgtVar) {
-    tmpWgtVar = (RooRealVar*) vars->find(wgtVarName) ;
-  }
+   bool useOldWeight = _wgtVar && (wgtVarName == nullptr || strcmp(wgtVarName, _wgtVar->GetName()) == 0);
 
-  if (vars) {
-    vars2.add(*vars) ;
-    if (_wgtVar && !vars2.find(_wgtVar->GetName())) {
-      vars2.add(*_wgtVar) ;
-    }
-  } else {
-    vars2.add(_vars) ;
-  }
+   if(newName == nullptr) newName = GetName();
+   if(newTitle == nullptr) newTitle = GetTitle();
+   if(useOldWeight) wgtVarName = _wgtVar->GetName();
 
-  RooDataSet* dset = new RooDataSet(newName?newName:GetName(),newTitle?newTitle:GetTitle(),vars2,tmpWgtVar?tmpWgtVar->GetName():0) ;
-  //if (_wgtVar) dset->setWeightVar(_wgtVar->GetName()) ;
-  return dset ;
+   RooArgSet vars2;
+   if(vars == nullptr) {
+      vars2.add(_vars);
+   } else {
+      for(RooAbsArg *var : *vars) {
+         // We should take the variables from the original dataset if
+         // available, such that we can query the "StoreError" and
+         // "StoreAsymError" attributes.
+         auto varInData = _vars.find(*var);
+         vars2.add(varInData ? *varInData : *var);
+      }
+      // We also need to add the weight variable of the original dataset if
+      // it's not added yet, again to query the error attributes correctly.
+      if(useOldWeight && !vars2.find(wgtVarName)) vars2.add(*_wgtVar);
+   }
+
+   RooArgSet errorSet;
+   RooArgSet asymErrorSet;
+
+   for(RooAbsArg *var : vars2) {
+      if(var->getAttribute("StoreError")) errorSet.add(*var);
+      if(var->getAttribute("StoreAsymError")) asymErrorSet.add(*var);
+   }
+
+   using namespace RooFit;
+   return RooFit::makeOwningPtr<RooAbsData>(std::make_unique<RooDataSet>(
+      newName, newTitle, vars2, WeightVar(wgtVarName), StoreError(errorSet), StoreAsymError(asymErrorSet)));
 }
 
 
@@ -856,20 +581,20 @@ void RooDataSet::initialize(const char* wgtVarName)
 {
   _varsNoWgt.removeAll() ;
   _varsNoWgt.add(_vars) ;
-  _wgtVar = 0 ;
+  _wgtVar = nullptr ;
   if (wgtVarName) {
     RooAbsArg* wgt = _varsNoWgt.find(wgtVarName) ;
     if (!wgt) {
       coutE(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << "): designated weight variable "
-           << wgtVarName << " not found in set of variables, no weighting will be assigned" << endl ;
+           << wgtVarName << " not found in set of variables, no weighting will be assigned" << std::endl ;
       throw std::invalid_argument("RooDataSet::initialize() weight variable could not be initialised.");
     } else if (!dynamic_cast<RooRealVar*>(wgt)) {
       coutE(DataHandling) << "RooDataSet::RooDataSet(" << GetName() << "): designated weight variable "
-           << wgtVarName << " is not of type RooRealVar, no weighting will be assigned" << endl ;
+           << wgtVarName << " is not of type RooRealVar, no weighting will be assigned" << std::endl ;
       throw std::invalid_argument("RooDataSet::initialize() weight variable could not be initialised.");
     } else {
       _varsNoWgt.remove(*wgt) ;
-      _wgtVar = (RooRealVar*) wgt ;
+      _wgtVar = static_cast<RooRealVar*>(wgt) ;
     }
   }
 }
@@ -879,36 +604,38 @@ void RooDataSet::initialize(const char* wgtVarName)
 ////////////////////////////////////////////////////////////////////////////////
 /// Implementation of RooAbsData virtual method that drives the RooAbsData::reduce() methods
 
-RooAbsData* RooDataSet::reduceEng(const RooArgSet& varSubset, const RooFormulaVar* cutVar, const char* cutRange,
-              std::size_t nStart, std::size_t nStop)
+std::unique_ptr<RooAbsData> RooDataSet::reduceEng(const RooArgSet &varSubset, const RooFormulaVar *cutVar,
+                                                  const char *cutRange, std::size_t nStart, std::size_t nStop) const
 {
-  checkInit() ;
-  RooArgSet tmp(varSubset) ;
-  if (_wgtVar) {
-    tmp.add(*_wgtVar) ;
-  }
+   checkInit();
+   RooArgSet tmp(varSubset);
+   if (_wgtVar) {
+      tmp.add(*_wgtVar);
+   }
 
-  if (!cutRange || strchr(cutRange,',')==0) {
-  return new RooDataSet(GetName(), GetTitle(), this, tmp, cutVar, cutRange, nStart, nStop) ;
-  } else {
-    // Composite case: multiple ranges
-    auto tokens = ROOT::Split(cutRange, ",");
-    if (RooHelpers::checkIfRangesOverlap(tmp, *this, tokens)) {
-      std::stringstream errMsg;
-      errMsg << "Error in RooAbsData::reduce! The ranges " << cutRange << " are overlapping!";
-      throw std::runtime_error(errMsg.str());
-    }
-    RooDataSet * out = nullptr;
-    for (const auto& token : tokens) {
-      if(!out) {
-        out = new RooDataSet(GetName(), GetTitle(), this, tmp, cutVar, token.c_str(), nStart, nStop);
-      } else {
-        RooDataSet appendedData{GetName(), GetTitle(), this, tmp, cutVar, token.c_str(), nStart, nStop};
-        out->append(appendedData);
+   auto createEmptyClone = [&]() { return emptyClone(GetName(), GetTitle(), &tmp); };
+
+   std::unique_ptr<RooAbsData> out{createEmptyClone()};
+
+   if (!cutRange || strchr(cutRange, ',') == nullptr) {
+      auto &ds = static_cast<RooDataSet &>(*out);
+      ds._dstore = _dstore->reduce(ds.GetName(), ds.GetTitle(), ds._vars, cutVar, cutRange, nStart, nStop);
+   } else {
+      // Composite case: multiple ranges
+      auto tokens = ROOT::Split(cutRange, ",");
+      if (RooHelpers::checkIfRangesOverlap(tmp, tokens)) {
+         std::stringstream errMsg;
+         errMsg << "Error in RooAbsData::reduce! The ranges " << cutRange << " are overlapping!";
+         throw std::runtime_error(errMsg.str());
       }
-    }
-    return out;
-  }
+      for (const auto &token : tokens) {
+         std::unique_ptr<RooAbsData> appendedData{createEmptyClone()};
+         auto &ds = static_cast<RooDataSet &>(*appendedData);
+         ds._dstore = _dstore->reduce(ds.GetName(), ds.GetTitle(), ds._vars, cutVar, token.c_str(), nStart, nStop);
+         static_cast<RooDataSet &>(*out).append(ds);
+      }
+   }
+   return out;
 }
 
 
@@ -919,7 +646,6 @@ RooAbsData* RooDataSet::reduceEng(const RooArgSet& varSubset, const RooFormulaVa
 RooDataSet::~RooDataSet()
 {
   removeFromDir(this) ;
-  TRACE_DESTROY
 }
 
 
@@ -927,7 +653,7 @@ RooDataSet::~RooDataSet()
 ////////////////////////////////////////////////////////////////////////////////
 /// Return binned clone of this dataset
 
-RooDataHist* RooDataSet::binnedClone(const char* newName, const char* newTitle) const
+RooFit::OwningPtr<RooDataHist> RooDataSet::binnedClone(const char* newName, const char* newTitle) const
 {
   std::string title;
   std::string name;
@@ -942,7 +668,7 @@ RooDataHist* RooDataSet::binnedClone(const char* newName, const char* newTitle) 
     title = std::string(GetTitle()) + "_binned" ;
   }
 
-  return new RooDataHist(name,title,*get(),*this) ;
+  return RooFit::makeOwningPtr(std::make_unique<RooDataHist>(name,title,*get(),*this));
 }
 
 
@@ -974,22 +700,22 @@ double RooDataSet::weightSquared() const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// \see RooAbsData::getWeightBatch().
-RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t len, bool sumW2 /*=false*/) const {
+std::span<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t len, bool sumW2 /*=false*/) const {
 
   std::size_t nEntries = this->numEntries(); // for the casting to std::size_t
 
-  if(first >= nEntries || (first + len) > nEntries) {
+  if(first + len > nEntries) {
     throw std::runtime_error("RooDataSet::getWeightBatch(): requested range not valid for dataset.");
   }
 
-  RooSpan<const double> allWeights = _dstore->getWeightBatch(0, numEntries());
+  std::span<const double> allWeights = _dstore->getWeightBatch(0, numEntries());
   if(allWeights.empty()) return {};
 
-  if(!sumW2) return {std::cbegin(allWeights) + first, std::cbegin(allWeights) + first + len};
+  if(!sumW2) return {&*(std::cbegin(allWeights) + first), len};
 
   // Treat the sumW2 case with a result buffer, first reset buffer if the
   // number of entries doesn't match with the dataset anymore
-  if(_sumW2Buffer && _sumW2Buffer->size() != nEntries) _sumW2Buffer.reset(nullptr);
+  if(_sumW2Buffer && _sumW2Buffer->size() != nEntries) _sumW2Buffer.reset();
 
   if (!_sumW2Buffer) {
     _sumW2Buffer = std::make_unique<std::vector<double>>();
@@ -1001,7 +727,7 @@ RooSpan<const double> RooDataSet::getWeightBatch(std::size_t first, std::size_t 
     }
   }
 
-  return RooSpan<const double>(_sumW2Buffer->begin() + first, _sumW2Buffer->begin() + first + len);
+  return std::span<const double>(&*(_sumW2Buffer->begin() + first), len);
 }
 
 
@@ -1015,7 +741,7 @@ void RooDataSet::weightError(double& lo, double& hi, ErrorType etype) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// \copydoc RooAbsData::weightError(ErrorType)
+/// \copydoc RooAbsData::weightError(RooAbsData::ErrorType)
 /// \param etype error type
 double RooDataSet::weightError(ErrorType etype) const
 {
@@ -1029,7 +755,7 @@ double RooDataSet::weightError(ErrorType etype) const
 const RooArgSet* RooDataSet::get(Int_t index) const
 {
   const RooArgSet* ret  = RooAbsData::get(index) ;
-  return ret ? &_varsNoWgt : 0 ;
+  return ret ? &_varsNoWgt : nullptr ;
 }
 
 
@@ -1047,11 +773,11 @@ double RooDataSet::sumEntries() const
 
 double RooDataSet::sumEntries(const char* cutSpec, const char* cutRange) const
 {
-  // Setup RooFormulaVar for cutSpec if it is present
-  std::unique_ptr<RooFormula> select = nullptr ;
-  if (cutSpec && strlen(cutSpec) > 0) {
-    select = std::make_unique<RooFormula>("select",cutSpec,*get()) ;
-  }
+   // Setup a formula evaluator for cutSpec if it is present
+   std::unique_ptr<RooFormulaEvaluator> select = nullptr;
+   if (cutSpec && strlen(cutSpec) > 0) {
+      select = RooFormulaUtils::makeFormulaEvaluator("select", cutSpec, *get());
+   }
 
   // Shortcut for unweighted unselected datasets
   if (!select && !cutRange && !isWeighted()) {
@@ -1062,7 +788,8 @@ double RooDataSet::sumEntries(const char* cutSpec, const char* cutRange) const
   ROOT::Math::KahanSum<double> sumw{0.0};
   for (int i = 0 ; i<numEntries() ; i++) {
     get(i) ;
-    if (select && select->eval()==0.) continue ;
+    if (select && RooFormulaUtils::evalFormula(*select, _vars) == 0.)
+       continue;
     if (cutRange && !_vars.allInRange(cutRange)) continue ;
     sumw += weight();
   }
@@ -1094,7 +821,7 @@ bool RooDataSet::isNonPoissonWeighted() const
   // Now examine individual weights
   for (int i=0 ; i<numEntries() ; i++) {
     get(i) ;
-    if (fabs(weight()-Int_t(weight()))>1e-10) return true ;
+    if (std::abs(weight()-Int_t(weight()))>1e-10) return true ;
   }
   // If sum of weights is less than number of events there are negative (integer) weights
   if (sumEntries()<numEntries()) return true ;
@@ -1147,7 +874,7 @@ void RooDataSet::add(const RooArgSet& data, double wgt, double wgtError)
 
   if (_wgtVar && _doWeightErrorCheck
       && wgtError != 0.
-      && fabs(wgt*wgt - wgtError)/wgtError > 1.E-15 //Exception for standard wgt^2 errors, which need not be stored.
+      && std::abs(wgt*wgt - wgtError)/wgtError > 1.E-15 //Exception for standard wgt^2 errors, which need not be stored.
       && _errorMsgCount < 5 && !_wgtVar->getAttribute("StoreError")) {
     coutE(DataHandling) << "An event weight error was passed to the RooDataSet '" << GetName()
         << "', but the weight variable '" << _wgtVar->GetName()
@@ -1299,7 +1026,7 @@ bool RooDataSet::merge(list<RooDataSet*>dsetList)
   // Sanity checks: data sets must have the same size
   for (list<RooDataSet*>::iterator iter = dsetList.begin() ; iter != dsetList.end() ; ++iter) {
     if (numEntries()!=(*iter)->numEntries()) {
-      coutE(InputArguments) << "RooDataSet::merge(" << GetName() << ") ERROR: datasets have different size" << endl ;
+      coutE(InputArguments) << "RooDataSet::merge(" << GetName() << ") ERROR: datasets have different size" << std::endl ;
       return true ;
     }
   }
@@ -1319,7 +1046,7 @@ bool RooDataSet::merge(list<RooDataSet*>dsetList)
   // Replace current data store with merged store
   _dstore.reset(mergedStore);
 
-  initialize(_wgtVar?_wgtVar->GetName():0) ;
+  initialize(_wgtVar?_wgtVar->GetName():nullptr) ;
   return false ;
 }
 
@@ -1347,31 +1074,12 @@ void RooDataSet::append(RooDataSet& data)
 RooAbsArg* RooDataSet::addColumn(RooAbsArg& var, bool adjustRange)
 {
   checkInit() ;
-  RooAbsArg* ret = _dstore->addColumn(var,adjustRange) ;
-  _vars.addOwned(*ret) ;
-  initialize(_wgtVar?_wgtVar->GetName():0) ;
-  return ret ;
+  std::unique_ptr<RooAbsArg> ret{_dstore->addColumn(var,adjustRange)};
+  RooAbsArg* retPtr = ret.get();
+  _vars.addOwned(std::move(ret));
+  initialize(_wgtVar?_wgtVar->GetName():nullptr) ;
+  return retPtr;
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Add a column with the values of the given list of (function)
-/// argument to this dataset. Each function value is calculated for
-/// each event using the observable values of the event in case the
-/// function depends on variables with names that are identical to
-/// the observable names in the dataset
-
-RooArgSet* RooDataSet::addColumns(const RooArgList& varList)
-{
-  auto * holderSet = new RooArgSet{};
-  for(RooAbsArg * var : varList) {
-    holderSet->add(*addColumn(*var));
-  }
-  return holderSet;
-}
-
-
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1412,7 +1120,7 @@ RooPlot* RooDataSet::plotOnXY(RooPlot* frame, const RooCmdArg& arg1, const RooCm
   argList.Add((TObject*)&arg7) ;  argList.Add((TObject*)&arg8) ;
 
   // Process named arguments
-  RooCmdConfig pc(Form("RooDataSet::plotOnXY(%s)",GetName())) ;
+  RooCmdConfig pc("RooDataSet::plotOnXY(" + std::string(GetName()) + ")");
   pc.defineString("drawOption","DrawOption",0,"P") ;
   pc.defineString("histName","Name",0,"") ;
   pc.defineInt("lineColor","LineColor",0,-999) ;
@@ -1425,8 +1133,8 @@ RooPlot* RooDataSet::plotOnXY(RooPlot* frame, const RooCmdArg& arg1, const RooCm
   pc.defineInt("fillStyle","FillStyle",0,-999) ;
   pc.defineInt("histInvisible","Invisible",0,0) ;
   pc.defineDouble("scaleFactor","Rescale",0,1.) ;
-  pc.defineObject("xvar","XVar",0,0) ;
-  pc.defineObject("yvar","YVar",0,0) ;
+  pc.defineObject("xvar","XVar",0,nullptr) ;
+  pc.defineObject("yvar","YVar",0,nullptr) ;
 
 
   // Process & check varargs
@@ -1438,24 +1146,24 @@ RooPlot* RooDataSet::plotOnXY(RooPlot* frame, const RooCmdArg& arg1, const RooCm
   // Extract values from named arguments
   const char* drawOptions = pc.getString("drawOption") ;
   Int_t histInvisible = pc.getInt("histInvisible") ;
-  const char* histName = pc.getString("histName",0,true) ;
+  const char* histName = pc.getString("histName",nullptr,true) ;
   double scaleFactor = pc.getDouble("scaleFactor") ;
 
-  RooRealVar* xvar = (RooRealVar*) _vars.find(frame->getPlotVar()->GetName()) ;
+  RooRealVar* xvar = static_cast<RooRealVar*>(_vars.find(frame->getPlotVar()->GetName())) ;
 
   // Determine Y variable (default is weight, if present)
-  RooRealVar* yvar = (RooRealVar*)(pc.getObject("yvar")) ;
+  RooRealVar* yvar = static_cast<RooRealVar*>(pc.getObject("yvar")) ;
 
   // Sanity check. XY plotting only applies to weighted datasets if no YVar is specified
   if (!_wgtVar && !yvar) {
-    coutE(InputArguments) << "RooDataSet::plotOnXY(" << GetName() << ") ERROR: no YVar() argument specified and dataset is not weighted" << endl ;
-    return 0 ;
+    coutE(InputArguments) << "RooDataSet::plotOnXY(" << GetName() << ") ERROR: no YVar() argument specified and dataset is not weighted" << std::endl ;
+    return nullptr ;
   }
 
-  RooRealVar* dataY = yvar ? (RooRealVar*) _vars.find(yvar->GetName()) : 0 ;
+  RooRealVar* dataY = yvar ? static_cast<RooRealVar*>(_vars.find(yvar->GetName())) : nullptr ;
   if (yvar && !dataY) {
-    coutE(InputArguments) << "RooDataSet::plotOnXY(" << GetName() << ") ERROR on YVar() argument, dataset does not contain a variable named " << yvar->GetName() << endl ;
-    return 0 ;
+    coutE(InputArguments) << "RooDataSet::plotOnXY(" << GetName() << ") ERROR on YVar() argument, dataset does not contain a variable named " << yvar->GetName() << std::endl ;
+    return nullptr ;
   }
 
 
@@ -1464,7 +1172,7 @@ RooPlot* RooDataSet::plotOnXY(RooPlot* frame, const RooCmdArg& arg1, const RooCm
   if (histName) {
     graph->SetName(histName) ;
   } else {
-    graph->SetName(Form("hxy_%s",GetName())) ;
+    graph->SetName(("hxy_" + std::string(GetName())).c_str());
   }
 
   for (int i=0 ; i<numEntries() ; i++) {
@@ -1472,7 +1180,9 @@ RooPlot* RooDataSet::plotOnXY(RooPlot* frame, const RooCmdArg& arg1, const RooCm
     double x = xvar->getVal() ;
     double exlo = xvar->getErrorLo() ;
     double exhi = xvar->getErrorHi() ;
-    double y,eylo,eyhi ;
+    double y;
+    double eylo;
+    double eyhi;
     if (!dataY) {
       y = weight() ;
       weightError(eylo,eyhi) ;
@@ -1576,13 +1286,13 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
     ownIsBlind = false ;
     if (blindState->IsA()!=RooCategory::Class()) {
       oocoutE(nullptr,DataHandling) << "RooDataSet::read: ERROR: variable list already contains"
-          << "a non-RooCategory blindState member" << endl ;
-      return 0 ;
+          << "a non-RooCategory blindState member" << std::endl ;
+      return nullptr ;
     }
     oocoutW(nullptr,DataHandling) << "RooDataSet::read: WARNING: recycling existing "
-        << "blindState category in variable list" << endl ;
+        << "blindState category in variable list" << std::endl ;
   }
-  RooCategory* blindCat = (RooCategory*) blindState ;
+  RooCategory* blindCat = static_cast<RooCategory*>(blindState) ;
 
   // Configure blinding state category
   blindCat->setAttribute("Dynamic") ;
@@ -1599,27 +1309,27 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
   if (ownIsBlind) { variables.remove(*blindState) ; delete blindState ; }
   if(!data) {
     oocoutE(nullptr,DataHandling) << "RooDataSet::read: unable to create a new dataset"
-        << endl;
+        << std::endl;
     return nullptr;
   }
 
   // Redirect blindCat to point to the copy stored in the data set
-  blindCat = (RooCategory*) data->_vars.find("blindState") ;
+  blindCat = static_cast<RooCategory*>(data->_vars.find("blindState")) ;
 
   // Find index category, if requested
-  RooCategory *indexCat     = 0;
+  RooCategory *indexCat     = nullptr;
   //RooCategory *indexCatOrig = 0;
   if (indexCatName) {
-    RooAbsArg* tmp = 0;
+    RooAbsArg* tmp = nullptr;
     tmp = data->_vars.find(indexCatName) ;
     if (!tmp) {
       oocoutE(data.get(),DataHandling) << "RooDataSet::read: no index category named "
-          << indexCatName << " in supplied variable list" << endl ;
+          << indexCatName << " in supplied variable list" << std::endl ;
       return nullptr;
     }
     if (tmp->IsA()!=RooCategory::Class()) {
       oocoutE(data.get(),DataHandling) << "RooDataSet::read: variable " << indexCatName
-          << " is not a RooCategory" << endl ;
+          << " is not a RooCategory" << std::endl ;
       return nullptr;
     }
     indexCat = static_cast<RooCategory*>(tmp);
@@ -1658,15 +1368,15 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
         snprintf(newLabel,128,"file%03d",fileSeqNum) ;
         if (indexCat->defineType(newLabel,fileSeqNum)) {
           oocoutE(data.get(), DataHandling) << "RooDataSet::read: Error, cannot register automatic type name " << newLabel
-              << " in index category " << indexCat->GetName() << endl ;
-          return 0 ;
+              << " in index category " << indexCat->GetName() << std::endl ;
+          return nullptr ;
         }
         // Assign new category number
         indexCat->setIndex(fileSeqNum) ;
       }
     }
 
-    oocoutI(data.get(), DataHandling) << "RooDataSet::read: reading file " << filename << endl ;
+    oocoutI(data.get(), DataHandling) << "RooDataSet::read: reading file " << filename << std::endl ;
 
     // Prefix common path
     TString fullName(commonPath) ;
@@ -1675,7 +1385,7 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
 
     if (!file.good()) {
       oocoutE(data.get(), DataHandling) << "RooDataSet::read: unable to open '"
-          << filename << "'. Returning nullptr now." << endl;
+          << filename << "'. Returning nullptr now." << std::endl;
       return nullptr;
     }
 
@@ -1685,11 +1395,11 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
 
     while(file.good() && !file.eof()) {
       line++;
-      if(debug) oocxcoutD(data.get(),DataHandling) << "reading line " << line << endl;
+      if(debug) oocxcoutD(data.get(),DataHandling) << "reading line " << line << std::endl;
 
       // process comment lines
       if (file.peek() == '#') {
-        if(debug) oocxcoutD(data.get(),DataHandling) << "skipping comment on line " << line << endl;
+        if(debug) oocxcoutD(data.get(),DataHandling) << "skipping comment on line " << line << std::endl;
       } else {
         // Read single line
         bool readError = variables.readFromStream(file,true,verbose) ;
@@ -1697,7 +1407,7 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
 
         // Stop on read error
         if(!file.good()) {
-          oocoutE(data.get(), DataHandling) << "RooDataSet::read(static): read error at line " << line << endl ;
+          oocoutE(data.get(), DataHandling) << "RooDataSet::read(static): read error at line " << line << std::endl ;
           break;
         }
 
@@ -1731,7 +1441,7 @@ RooDataSet *RooDataSet::read(const char *fileList, const RooArgList &varList,
     }
   }
   oocoutI(data.get(),DataHandling) << "RooDataSet::read: read " << data->numEntries()
-                    << " events (ignored " << outOfRange << " out of range events)" << endl;
+                    << " events (ignored " << outOfRange << " out of range events)" << std::endl;
 
   return data.release();
 }
@@ -1750,12 +1460,12 @@ bool RooDataSet::write(const char* filename) const
   // Open file for writing
   ofstream ofs(filename) ;
   if (ofs.fail()) {
-    coutE(DataHandling) << "RooDataSet::write(" << GetName() << ") cannot create file " << filename << endl ;
+    coutE(DataHandling) << "RooDataSet::write(" << GetName() << ") cannot create file " << filename << std::endl ;
     return true ;
   }
 
   // Write all lines as arglist in compact mode
-  coutI(DataHandling) << "RooDataSet::write(" << GetName() << ") writing ASCII file " << filename << endl ;
+  coutI(DataHandling) << "RooDataSet::write(" << GetName() << ") writing ASCII file " << filename << std::endl ;
   return write(ofs);
 }
 
@@ -1773,7 +1483,7 @@ bool RooDataSet::write(ostream & ofs) const {
   }
 
   if (ofs.fail()) {
-    coutW(DataHandling) << "RooDataSet::write(" << GetName() << "): WARNING error(s) have occured in writing" << endl ;
+    coutW(DataHandling) << "RooDataSet::write(" << GetName() << "): WARNING error(s) have occurred in writing" << std::endl ;
   }
 
   return ofs.fail() ;
@@ -1791,7 +1501,7 @@ void RooDataSet::printMultiline(ostream& os, Int_t contents, bool verbose, TStri
   checkInit() ;
   RooAbsData::printMultiline(os,contents,verbose,indent) ;
   if (_wgtVar) {
-    os << indent << "  Dataset variable \"" << _wgtVar->GetName() << "\" is interpreted as the event weight" << endl ;
+    os << indent << "  Dataset variable \"" << _wgtVar->GetName() << "\" is interpreted as the event weight" << std::endl ;
   }
 }
 
@@ -1861,48 +1571,53 @@ void RooDataSet::Streamer(TBuffer &R__b)
 {
    if (R__b.IsReading()) {
 
-     UInt_t R__s, R__c;
-     Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
+      UInt_t R__s;
+      UInt_t R__c;
+      Version_t R__v = R__b.ReadVersion(&R__s, &R__c);
 
-     if (R__v>1) {
+      if (R__v > 1) {
 
-       // Use new-style streaming for version >1
-       R__b.ReadClassBuffer(RooDataSet::Class(),this,R__v,R__s,R__c);
+         // Use new-style streaming for version >1
+         R__b.ReadClassBuffer(RooDataSet::Class(), this, R__v, R__s, R__c);
 
-     } else {
+      } else {
 
-       // Legacy dataset conversion happens here. Legacy RooDataSet inherits from RooTreeData
-       // which in turn inherits from RooAbsData. Manually stream RooTreeData contents on
-       // file here and convert it into a RooTreeDataStore which is installed in the
-       // new-style RooAbsData base class
+         // Legacy dataset conversion happens here. Legacy RooDataSet inherits from RooTreeData
+         // which in turn inherits from RooAbsData. Manually stream RooTreeData contents on
+         // file here and convert it into a RooTreeDataStore which is installed in the
+         // new-style RooAbsData base class
 
-       // --- This is the contents of the streamer code of RooTreeData version 1 ---
-       UInt_t R__s1, R__c1;
-       Version_t R__v1 = R__b.ReadVersion(&R__s1, &R__c1); if (R__v1) { }
+         // --- This is the contents of the streamer code of RooTreeData version 1 ---
+         UInt_t R__s1;
+         UInt_t R__c1;
+         Version_t R__v1 = R__b.ReadVersion(&R__s1, &R__c1);
+         if (R__v1) {
+         }
 
-       RooAbsData::Streamer(R__b);
-       TTree* X_tree(0) ; R__b >> X_tree;
-       RooArgSet X_truth ; X_truth.Streamer(R__b);
-       TString X_blindString ; X_blindString.Streamer(R__b);
-       R__b.CheckByteCount(R__s1, R__c1, TClass::GetClass("RooTreeData"));
-       // --- End of RooTreeData-v1 streamer
+         RooAbsData::Streamer(R__b);
+         TTree *X_tree(nullptr);
+         R__b >> X_tree;
+         RooArgSet X_truth;
+         X_truth.Streamer(R__b);
+         TString X_blindString;
+         X_blindString.Streamer(R__b);
+         R__b.CheckByteCount(R__s1, R__c1, TClass::GetClass("RooTreeData"));
+         // --- End of RooTreeData-v1 streamer
 
-       // Construct RooTreeDataStore from X_tree and complete initialization of new-style RooAbsData
-       _dstore = std::make_unique<RooTreeDataStore>(X_tree,_vars) ;
-       _dstore->SetName(GetName()) ;
-       _dstore->SetTitle(GetTitle()) ;
-       _dstore->checkInit() ;
+         // Construct RooTreeDataStore from X_tree and complete initialization of new-style RooAbsData
+         _dstore = std::make_unique<RooTreeDataStore>(X_tree, _vars);
+         _dstore->SetName(GetName());
+         _dstore->SetTitle(GetTitle());
+         _dstore->checkInit();
 
-       // This is the contents of the streamer code of RooDataSet version 1
-       RooDirItem::Streamer(R__b);
-       _varsNoWgt.Streamer(R__b);
-       R__b >> _wgtVar;
-       R__b.CheckByteCount(R__s, R__c, RooDataSet::IsA());
-
-
-     }
+         // This is the contents of the streamer code of RooDataSet version 1
+         RooDirItem::Streamer(R__b);
+         _varsNoWgt.Streamer(R__b);
+         R__b >> _wgtVar;
+         R__b.CheckByteCount(R__s, R__c, RooDataSet::IsA());
+      }
    } else {
-      R__b.WriteClassBuffer(RooDataSet::Class(),this);
+      R__b.WriteClassBuffer(RooDataSet::Class(), this);
    }
 }
 
@@ -1920,14 +1635,111 @@ void RooDataSet::convertToTreeStore()
 }
 
 
-// Compile-time test if we can still use TStrings for the constructors of
-// RooDataClasses, either for both name and title or for only one of them.
 namespace {
+
+  // Compile-time test if we can still use TStrings for the constructors of
+  // RooDataClasses, either for both name and title or for only one of them.
   TString tstr = "tstr";
   const char * cstr = "cstr";
   RooRealVar x{"x", "x", 1.0};
   RooArgSet vars{x};
-  RooDataSet d1(tstr, tstr, vars, nullptr);
-  RooDataSet d2(tstr, cstr, vars, nullptr);
-  RooDataSet d3(cstr, tstr, vars, nullptr);
+  RooDataSet d1(tstr, tstr, vars);
+  RooDataSet d2(tstr, cstr, vars);
+  RooDataSet d3(cstr, tstr, vars);
+
+} // namespace
+
+
+void RooDataSet::loadValuesFromSlices(RooCategory &indexCat, std::map<std::string, RooAbsData *> const &slices,
+                                      const char *rangeName, RooFormulaVar const *cutVar, const char *cutSpec)
+{
+
+   if (cutVar && cutSpec) {
+      throw std::invalid_argument("Only one of cutVar or cutSpec should be not a nullptr!");
+   }
+
+   auto &indexCatInData = *static_cast<RooCategory *>(_vars.find(indexCat.GetName()));
+
+   for (auto const &item : slices) {
+      std::unique_ptr<RooDataSet> sliceDataSet;
+      RooAbsData* sliceData = item.second;
+
+      // If we are importing a RooDataHist, first convert it to a RooDataSet
+      if(sliceData->InheritsFrom(RooDataHist::Class())) {
+         sliceDataSet = makeDataSetFromDataHist(static_cast<RooDataHist const &>(*sliceData));
+         sliceData = sliceDataSet.get();
+      }
+
+      // Define state labels in index category (both in provided indexCat and in internal copy in dataset)
+      if (!indexCat.hasLabel(item.first)) {
+         indexCat.defineType(item.first);
+         coutI(InputArguments) << "RooDataSet::ctor(" << GetName() << ") defining state \"" << item.first
+                               << "\" in index category " << indexCat.GetName() << std::endl;
+      }
+      if (!indexCatInData.hasLabel(item.first)) {
+         indexCatInData.defineType(item.first);
+      }
+      indexCatInData.setLabel(item.first.c_str());
+      std::unique_ptr<RooFormulaVar> cutVarTmp;
+      if (cutSpec) {
+         cutVarTmp = std::make_unique<RooFormulaVar>(cutSpec, cutSpec, *sliceData->get(), /*checkVariables=*/false);
+         cutVar = cutVarTmp.get();
+      }
+      _dstore->loadValues(sliceData->store(), cutVar, rangeName);
+   }
+}
+
+/**
+ * \brief Prints the contents of the RooDataSet to the specified output stream.
+ *
+ * This function iterates through all events (rows) of the dataset and prints
+ * the value of each observable, along with the event's weight.
+ * It is designed to be robust, handling empty or invalid datasets gracefully,
+ * and works for datasets of any dimension.
+ *
+ * \param os The output stream (e.g., std::cout) to write the contents to.
+ */
+void RooDataSet::printContents(std::ostream& os) const
+{
+    os << "Contents of RooDataSet \"" << GetName() << "\"" << std::endl;
+
+    if (numEntries() == 0) {
+        os << "(dataset is empty)" << std::endl;
+        return;
+    }
+
+    if (get() == nullptr || get()->empty()) {
+        os << "(dataset has no observables)" << std::endl;
+        return;
+    }
+
+    for (int i = 0; i < numEntries(); ++i) {
+        const RooArgSet* row = get(i); // reuses internal buffers
+        os << "  Entry " << i << ": ";
+
+        bool first = true;
+        for (const auto* var : *row) {
+            if (!first) os << ", ";
+            first = false;
+
+            os << var->GetName() << "=";
+            if (auto realVar = dynamic_cast<const RooRealVar*>(var)) {
+                os << realVar->getVal();
+            } else if (auto catVar = dynamic_cast<const RooCategory*>(var)) {
+                os << catVar->getLabel();
+            } else {
+                os << "(unsupported type)"; //added as a precaution
+            }
+        }
+
+        os << ", weight=" << weight();
+
+        double lo, hi;
+        weightError(lo, hi);
+        if (lo != 0.0 || hi != 0.0) {
+            os << " ±[" << lo << "," << hi << "]";
+        }
+
+        os << std::endl;
+    }
 }

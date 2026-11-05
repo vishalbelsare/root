@@ -32,6 +32,7 @@ protected:
    Double_t    *fEYhigh{nullptr};       ///<[fNpoints] array of Y high errors
 
    void       SwapPoints(Int_t pos1, Int_t pos2) override;
+   void       UpdateArrays(const std::vector<Int_t> &sorting_indices, Int_t numSortedPoints, Int_t low) override;
 
    Double_t** Allocate(Int_t size) override;
    void       CopyAndRelease(Double_t **newarrays,
@@ -58,6 +59,8 @@ public:
 
    ~TGraphAsymmErrors() override;
 
+   virtual void
+   AddPointError(Double_t x, Double_t y, Double_t exl = 0., Double_t exh = 0., Double_t eyl = 0., Double_t eyh = 0.);
    void    Apply(TF1 *f) override;
    virtual void    BayesDivide(const TH1* pass, const TH1* total, Option_t *opt="");
    virtual void    Divide(const TH1* pass, const TH1* total, Option_t *opt="cp");

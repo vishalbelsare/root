@@ -38,7 +38,7 @@ public:
    TLine() {}
    TLine(Double_t x1, Double_t y1, Double_t x2, Double_t  y2);
    TLine(const TLine &line);
-   virtual ~TLine() = default;
+   ~TLine() override = default;
 
    TLine &operator=(const TLine &src);
 
@@ -51,6 +51,8 @@ public:
    Double_t             GetX2() const {return fX2;}
    Double_t             GetY1() const {return fY1;}
    Double_t             GetY2() const {return fY2;}
+   Double_t             GetSlope() const;
+   Double_t             GetYIntercept() const;
    Bool_t               IsHorizontal();
    Bool_t               IsVertical();
    void                 ls(Option_t *option="") const override;
@@ -67,8 +69,6 @@ public:
    virtual void         SetY1(Double_t y1) {fY1=y1;}
    virtual void         SetY2(Double_t y2) {fY2=y2;}
    Rectangle_t          GetBBox() override;
-   TPoint               GetBBoxCenter() override;
-   void                 SetBBoxCenter(const TPoint &p) override;
    void                 SetBBoxCenterX(const Int_t x) override;
    void                 SetBBoxCenterY(const Int_t y) override;
    void                 SetBBoxX1(const Int_t x) override;

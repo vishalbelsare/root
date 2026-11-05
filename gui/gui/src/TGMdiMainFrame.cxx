@@ -52,10 +52,6 @@ This file contains the TGMdiMainFrame class.
 
 #include <iostream>
 
-ClassImp(TGMdiMainFrame);
-ClassImp(TGMdiContainer);
-ClassImp(TGMdiGeometry);
-ClassImp(TGMdiFrameList);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a MDI main frame.
@@ -1189,8 +1185,8 @@ TGDimension TGMdiContainer::GetDefaultSize() const
    Int_t xpos = -fMain->GetViewPort()->GetHPos() - rect.LeftTop().fX;
    Int_t ypos = -fMain->GetViewPort()->GetVPos() - rect.LeftTop().fY;
 
-   return TGDimension(TMath::Max(Int_t(xpos + fWidth), rect.RightBottom().fX + 1),
-                      TMath::Max(Int_t(ypos + fHeight), rect.RightBottom().fY + 1));
+   return TGDimension(std::max(Int_t(xpos + fWidth), rect.RightBottom().fX + 1),
+                      std::max(Int_t(ypos + fHeight), rect.RightBottom().fY + 1));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1204,8 +1200,8 @@ Bool_t TGMdiContainer::HandleConfigureNotify(Event_t *event)
       Int_t vw = fMain->GetViewPort()->GetWidth();
       Int_t vh = fMain->GetViewPort()->GetHeight();
 
-      Int_t w = TMath::Max(vw, rect.RightBottom().fX + 1);
-      Int_t h = TMath::Max(vh, rect.RightBottom().fY + 1);
+      Int_t w = std::max(vw, rect.RightBottom().fX + 1);
+      Int_t h = std::max(vh, rect.RightBottom().fY + 1);
 
       if ((w != (Int_t)fWidth) || (h != (Int_t)fHeight)) {
          ((TGMdiMainFrame*)fMain)->Layout();
@@ -1220,54 +1216,37 @@ Bool_t TGMdiContainer::HandleConfigureNotify(Event_t *event)
 
 void TGMdiMainFrame::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   if (fBackground != GetDefaultFrameBackground()) SaveUserColor(out, option);
+   // save options and custom color if not default
+   auto extra_args = SaveCtorArgs(out);
 
-   out << std::endl << "   // MDI main frame" << std::endl;
-   out << "   TGMdiMainFrame *";
-   out << GetName() << " = new TGMdiMainFrame(" << fParent->GetName()
-       << "," << GetMenu()->GetName() << "," << GetWidth() << "," << GetHeight();
+   out << "\n   // MDI main frame\n";
+   out << "   TGMdiMainFrame *" << GetName() << " = new TGMdiMainFrame(" << fParent->GetName() << ","
+       << GetMenu()->GetName() << "," << GetWidth() << "," << GetHeight() << extra_args << ");\n";
 
-   if (fBackground == GetDefaultFrameBackground()) {
-      if (!GetOptions()) {
-         out << ");" << std::endl;
-      } else {
-         out << "," << GetOptionString() <<");" << std::endl;
-      }
-   } else {
-      out << "," << GetOptionString() << ",ucolor);" << std::endl;
-   }
    if (option && strstr(option, "keep_names"))
-      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");" << std::endl;
+      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");\n";
 
-   TGMdiFrameList *travel=fChildren;
+   TGMdiFrameList *travel = fChildren;
    travel->SetCycleNext(travel);
    for (travel = fChildren; travel; travel = travel->GetNext()) {
       TGMdiFrame *mf = travel->GetDecorFrame()->GetMdiFrame();
-      if (mf) mf->SavePrimitive(out, option);
+      if (mf)
+         mf->SavePrimitive(out, option);
    }
    if (fArrangementMode) {
       out << "   " << GetName() << "->ArrangeFrames(";
       switch (fArrangementMode) {
 
-         case kMdiTileHorizontal:
-            out << "kMdiTileHorizontal);" << std::endl;
-         break;
+      case kMdiTileHorizontal: out << "kMdiTileHorizontal);\n"; break;
 
-         case kMdiTileVertical:
-            out << "kMdiTileVertical);" << std::endl;
-         break;
+      case kMdiTileVertical: out << "kMdiTileVertical);\n"; break;
 
-         case kMdiCascade:
-            out << "kMdiCascade);" << std::endl;
-         break;
+      case kMdiCascade: out << "kMdiCascade);\n"; break;
       }
    }
    if (fResizeMode != kMdiOpaque)
-      out << "   " << GetName() << "->SetResizeMode(kMdiNonOpaque);" << std::endl;
+      out << "   " << GetName() << "->SetResizeMode(kMdiNonOpaque);\n";
 
    if (fCurrent)
-      out << "   " << GetName() << "->SetCurrent(" << GetCurrent()->GetName()
-          << ");" << std::endl;
+      out << "   " << GetName() << "->SetCurrent(" << GetCurrent()->GetName() << ");\n";
 }
-
-

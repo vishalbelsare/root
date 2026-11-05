@@ -37,7 +37,7 @@ public:
    TCurlyLine(Double_t x1, Double_t y1, Double_t x2, Double_t y2,
               Double_t wl = .02,
               Double_t amp = .01);
-   virtual ~TCurlyLine(){}
+   ~TCurlyLine() override{}
    virtual void Build();
    Int_t        DistancetoPrimitive(Int_t px, Int_t py) override;
    void         ExecuteEvent(Int_t event, Int_t px, Int_t py) override;
@@ -64,8 +64,6 @@ public:
    static Bool_t   GetDefaultIsCurly   ();
 
    Rectangle_t  GetBBox() override;
-   TPoint       GetBBoxCenter() override;
-   void         SetBBoxCenter(const TPoint &p) override;
    void         SetBBoxCenterX(const Int_t x) override;
    void         SetBBoxCenterY(const Int_t y) override;
    void         SetBBoxX1(const Int_t x) override;

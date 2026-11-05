@@ -3,11 +3,15 @@
 
 #include "ROOT/RCsvDS.hxx"
 #include "ROOT/RDataFrame.hxx"
-#include "ROOT/RStringView.hxx"
+#include <cmath>
+#include <string_view>
 #include "ROOT/RTrivialDS.hxx"
+#include "ROOT/TestSupport.hxx"
+#include "RtypesCore.h"
 #include "TMemFile.h"
 #include "TSystem.h"
 #include "TTree.h"
+#include "TChain.h"
 
 #include "gtest/gtest.h"
 
@@ -18,24 +22,66 @@ using namespace ROOT::RDF;
 
 TEST(RDataFrameInterface, CreateFromCStrings)
 {
-   RDataFrame tdf("t", "file");
+   TString path_to_file{"file"};
+   // Cross-platform friendly way to generate full path to file. Modifies
+   // the TString argument in-place.
+   gSystem->PrependPathName(gSystem->pwd(), path_to_file);
+   TString expecteddiag;
+   expecteddiag.Form("file %s does not exist", path_to_file.Data());
+
+   // File does not exist, an exception is thrown at construction time.
+   ROOT_EXPECT_ERROR(EXPECT_ANY_THROW(RDataFrame tdf("t", "file");), "TFile::TFile", expecteddiag.Data());
 }
 
 TEST(RDataFrameInterface, CreateFromStrings)
 {
    std::string t("t"), f("file");
-   RDataFrame tdf(t, f);
+
+   TString path_to_file{"file"};
+   // Cross-platform friendly way to generate full path to file. Modifies
+   // the TString argument in-place.
+   gSystem->PrependPathName(gSystem->pwd(), path_to_file);
+   TString expecteddiag;
+   expecteddiag.Form("file %s does not exist", path_to_file.Data());
+
+   // File does not exist, an exception is thrown at construction time.
+   ROOT_EXPECT_ERROR(EXPECT_ANY_THROW(RDataFrame tdf(t, f);), "TFile::TFile", expecteddiag.Data());
 }
+
+class TreeInFileRAII {
+private:
+   std::string fPath;
+
+public:
+   explicit TreeInFileRAII(const std::string &path) : fPath(path)
+   {
+      // NOTE(vpadulan): these TFile and TTree are created on the heap to work around a know bug that can
+      // cause a TObject to be incorrectly marked as "on heap" and attempted to be freed despite
+      // living on the stack.
+      // The bug is caused by the magic bit pattern `kObjectAllocMemValue` used by TStorage to
+      // mark a heap object appearing by chance on the stack.
+      // This is not a problem with a clear solution and in fact the whole heap detection system relies on UB,
+      // so for now we are forced to work around the bug rather than fixing it.
+      auto f = std::make_unique<TFile>(path.c_str(), "RECREATE");
+      const char *treeName{"t"};
+      auto t = std::make_unique<TTree>(treeName, treeName);
+      f->Write();
+   }
+   ~TreeInFileRAII() { std::remove(fPath.c_str()); }
+};
 
 TEST(RDataFrameInterface, CreateFromContainer)
 {
-   std::string t("t");
-   std::vector<std::string> f({"f1", "f2"});
-   RDataFrame tdf(t, f);
+   std::vector<std::string> fs({"f1", "f2"});
+   TreeInFileRAII f1("f1");
+   TreeInFileRAII f2("f2");
+   RDataFrame tdf("t", fs);
 }
 
 TEST(RDataFrameInterface, CreateFromInitList)
 {
+   TreeInFileRAII f1("f1");
+   TreeInFileRAII f2("f2");
    RDataFrame tdf("t", {"f1", "f2"});
 }
 
@@ -47,6 +93,14 @@ TEST(RDataFrameInterface, CreateFromNullTDirectory)
 TEST(RDataFrameInterface, CreateFromNonExistingTree)
 {
    EXPECT_ANY_THROW(RDataFrame("theTreeWhichDoesNotExist", gDirectory));
+}
+
+TEST(RDataFrameInterface, CreateFromGlob)
+{
+   EXPECT_THROW(RDataFrame("t", "globTest_invalid_[0-9].root"), std::invalid_argument);
+   TreeInFileRAII f1("globTest_1.root");
+   TreeInFileRAII f2("globTest_2.root");
+   RDataFrame("t", "globTest_[1-9].root");
 }
 
 TEST(RDataFrameInterface, CreateFromTree)
@@ -68,7 +122,14 @@ TEST(RDataFrameInterface, CreateAliases)
    EXPECT_ANY_THROW(aliased_tdf.Alias("c4", "c")) << "No exception thrown when trying to alias a non-existing column.";
    EXPECT_ANY_THROW(aliased_tdf.Alias("c0", "c2")) << "No exception thrown when specifying an alias name which is the name of a column.";
    EXPECT_ANY_THROW(aliased_tdf.Alias("c2", "c1")) << "No exception thrown when re-using an alias for a different column.";
-   EXPECT_ANY_THROW(aliased_tdf.Alias("a-b", "c1")) << "No exception thrown when the alias is not a valid C++ variable name.";
+   bool exceptionThrown = false;
+   try {
+      aliased_tdf.Alias("a-b", "c1");
+   } catch (const std::runtime_error &e) {
+      exceptionThrown = true;
+      EXPECT_STREQ(e.what(), "RDataFrame::Alias: cannot define alias \"a-b\". Not a valid C++ variable name.");
+   }
+   EXPECT_TRUE(exceptionThrown) << "No exception thrown when the alias is not a valid C++ variable name.";
 }
 
 TEST(RDataFrameInterface, CheckAliasesPerChain)
@@ -432,9 +493,9 @@ TEST(RDataFrameInterface, TypeUnknownToInterpreter)
    auto df = ROOT::RDataFrame(1).Define("res", make_s);
    bool hasThrown = false;
    std::stringstream ss;
-   ss << "The type of custom column \"res\" (" << symbol << ") is not known to the interpreter, " <<
-         "but a just-in-time-compiled Snapshot call requires this column. Make sure to create " <<
-         "and load ROOT dictionaries for this column's class.";
+   ss << "No runtime type information is available for column \"res\" with type name \"" << symbol
+      << "\". Thus, it cannot be written to disk with Snapshot. Make sure to generate and load ROOT dictionaries for "
+         "the type of this column.";
    EXPECT_RUNTIME_ERROR_WITH_MSG(
       df.Snapshot("result", "RESULT2.root"),
       ss.str().c_str());
@@ -480,7 +541,7 @@ TEST(RDataFrameInterface, ColumnWithSimpleStruct)
 }
 
 // Issue #6435
-TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfScalar)
+TEST(RDataFrameInterface, MinMaxSumMeanStdDevMedianOfScalar)
 {
    auto df = ROOT::RDataFrame(4).Range(1, 0).Define("x", [](ULong64_t e) { return int(e); }, {"rdfentry_"});
    auto max = df.Max<int>("x");
@@ -493,6 +554,8 @@ TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfScalar)
    auto jit_mean = df.Mean("x");
    auto stddev = df.StdDev<int>("x");
    auto jit_stddev = df.StdDev("x");
+   auto median = df.Median<int>("x");
+   auto jit_median = df.Median("x");
 
    EXPECT_EQ(*max, 3);
    EXPECT_DOUBLE_EQ(*jit_max, 3.f);
@@ -504,9 +567,11 @@ TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfScalar)
    EXPECT_DOUBLE_EQ(*jit_mean, 2);
    EXPECT_DOUBLE_EQ(*stddev, 1.f);
    EXPECT_DOUBLE_EQ(*jit_stddev, 1.f);
+   EXPECT_DOUBLE_EQ(*median, 2);
+   EXPECT_DOUBLE_EQ(*jit_median, 2.);
 }
 
-TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfRVec)
+TEST(RDataFrameInterface, MinMaxSumMeanStdDevMedianOfRVec)
 {
    auto df = ROOT::RDataFrame(1).Define("x", [] { return ROOT::RVec<int>{1,2,3}; });
    auto max = df.Max<ROOT::RVec<int>>("x");
@@ -519,6 +584,8 @@ TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfRVec)
    auto jit_mean = df.Mean("x");
    auto stddev = df.StdDev<ROOT::RVec<int>>("x");
    auto jit_stddev = df.StdDev("x");
+   auto median = df.Median<ROOT::RVec<int>>("x");
+   auto jit_median = df.Median("x");
 
    EXPECT_EQ(*max, 3);
    EXPECT_DOUBLE_EQ(*jit_max, 3.f);
@@ -530,6 +597,59 @@ TEST(RDataFrameInterface, MinMaxSumMeanStdDevOfRVec)
    EXPECT_DOUBLE_EQ(*jit_mean, 2);
    EXPECT_DOUBLE_EQ(*stddev, 1.f);
    EXPECT_DOUBLE_EQ(*jit_stddev, 1.f);
+   EXPECT_DOUBLE_EQ(*median, 2);
+   EXPECT_DOUBLE_EQ(*jit_median, 2);
+}
+
+TEST(RDataFrameInterface, MedianOfScalarAndEvenNumberOfEntries)
+{
+   // 1, 1, 2, 100 -> two middle values are 1 and 2, so median is 1.5
+   auto df = ROOT::RDataFrame(4).Define("x",
+                                        [](ULong64_t e) {
+                                           if (e == 2)
+                                              return 2;
+                                           if (e == 3)
+                                              return 100;
+                                           return 1;
+                                        },
+                                        {"rdfentry_"});
+   EXPECT_DOUBLE_EQ(*df.Median<int>("x"), 1.5);
+   EXPECT_DOUBLE_EQ(*df.Median("x"), 1.5);
+}
+
+TEST(RDataFrameInterface, MedianOfOddNumberOfEntries)
+{
+   // 1, 1, 1, 100, 100 -> median 1, mean 40.6
+   auto df = ROOT::RDataFrame(5).Define("x", [](ULong64_t e) { return e < 3 ? 1 : 100; }, {"rdfentry_"});
+   EXPECT_DOUBLE_EQ(*df.Median<int>("x"), 1.);
+   EXPECT_DOUBLE_EQ(*df.Median("x"), 1.);
+}
+
+TEST(RDataFrameInterface, MedianOfEmptyDataFrameScalar)
+{
+   auto df = ROOT::RDataFrame(0).Define("x", "1.0");
+   EXPECT_TRUE(std::isnan(*df.Median("x")));
+}
+
+TEST(RDataFrameInterface, MedianOfEmptyDataFrameRVec)
+{
+   auto df = ROOT::RDataFrame(0).Define("x", [] { return ROOT::RVec<int>{}; });
+   EXPECT_TRUE(std::isnan(*df.Median("x")));
+}
+
+TEST(RDataFrameInterface, MedianWithImplicitMT)
+{
+#ifdef R__USE_IMT
+   const unsigned int nslots = std::min(4U, std::thread::hardware_concurrency());
+   if (ROOT::IsImplicitMTEnabled())
+      ROOT::DisableImplicitMT();
+   ROOT::EnableImplicitMT(nslots);
+   // 80% ones, 20% hundreds -> median 1, mean 20.8
+   auto df = ROOT::RDataFrame(100000).Define("x", [](ULong64_t e) { return e < 80000 ? 1. : 100.; }, {"rdfentry_"});
+   EXPECT_DOUBLE_EQ(*df.Median<double>("x"), 1.);
+   EXPECT_DOUBLE_EQ(*df.Median("x"), 1.);
+   ROOT::DisableImplicitMT();
+#endif
 }
 
 class Product {
@@ -590,11 +710,13 @@ TEST(RDataFrameInterface, JittedExprWithMultipleReturns)
 
 TEST(RDataFrameInterface, JittedExprWithManyVars)
 {
-   std::string expr = "x + x + x + x";
-   for (int i = 0; i < 10; ++i) {
-      expr = expr + '+' + expr;
-   }
-   expr = expr + ">0";
+   // Build expression "x + x + ... + x > 0"
+   // With 100 occurrences of 'x'
+   std::string expr{"x"};
+   for (int i = 0; i < 99; ++i)
+      expr += " + x";
+   expr += " > 0";
+
    const auto counts = ROOT::RDataFrame(1)
                           .Define("x", [] { return 1; })
                           .Filter(expr)
@@ -658,7 +780,7 @@ TEST(RDataFrameInterface, Describe)
                      "myFloat                 Float_t                         Dataset\n"
                      "myInt                   Int_t                           Dataset\n"
                      "myLongColumnName        unsigned int                    Define\n"
-                     "myVec                   ROOT::VecOps::RVec<float>       Define";
+                     "myVec                   ROOT::VecOps::RVec<float>       Define\n";
    EXPECT_EQ(df3.Describe().AsString(), ref2);
 }
 
@@ -745,7 +867,7 @@ TEST(RDataFrameInterface, DescribeShortFormat)
    EXPECT_EQ(df2e.Describe().AsString(/*shortFormat =*/true), ss3);
 
    // others with an actual fDataSource, like csv
-   auto df3 = ROOT::RDF::MakeCsvDataFrame("RCsvDS_test_headers.csv");
+   auto df3 = ROOT::RDF::FromCSV("RCsvDS_test_headers.csv");
    EXPECT_EQ(df3.Describe().AsString(/*shortFormat =*/true), "Dataframe from datasource RCsv");
 
    for (int i = 1; i <= 3; ++i)
@@ -791,6 +913,39 @@ TEST(RDataFrameInterface, StressShortSyntaxForCollectionSizes)
    EXPECT_EQ(c, 42ull);
 }
 
+// Regression tests for https://github.com/root-project/root/issues/23790
+TEST(RDataFrameInterface, ShortSyntaxForCollectionSizesMultipleStringsAndVars)
+{
+   // We need to define first four target columns that have the longer name for collection size
+   auto df = ROOT::RDF::RNode(ROOT::RDataFrame(1));
+   for (auto i = 1; i <= 4; i++)
+      df = df.Define("R_rdf_sizeof_var" + std::to_string(i), []() -> int { return 1; });
+   std::string code{R"CODE(
+      auto value1 = #var1; // comment
+      #ifdef NONEXISTENTMACRO
+      // comment with "quoted string"
+      #endif
+      std::string simplestr("#simplestr"); // comment
+      std::string mystr("anything#hello"); // comment
+      auto value2 = #var2; // comment with "another string"
+      std::string anotherstr("We don't want #var3 and #var4 to be replaced");
+      auto value5 = #var1 + #var2; std::string innerRawString{R"INNER(
+       This raw string contains #myvar which should
+       not be changed.)INNER"};
+      return #var1 + #var2 + #var3 + #var4 + value1 + value2 + value5;
+   )CODE"};
+   auto sum = df.Define("target_col", code).Sum<int>("target_col");
+   EXPECT_EQ(*sum, 8);
+}
+
+// Regression test for https://github.com/root-project/root/issues/23790
+TEST(RDataFrameInterface, StringWithPotentialAmbiguityWithSortSyntaxForCollectionSizes)
+{
+   auto df = ROOT::RDataFrame(1).Define("col", "std::string(\"#a\")").Filter("col == \"#a\"");
+   EXPECT_EQ(df.Count().GetValue(), 1ull);
+   EXPECT_EQ(*df.Take<std::string>("col")->begin(), "#a");
+}
+
 TEST(RDataFrameInterface, MutableForeach)
 {
    int i = 0;
@@ -807,9 +962,7 @@ TEST(RDataFrameInterface, BookWithoutColumns)
 
 TEST(RDataFrameInterface, SnapshotWithDuplicateColumns)
 {
-   EXPECT_THROW(
-      (ROOT::RDataFrame(1).Snapshot<ULong64_t, ULong64_t>("t", "neverwritten.root", {"rdfentry_", "rdfentry_"})),
-      std::logic_error);
+   EXPECT_THROW((ROOT::RDataFrame(1).Snapshot("t", "neverwritten.root", {"rdfentry_", "rdfentry_"})), std::logic_error);
    EXPECT_THROW((ROOT::RDataFrame(1).Snapshot("t", "neverwritten.root", {"rdfentry_", "rdfentry_"})), std::logic_error);
 }
 
@@ -876,4 +1029,69 @@ TEST(RDataFrameUtils, RegexWithFriendsInJittedFilters)
    // ensure that order of operations does not matter
    EXPECT_EQ(df.Filter("fr.x < 0 && x > 0").Count().GetValue(), 1);
    EXPECT_EQ(df.Filter("x > 0 && fr.x < 0").Count().GetValue(), 1);
+}
+
+TEST(RDataFrameInterface, PrintValueFromTree)
+{
+   TMemFile f("dataframe_PrintValueFromTree.root", "RECREATE");
+   TTree t("t", "t");
+   RDataFrame df(t);
+   auto printValue = cling::printValue(&df);
+   EXPECT_EQ(printValue, "A data frame associated to the data source \"TTree data source\"");
+}
+
+TEST(RDataFrameInterface, PrintValueNoData)
+{
+   RDataFrame df(100);
+   auto printValue = cling::printValue(&df);
+   EXPECT_EQ(printValue, "An empty data frame that will create 100 entries\n");
+}
+
+TEST(RDataFrameInterface, PrintValueDataSource)
+{
+   std::unique_ptr<RDataSource> ds(new RTrivialDS(1));
+   RDataFrame df(std::move(ds));
+   auto printValue = cling::printValue(&df);
+   EXPECT_EQ(printValue, "A data frame associated to the data source \"trivial data source\"");
+}
+
+TEST(RDataFrameInterface, GetNFilesFromOneFile)
+{
+   auto filename{"GetNFilesFromTTree.root"};
+   TreeInFileRAII r{filename};
+
+   ROOT::RDataFrame df{"t", filename};
+   EXPECT_EQ(df.GetNFiles(), 1);
+}
+
+TEST(RDataFrameInterface, GetNFilesFromTTree)
+{
+   TTree t{"t", "t"};
+   ROOT::RDataFrame df{t};
+   EXPECT_EQ(df.GetNFiles(), 0);
+}
+
+TEST(RDataFrameInterface, GetNFilesFromTChain)
+{
+   std::vector<std::string> filenames{"GetNFilesFromTChain1.root", "GetNFilesFromTChain2.root",
+                                      "GetNFilesFromTChain3.root"};
+   TreeInFileRAII r1{filenames[0]};
+   TreeInFileRAII r2{filenames[1]};
+   TreeInFileRAII r3{filenames[2]};
+   TChain c{"t"};
+   for (const auto &fn : filenames)
+      c.Add(fn.c_str());
+   ROOT::RDataFrame df{c};
+   EXPECT_EQ(df.GetNFiles(), 3);
+}
+
+TEST(RDataFrameInterface, GetNFilesFromMoreFiles)
+{
+   std::vector<std::string> filenames{"GetNFilesFromTChain1.root", "GetNFilesFromTChain2.root",
+                                      "GetNFilesFromTChain3.root"};
+   TreeInFileRAII r1{filenames[0]};
+   TreeInFileRAII r2{filenames[1]};
+   TreeInFileRAII r3{filenames[2]};
+   ROOT::RDataFrame df{"t", filenames};
+   EXPECT_EQ(df.GetNFiles(), 3);
 }

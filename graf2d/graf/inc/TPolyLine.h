@@ -23,11 +23,11 @@ class TCollection;
 class TPolyLine : public TObject, public TAttLine, public TAttFill {
 
 protected:
-   Int_t        fN;            ///<Number of points
-   Int_t        fLastPoint;    ///<The index of the last filled point
-   Double_t    *fX;            ///<[fN] Array of X coordinates
-   Double_t    *fY;            ///<[fN] Array of Y coordinates
-   TString      fOption;       ///<options
+   Int_t        fN{0};            ///<Number of points
+   Int_t        fLastPoint{-1};   ///<The index of the last filled point
+   Double_t    *fX{nullptr};      ///<[fN] Array of X coordinates
+   Double_t    *fY{nullptr};      ///<[fN] Array of Y coordinates
+   TString      fOption;          ///<options
 
    TPolyLine& operator=(const TPolyLine&);
 
@@ -42,7 +42,7 @@ public:
    TPolyLine(Int_t n, Float_t *x, Float_t *y, Option_t *option="");
    TPolyLine(Int_t n, Double_t *x, Double_t *y, Option_t *option="");
    TPolyLine(const TPolyLine &polyline);
-   virtual ~TPolyLine();
+   ~TPolyLine() override;
 
    void               Copy(TObject &polyline) const override;
    Int_t              DistancetoPrimitive(Int_t px, Int_t py) override;

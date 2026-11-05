@@ -22,7 +22,7 @@
 using namespace ROOT::Experimental;
 
 
-REveDataProxyBuilderBase::Product::Product(std::string iViewType, const REveViewContext* c) : m_viewType(iViewType), m_viewContext(c), m_elements(0)
+REveDataProxyBuilderBase::Product::Product(std::string iViewType, const REveViewContext* c) : m_viewType(iViewType), m_viewContext(c), m_elements(nullptr)
 {
    m_elements = new REveCompound("ProxyProduct", "", false);
    m_elements->IncDenyDestroy();
@@ -105,7 +105,7 @@ void REveDataProxyBuilderBase::Build()
                {
                   REveProjectionManager *pmgr = projectedProduct->GetManager();
                   Float_t oldDepth = pmgr->GetCurrentDepth();
-                  pmgr->SetCurrentDepth(m_layer);
+                  pmgr->SetCurrentDepth(m_collection->GetLayer());
                   Int_t cnt = 0;
                   REveElement *projectedProductAsElement = projectedProduct->GetProjectedAsElement();
                   // printf("projectedProduct children %d, product children %d\n", projectedProductAsElement->NumChildren(), product->NumChildren());

@@ -17,50 +17,46 @@ if (xml)
     set(HISTFACTORY_XML_LIBRARIES XMLParser)
 endif()
 
+set (EXTRA_DICT_OPTS)
+if (runtime_cxxmodules AND WIN32)
+  set (EXTRA_DICT_OPTS NO_CXXMODULE)
+endif()
+
+set(HISTFACTORY_HEADERS
+  RooStats/HistFactory/Detail/HistFactoryImpl.h
+  RooStats/HistFactory/FlexibleInterpVar.h
+  RooStats/HistFactory/HistFactoryException.h
+  RooStats/HistFactory/HistFactoryModelUtils.h
+  RooStats/HistFactory/HistFactoryNavigation.h
+  RooStats/HistFactory/HistoToWorkspaceFactoryFast.h
+  RooStats/HistFactory/LinInterpVar.h
+  RooStats/HistFactory/MakeModelAndMeasurementsFast.h
+  RooStats/HistFactory/Measurement.h
+  RooStats/HistFactory/ParamHistFunc.h
+  RooStats/HistFactory/PiecewiseInterpolation.h
+  RooStats/HistFactory/RooBarlowBeestonLL.h
+)
+
 ROOT_STANDARD_LIBRARY_PACKAGE(HistFactory
   HEADERS
-    RooStats/HistFactory/Asimov.h
-    RooStats/HistFactory/Channel.h
-    RooStats/HistFactory/Data.h
-    RooStats/HistFactory/FlexibleInterpVar.h
-    RooStats/HistFactory/HistFactoryException.h
-    RooStats/HistFactory/HistFactoryModelUtils.h
-    RooStats/HistFactory/HistFactoryNavigation.h
-    RooStats/HistFactory/HistoToWorkspaceFactoryFast.h
-    RooStats/HistFactory/HistRef.h
-    RooStats/HistFactory/LinInterpVar.h
-    RooStats/HistFactory/MakeModelAndMeasurementsFast.h
-    RooStats/HistFactory/Measurement.h
-    RooStats/HistFactory/ParamHistFunc.h
-    RooStats/HistFactory/PiecewiseInterpolation.h
-    RooStats/HistFactory/PreprocessFunction.h
-    RooStats/HistFactory/RooBarlowBeestonLL.h
-    RooStats/HistFactory/Sample.h
-    RooStats/HistFactory/Systematics.h
+    ${HISTFACTORY_HEADERS}
     ${HISTFACTORY_XML_HEADERS}
   SOURCES
-    src/Asimov.cxx
-    src/Channel.cxx
-    src/Data.cxx
     src/FlexibleInterpVar.cxx
+    src/HistFactoryImpl.cxx
     src/HistFactoryModelUtils.cxx
     src/HistFactoryNavigation.cxx
     src/HistoToWorkspaceFactoryFast.cxx
-    src/HistRef.cxx
     src/LinInterpVar.cxx
     src/MakeModelAndMeasurementsFast.cxx
     src/Measurement.cxx
     src/ParamHistFunc.cxx
     src/PiecewiseInterpolation.cxx
-    src/PreprocessFunction.cxx
     src/RooBarlowBeestonLL.cxx
-    src/Sample.cxx
-    src/Systematics.cxx
     ${HISTFACTORY_XML_SOURCES}
   DICTIONARY_OPTIONS
     "-writeEmptyRootPCM"
   LIBRARIES
-    RooBatchCompute
     ${HISTFACTORY_XML_LIBRARIES}
   DEPENDENCIES
     RooFit
@@ -68,16 +64,16 @@ ROOT_STANDARD_LIBRARY_PACKAGE(HistFactory
     Tree
     RIO
     Hist
-    Matrix
     MathCore
     Graf
     Gpad
     RooStats
+  ${EXTRA_DICT_OPTS}
 )
 
 # For recent clang, this can facilitate auto-vectorisation.
 # In RooFit, the errno side effect is not needed, anyway:
-if(NOT MSVC)
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
   target_compile_options(HistFactory PUBLIC -fno-math-errno)
 endif()
 
@@ -85,20 +81,34 @@ endif()
 # XML model specification. The ConfigParser is only built when xml is ON, so we
 # can't build hist2workspace without xml.
 if(xml)
-  ROOT_EXECUTABLE(hist2workspace hist2workspace.cxx LIBRARIES HistFactory)
-
-  #---Createhist2workspaceCommandLineOptions------------------------------------------------------------------
-  generateHeader(hist2workspace
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/hist2workspace-argparse.py
-    ${CMAKE_BINARY_DIR}/ginclude/hist2workspaceCommandLineOptionsHelp.h
-  )
+  ROOT_EXECUTABLE(hist2workspace hist2workspace.cxx LIBRARIES HistFactory CMAKENOEXPORT)
+  target_compile_definitions(HistFactory PUBLIC HISTFACTORY_XML)
 endif()
 
-file(COPY config/prepareHistFactory DESTINATION  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/prepareHistFactory
+if(MSVC)
+  set(prepareHistFactory_script prepareHistFactory.bat)
+else()
+  set(prepareHistFactory_script prepareHistFactory)
+endif()
+file(COPY config/${prepareHistFactory_script} DESTINATION  ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+install(FILES ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${prepareHistFactory_script}
                 PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ
                             GROUP_EXECUTE GROUP_READ
                             WORLD_EXECUTE WORLD_READ
                 DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+set(RELATIVE_INC_HEADERS ${HISTFACTORY_HEADERS} ${HISTFACTORY_XML_HEADERS})
+list(TRANSFORM RELATIVE_INC_HEADERS PREPEND inc/)
+target_sources(
+    HistFactory
+    PRIVATE
+    FILE_SET private_header_files
+    TYPE HEADERS
+    BASE_DIRS inc/
+    FILES
+        ${RELATIVE_INC_HEADERS}
+        inc/LinkDef.h # seemingly not being used by ROOT_STANDARD_LIBRARY_PACKAGE call
+        inc/HFMsgService.h # not part of list above
+)
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

@@ -15,7 +15,7 @@
 #include "TClass.h"
 #include "TSystem.h"
 
-using namespace ROOT::Experimental::Browsable;
+using namespace ROOT::Browsable;
 using namespace std::string_literals;
 
 RProvider::BrowseNTupleFunc_t RProvider::gNTupleFunc = nullptr;
@@ -66,7 +66,14 @@ RProvider::ClassMap_t &RProvider::GetClassMap()
 }
 
 //////////////////////////////////////////////////////////////////////////////////
-// Returns map of registered icons base on class name
+// Returns vector of registered progress functions
+
+RProvider::ProgressVect_t &RProvider::GetProgressVect()
+{
+   static RProvider::ProgressVect_t sVect;
+   return sVect;
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////
 // Destructor
@@ -294,7 +301,7 @@ std::shared_ptr<RElement> RProvider::Browse(std::unique_ptr<RHolder> &object)
 std::shared_ptr<RElement> RProvider::BrowseNTuple(const std::string &tuplename, const std::string &filename)
 {
    if (!gNTupleFunc) {
-      auto &entry = GetClassEntry("ROOT::Experimental::RNTuple");
+      auto &entry = GetClassEntry("ROOT::RNTuple");
 
       if (entry.browselib.empty())
          return nullptr;
@@ -433,6 +440,66 @@ bool RProvider::CanDraw7(const ClassArg &arg)
    return false;
 }
 
+/////////////////////////////////////////////////////////////////////
+/// Create progress handle
+
+RProvider::ProgressHandle::ProgressHandle(void *handle, RProvider::ProgressFunc_t func)
+{
+   fHandle = handle;
+   RProvider::GetProgressVect().emplace_back(StructProgress{handle, nullptr, func});
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Destroy progress handle
+
+RProvider::ProgressHandle::~ProgressHandle()
+{
+   auto &vect = RProvider::GetProgressVect();
+   auto iter = vect.begin();
+   while (iter != vect.end()) {
+      if (iter->handle == fHandle) {
+         vect.erase(iter);
+      } else {
+         iter++;
+      }
+   }
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Extend progress handle
+
+void RProvider::ProgressHandle::Extend(void *handle2)
+{
+   RProvider::ExtendProgressHandle(fHandle, handle2);
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Extend progress handle - to be able react on sub item
+
+void RProvider::ExtendProgressHandle(void *handle, void *handle2)
+{
+   for (auto &elem : GetProgressVect())
+      if (elem.handle == handle)
+         elem.handle2 = handle2;
+}
+
+/////////////////////////////////////////////////////////////////////
+/// Report running progress
+/// Returns true if handling function was invoked
+/// Method can be used to detect if there any progress handler assigned
+
+
+bool RProvider::ReportProgress(void *handle, float progress)
+{
+   bool is_any = false;
+   for (auto &elem : GetProgressVect())
+      if ((elem.handle == handle) || (elem.handle2 == handle)) {
+         elem.func(progress, elem.handle);
+         is_any = true;
+      }
+
+   return is_any;
+}
 
 // ==============================================================================================
 
@@ -442,11 +509,11 @@ public:
    RDefaultProvider()
    {
       // TODO: let read from rootrc or any other files
-      RegisterClass("ROOT::Experimental::RH1D", "sap-icon://bar-chart", "", "", "libROOTHistDrawProvider");
-      RegisterClass("ROOT::Experimental::RH2D", "sap-icon://pixelate", "", "", "libROOTHistDrawProvider");
-      RegisterClass("ROOT::Experimental::RH3D", "sap-icon://product", "", "", "libROOTHistDrawProvider");
-      RegisterClass("ROOT::Experimental::RCanvas", "sap-icon://business-objects-experience", "", "", "libROOTHistDrawProvider");
-      RegisterClass("ROOT::Experimental::RNTuple", "sap-icon://table-chart", "libROOTNTupleBrowseProvider", "libROOTNTupleDraw6Provider", "libROOTNTupleDraw7Provider");
+      RegisterClass("ROOT::Experimental::RCanvas", "sap-icon://business-objects-experience", "", "",
+                    "libROOTObjectDraw7Provider");
+
+      RegisterClass("ROOT::RNTuple", "sap-icon://table-chart", "libROOTNTupleBrowseProvider",
+                    "libROOTNTupleDraw6Provider", "libROOTNTupleDraw7Provider");
    }
 
 } newRDefaultProvider;

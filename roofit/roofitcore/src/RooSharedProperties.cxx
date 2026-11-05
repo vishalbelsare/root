@@ -24,26 +24,14 @@ that can be stored in RooSharedPropertiesList.
 **/
 
 #include "RooSharedProperties.h"
-#include "RooMsgService.h"
-#include "RooTrace.h"
 
-#include "Riostream.h"
-using std::cout ;
-using std::endl ;
-
-using namespace std;
-
-ClassImp(RooSharedProperties);
-;
-
-
+#include <iostream>
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor
 
 RooSharedProperties::RooSharedProperties() : _refCount(0), _inSharedList(false)
 {
-  RooTrace::create(this) ;
 }
 
 
@@ -52,7 +40,6 @@ RooSharedProperties::RooSharedProperties() : _refCount(0), _inSharedList(false)
 
 RooSharedProperties::RooSharedProperties(const char* uuidstr) : _uuid(uuidstr), _refCount(0), _inSharedList(false)
 {
-  RooTrace::create(this) ;
 }
 
 
@@ -62,7 +49,6 @@ RooSharedProperties::RooSharedProperties(const char* uuidstr) : _uuid(uuidstr), 
 
 RooSharedProperties::~RooSharedProperties()
 {
-  RooTrace::destroy(this) ;
 }
 
 
@@ -81,5 +67,5 @@ bool RooSharedProperties::operator==(const RooSharedProperties& other) const
 
 void RooSharedProperties::Print(Option_t* /*opts*/) const
 {
-  cout << "RooSharedProperties(" << this << ") UUID = " << _uuid.AsString() << endl ;
+  std::cout << "RooSharedProperties(" << this << ") UUID = " << _uuid.AsString() << std::endl ;
 }

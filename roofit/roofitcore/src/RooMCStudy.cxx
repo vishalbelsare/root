@@ -19,7 +19,7 @@
 \class RooMCStudy
 \ingroup Roofitcore
 
-RooMCStudy is a helper class to facilitate Monte Carlo studies
+Helper class to facilitate Monte Carlo studies
 such as 'goodness-of-fit' studies, that involve fitting a PDF
 to multiple toy Monte Carlo sets. These may be generated from either same PDF
 or from a different PDF with similar parameters.
@@ -50,34 +50,34 @@ Check the RooFit tutorials
 for usage examples.
 **/
 
-#include "snprintf.h"
+
+#include <RooMCStudy.h>
+
+#include <RooAbsMCStudyModule.h>
+#include <RooAbsPdf.h>
+#include <RooArgList.h>
+#include <RooCmdConfig.h>
+#include <RooDataHist.h>
+#include <RooDataSet.h>
+#include <RooErrorVar.h>
+#include <RooFitResult.h>
+#include <RooFormulaVar.h>
+#include <RooGenContext.h>
+#include <RooGlobalFunc.h>
+#include <RooMsgService.h>
+#include <RooPlot.h>
+#include <RooProdPdf.h>
+#include <RooPullVar.h>
+#include <RooRandom.h>
+#include <RooRealVar.h>
+#include <RooWorkspace.h>
+
+#include <TAxis.h>
+
+
+#include <cstdio>
+#include <algorithm>
 #include <iostream>
-
-#include "RooMCStudy.h"
-#include "RooAbsMCStudyModule.h"
-
-#include "RooGenContext.h"
-#include "RooAbsPdf.h"
-#include "RooDataSet.h"
-#include "RooDataHist.h"
-#include "RooRealVar.h"
-#include "RooFitResult.h"
-#include "RooErrorVar.h"
-#include "RooFormulaVar.h"
-#include "RooArgList.h"
-#include "RooPlot.h"
-#include "RooGenericPdf.h"
-#include "RooRandom.h"
-#include "RooCmdConfig.h"
-#include "RooGlobalFunc.h"
-#include "RooPullVar.h"
-#include "RooMsgService.h"
-#include "RooProdPdf.h"
-
-using namespace std ;
-
-ClassImp(RooMCStudy);
-  ;
 
 
 /**
@@ -99,7 +99,8 @@ fitting the PDF to data and accumulating the fit statistics.
 <tr><td> Verbose(bool flag)              <td> Activate informational messages in event generation phase
 <tr><td> Extended(bool flag)             <td> Determine number of events for each sample anew from a Poisson distribution
 <tr><td> Constrain(const RooArgSet& pars)  <td> Apply internal constraints on given parameters in fit and sample constrained parameter values from constraint p.d.f for each toy.
-<tr><td> ExternalConstraints(const RooArgSet& ) <td> Apply internal constraints on given parameters in fit and sample constrained parameter values from constraint p.d.f for each toy.
+<tr><td> ExternalConstraints(const RooArgSet& cpdfs) <td> Apply given external constraint p.d.f.s in fit and sample values of the parameters they constrain from them for each toy.
+                                                To apply the constraints in the fit only, without the per-toy sampling, pass them inside FitOptions() instead.
 <tr><td> ProtoData(const RooDataSet&, bool randOrder)
          <td> Prototype data for the event generation. If the randOrder flag is set, the order of the dataset will be re-randomized for each generation
               cycle to protect against systematic biases if the number of generated events does not exactly match the number of events in the prototype dataset
@@ -120,13 +121,13 @@ RooMCStudy::RooMCStudy(const RooAbsPdf& model, const RooArgSet& observables,
   cmdList.Add(const_cast<RooCmdArg*>(&arg7)) ;  cmdList.Add(const_cast<RooCmdArg*>(&arg8)) ;
 
   // Select the pdf-specific commands
-  RooCmdConfig pc(Form("RooMCStudy::RooMCStudy(%s)",model.GetName())) ;
+  RooCmdConfig pc("RooMCStudy::RooMCStudy(" + std::string(model.GetName()) + ")");
 
-  pc.defineObject("fitModel","FitModel",0,0) ;
-  pc.defineSet("condObs","ProjectedObservables",0,0) ;
-  pc.defineObject("protoData","PrototypeData",0,0) ;
-  pc.defineSet("cPars","Constrain",0,0) ;
-  pc.defineSet("extCons","ExternalConstraints",0,0) ;
+  pc.defineObject("fitModel","FitModel",0,nullptr) ;
+  pc.defineSet("condObs","ProjectedObservables",0,nullptr) ;
+  pc.defineObject("protoData","PrototypeData",0,nullptr) ;
+  pc.defineSet("cPars","Constrain",0,nullptr) ;
+  pc.defineSet("extCons","ExternalConstraints",0,nullptr) ;
   pc.defineInt("silence","Silence",0,0) ;
   pc.defineInt("randProtoData","PrototypeData",0,0) ;
   pc.defineInt("verboseGen","Verbose",0,0) ;
@@ -138,14 +139,14 @@ RooMCStudy::RooMCStudy(const RooAbsPdf& model, const RooArgSet& observables,
   pc.process(cmdList) ;
   if (!pc.ok(true)) {
     // WVE do something here
-    throw std::string("RooMCStudy::RooMCStudy() Error in parsing arguments passed to contructor") ;
+    throw std::string("RooMCStudy::RooMCStudy() Error in parsing arguments passed to constructor") ;
     return ;
   }
 
   // Save fit command options
   if (pc.hasProcessed("FitOptArgs")) {
     RooCmdArg* fitOptArg = static_cast<RooCmdArg*>(cmdList.FindObject("FitOptArgs")) ;
-    for (Int_t i=0 ; i<fitOptArg->subArgs().GetSize() ;i++) {
+    for (int i=0 ; i<fitOptArg->subArgs().GetSize() ;i++) {
       _fitOptList.Add(new RooCmdArg(static_cast<RooCmdArg&>(*fitOptArg->subArgs().At(i)))) ;
     }
   }
@@ -161,7 +162,7 @@ RooMCStudy::RooMCStudy(const RooAbsPdf& model, const RooArgSet& observables,
   const RooArgSet* cParsTmp = pc.getSet("cPars") ;
   const RooArgSet* extCons = pc.getSet("extCons") ;
 
-  RooArgSet* cPars = new RooArgSet ;
+  auto cPars = std::make_unique<RooArgSet>();
   if (cParsTmp) {
     cPars->add(*cParsTmp) ;
   }
@@ -174,54 +175,47 @@ RooMCStudy::RooMCStudy(const RooAbsPdf& model, const RooArgSet& observables,
     _fitOptList.Add(RooFit::ExternalConstraints(*extCons).Clone()) ;
   }
 
-  // Make list of all constraints
+  // Make list of all constraints and of the parameters they constrain
   RooArgSet allConstraints ;
   RooArgSet consPars ;
   if (cPars) {
-    RooArgSet* constraints = model.getAllConstraints(observables,*cPars,true) ;
-    if (constraints) {
+    if (std::unique_ptr<RooArgSet> constraints{model.getAllConstraints(observables,*cPars,true)}) {
       allConstraints.add(*constraints) ;
-      delete constraints ;
+    }
+    consPars.add(*cPars) ;
+  }
+  if (extCons) {
+    // External constraint p.d.f.s are not part of the model, so the parameters
+    // they constrain are found among their observables instead
+    allConstraints.add(*extCons) ;
+    RooArgSet params;
+    model.getParameters(&observables, params);
+    for (RooAbsArg const* con : *extCons) {
+      RooArgSet cparams;
+      con->getObservables(&params, cparams);
+      consPars.add(cparams, /*silent=*/true) ;
     }
   }
 
   // Construct constraint p.d.f
-  if (allConstraints.getSize()>0) {
-    _constrPdf = new RooProdPdf("mcs_constr_prod","RooMCStudy constraints product",allConstraints) ;
-
-    if (cPars) {
-      consPars.add(*cPars) ;
-    } else {
-      RooArgSet* params = model.getParameters(observables) ;
-      RooArgSet* cparams = _constrPdf->getObservables(*params) ;
-      consPars.add(*cparams) ;
-      delete params ;
-      delete cparams ;
-    }
-    _constrGenContext = _constrPdf->genContext(consPars,0,0,_verboseGen) ;
+  if (!allConstraints.empty()) {
+    _constrPdf = std::make_unique<RooProdPdf>("mcs_constr_prod","RooMCStudy constraints product",allConstraints);
+    _constrGenContext.reset(_constrPdf->genContext(consPars,nullptr,nullptr,_verboseGen));
 
     _perExptGenParams = true ;
 
-    coutI(Generation) << "RooMCStudy::RooMCStudy: INFO have pdf with constraints, will generate parameters from constraint pdf for each experiment" << endl ;
-
-
-  } else {
-    _constrPdf = 0 ;
-    _constrGenContext=0 ;
-
-    _perExptGenParams = false ;
+    coutI(Generation) << "RooMCStudy::RooMCStudy: INFO have pdf with constraints, will generate parameters from constraint pdf for each experiment" << std::endl ;
   }
 
 
   // Extract generator and fit models
   _genModel = const_cast<RooAbsPdf*>(&model) ;
-  _genSample = 0 ;
-  RooAbsPdf* fitModel = static_cast<RooAbsPdf*>(pc.getObject("fitModel",0)) ;
+  RooAbsPdf* fitModel = static_cast<RooAbsPdf*>(pc.getObject("fitModel",nullptr)) ;
   _fitModel = fitModel ? fitModel : _genModel ;
 
   // Extract conditional observables and prototype data
-  _genProtoData = static_cast<RooDataSet*>(pc.getObject("protoData",0)) ;
-  if (auto condObs = pc.getSet("condObs",0)) {
+  _genProtoData = static_cast<RooDataSet*>(pc.getObject("protoData",nullptr)) ;
+  if (auto condObs = pc.getSet("condObs",nullptr)) {
     _projDeps.add(*condObs);
   }
 
@@ -231,58 +225,52 @@ RooMCStudy::RooMCStudy(const RooAbsPdf& model, const RooArgSet& observables,
   _canAddFitResults = true ;
 
   if (_extendedGen && _genProtoData && !_randProto) {
-    oocoutW(_fitModel,Generation) << "RooMCStudy::RooMCStudy: WARNING Using generator option 'e' (Poisson distribution of #events) together " << endl
-              << "                        with a prototype dataset implies incomplete sampling or oversampling of proto data." << endl
-              << "                        Use option \"r\" to randomize prototype dataset order and thus to randomize" << endl
-              << "                        the set of over/undersampled prototype events for each generation cycle." << endl ;
+    oocoutW(_fitModel,Generation) << "RooMCStudy::RooMCStudy: WARNING Using generator option 'e' (Poisson distribution of #events) together " << std::endl
+              << "                        with a prototype dataset implies incomplete sampling or oversampling of proto data." << std::endl
+              << "                        Use option \"r\" to randomize prototype dataset order and thus to randomize" << std::endl
+              << "                        the set of over/undersampled prototype events for each generation cycle." << std::endl ;
   }
 
-  _genParams = _genModel->getParameters(&_dependents) ;
+  _genModel->getParameters(&_dependents, _genParams);
   if (!_binGenData) {
-    _genContext = _genModel->genContext(_dependents,_genProtoData,0,_verboseGen) ;
-    _genContext->attach(*_genParams) ;
-  } else {
-    _genContext = 0 ;
+    _genContext.reset(_genModel->genContext(_dependents,_genProtoData,nullptr,_verboseGen));
+    _genContext->attach(_genParams) ;
   }
 
-  _genInitParams = (RooArgSet*) _genParams->snapshot(false) ;
+  _genParams.snapshot(_genInitParams, false) ;
 
   // Store list of parameters and save initial values separately
-  _fitParams = _fitModel->getParameters(&_dependents) ;
-  _fitInitParams = (RooArgSet*) _fitParams->snapshot(true) ;
+  _fitModel->getParameters(&_dependents, _fitParams);
+  _fitParams.snapshot(_fitInitParams, true);
 
   _nExpGen = _extendedGen ? _genModel->expectedEvents(&_dependents) : 0 ;
 
   // Place holder for NLL
-  _nllVar = new RooRealVar("NLL","-log(Likelihood)",0) ;
+  _nllVar = std::make_unique<RooRealVar>("NLL","-log(Likelihood)",0);
 
   // Place holder for number of generated events
-  _ngenVar = new RooRealVar("ngen","number of generated events",0) ;
+  _ngenVar = std::make_unique<RooRealVar>("ngen","number of generated events",0);
 
   // Create data set containing parameter values, errors and pulls
-  RooArgSet tmp2(*_fitParams) ;
+  RooArgSet tmp2(_fitParams) ;
   tmp2.add(*_nllVar) ;
   tmp2.add(*_ngenVar) ;
 
   // Mark all variable to store their errors in the dataset
   tmp2.setAttribAll("StoreError",true) ;
   tmp2.setAttribAll("StoreAsymError",true) ;
-  TString fpdName ;
+  std::string fpdName;
   if (_fitModel==_genModel) {
-    fpdName = Form("fitParData_%s",_fitModel->GetName()) ;
+    fpdName = "fitParData_" + std::string(_fitModel->GetName());
   } else {
-    fpdName= Form("fitParData_%s_%s",_fitModel->GetName(),_genModel->GetName()) ;
+    fpdName= "fitParData_" + std::string(_fitModel->GetName()) + "_" + std::string(_genModel->GetName());
   }
 
-  _fitParData = new RooDataSet(fpdName.Data(),"Fit Parameters DataSet",tmp2) ;
+  _fitParData = std::make_unique<RooDataSet>(fpdName,"Fit Parameters DataSet",tmp2);
   tmp2.setAttribAll("StoreError",false) ;
   tmp2.setAttribAll("StoreAsymError",false) ;
 
-  if (_perExptGenParams) {
-    _genParData = new RooDataSet("genParData","Generated Parameters dataset",*_genParams) ;
-  } else {
-    _genParData = 0 ;
-  }
+  _genParData = std::make_unique<RooDataSet>("genParData","Generated Parameters dataset",_genParams);
 
   // Append proto variables to allDependents
   if (_genProtoData) {
@@ -290,11 +278,10 @@ RooMCStudy::RooMCStudy(const RooAbsPdf& model, const RooArgSet& observables,
   }
 
   // Call module initializers
-  list<RooAbsMCStudyModule*>::iterator iter ;
-  for (iter=_modList.begin() ; iter!= _modList.end() ; ++iter) {
+  for (auto iter=_modList.begin() ; iter!= _modList.end() ; ++iter) {
     bool ok = (*iter)->doInitializeInstance(*this) ;
     if (!ok) {
-      oocoutE(_fitModel,Generation) << "RooMCStudy::ctor: removing study module " << (*iter)->GetName() << " from analysis chain because initialization failed" << endl ;
+      oocoutE(_fitModel,Generation) << "RooMCStudy::ctor: removing study module " << (*iter)->GetName() << " from analysis chain because initialization failed" << std::endl ;
       iter = _modList.erase(iter) ;
     }
   }
@@ -308,17 +295,6 @@ RooMCStudy::~RooMCStudy()
 {
   _genDataList.Delete() ;
   _fitOptList.Delete() ;
-  delete _ngenVar ;
-  delete _fitParData ;
-  delete _genParData ;
-  delete _fitInitParams ;
-  delete _fitParams ;
-  delete _genInitParams ;
-  delete _genParams ;
-  delete _genContext ;
-  delete _nllVar ;
-  delete _constrPdf ;
-  delete _constrGenContext ;
 }
 
 
@@ -340,6 +316,11 @@ void RooMCStudy::addModule(RooAbsMCStudyModule& module)
 /// If keepGenData is set, all generated data sets will be kept in memory and can be accessed
 /// later via genData().
 ///
+/// When generating, the generator parameter values used for each sample are recorded in the
+/// dataset returned by genParDataSet(). When constraints are used and the run both generates
+/// and fits, the sampled parameter values are in addition merged into the fit parameter
+/// dataset as `<name>_gen` columns for each toy whose fit converged.
+///
 /// When generating, data sets will be written out in ascii form if the pattern string is supplied
 /// The pattern, which is a template for snprintf, should look something like "data/toymc_%04d.dat"
 /// and should contain one integer field that encodes the sample serial number.
@@ -356,12 +337,28 @@ bool RooMCStudy::run(bool doGenerate, bool DoFit, Int_t nSamples, Int_t nEvtPerS
     RooMsgService::instance().setGlobalKillBelow(RooFit::PROGRESS) ;
   }
 
-  list<RooAbsMCStudyModule*>::iterator iter ;
-  for (iter=_modList.begin() ; iter!= _modList.end() ; ++iter) {
-    (*iter)->initializeRun(nSamples) ;
+  for (RooAbsMCStudyModule *mod : _modList) {
+    mod->initializeRun(nSamples) ;
   }
 
-  Int_t prescale = nSamples>100 ? Int_t(nSamples/100) : 1 ;
+  if (DoFit && !doGenerate && _perExptGenParams) {
+    coutW(Generation) << "RooMCStudy::run: WARNING fitting previously generated samples in a separate run:"
+        " the per-toy sampled generator parameters are not merged into the fit parameter dataset,"
+        " so pulls are computed with respect to the initial parameter values instead of the sampled ones" << std::endl ;
+  }
+
+  int prescale = nSamples>100 ? int(nSamples/100) : 1 ;
+
+  // Generator parameter values of the toys whose fit converged, filled in the
+  // same order as _fitParData so that the two datasets can be merged after the
+  // loop. Only done when the parameters are sampled from constraint p.d.f.s:
+  // otherwise the values are the constant initial ones, and study modules like
+  // RooRandomizeParamMCSModule publish their own "<name>_gen" columns that
+  // must not be overwritten by the merge.
+  std::unique_ptr<RooDataSet> genParDataForMerge;
+  if (doGenerate && DoFit && _perExptGenParams && _genParData) {
+    genParDataForMerge = std::make_unique<RooDataSet>("genParDataForMerge","Generated Parameters dataset",*_genParData->get());
+  }
 
   while(nSamples--) {
 
@@ -370,34 +367,33 @@ bool RooMCStudy::run(bool doGenerate, bool DoFit, Int_t nSamples, Int_t nEvtPerS
       if (doGenerate) ooccoutI(_fitModel,Generation) << "Generating " ;
       if (doGenerate && DoFit) ooccoutI(_fitModel,Generation) << "and " ;
       if (DoFit) ooccoutI(_fitModel,Generation) << "fitting " ;
-      ooccoutP(_fitModel,Generation) << "sample " << nSamples << endl ;
+      ooccoutP(_fitModel,Generation) << "sample " << nSamples << std::endl ;
     }
 
-    _genSample = 0;
+    std::unique_ptr<RooAbsData> ownedGenSample;
+    _genSample = nullptr;
     bool existingData = false ;
     if (doGenerate) {
       // Generate sample
-      Int_t nEvt(nEvtPerSample) ;
+      int nEvt(nEvtPerSample) ;
 
       // Reset generator parameters to initial values
-      _genParams->assign(*_genInitParams) ;
+      _genParams.assign(_genInitParams) ;
 
       // If constraints are present, sample generator values from constraints
       if (_constrPdf) {
-   RooDataSet* tmp = _constrGenContext->generate(1) ;
-   _genParams->assign(*tmp->get()) ;
-   delete tmp ;
-      }
-
-      // Save generated parameters if required
-      if (_genParData) {
-   _genParData->add(*_genParams) ;
+        _genParams.assign(*std::unique_ptr<RooDataSet>{_constrGenContext->generate(1)}->get());
       }
 
       // Call module before-generation hook
-      list<RooAbsMCStudyModule*>::iterator iter2 ;
-      for (iter2=_modList.begin() ; iter2!= _modList.end() ; ++iter2) {
-   (*iter2)->processBeforeGen(nSamples) ;
+      for (RooAbsMCStudyModule *mod : _modList) {
+         mod->processBeforeGen(nSamples) ;
+      }
+
+      // Save the generator parameters used for this toy, including any
+      // modification applied by the study modules above
+      if (_genParData) {
+   _genParData->add(_genParams) ;
       }
 
       if (_binGenData) {
@@ -409,7 +405,7 @@ bool RooMCStudy::run(bool doGenerate, bool DoFit, Int_t nSamples, Int_t nEvtPerS
    }
 
    // Binned generation
-   _genSample = _genModel->generateBinned(_dependents,nEvt) ;
+   ownedGenSample = std::unique_ptr<RooDataHist>{_genModel->generateBinned(_dependents,nEvt)};
 
       } else {
 
@@ -421,23 +417,22 @@ bool RooMCStudy::run(bool doGenerate, bool DoFit, Int_t nSamples, Int_t nEvtPerS
 
    // Optional randomization of protodata for this run
    if (_randProto && _genProtoData && _genProtoData->numEntries()!=nEvt) {
-     oocoutI(_fitModel,Generation) << "RooMCStudy: (Re)randomizing event order in prototype dataset (Nevt=" << nEvt << ")" << endl ;
+     oocoutI(_fitModel,Generation) << "RooMCStudy: (Re)randomizing event order in prototype dataset (Nevt=" << nEvt << ")" << std::endl ;
      Int_t* newOrder = _genModel->randomizeProtoOrder(_genProtoData->numEntries(),nEvt) ;
      _genContext->setProtoDataOrder(newOrder) ;
      delete[] newOrder ;
    }
 
-   coutP(Generation) << "RooMCStudy: now generating " << nEvt << " events" << endl ;
-
    // Actual generation of events
    if (nEvt>0) {
-     _genSample = _genContext->generate(nEvt) ;
+     ownedGenSample = std::unique_ptr<RooAbsData>{_genContext->generate(nEvt)};
    } else {
      // Make empty dataset
-     _genSample = new RooDataSet("emptySample","emptySample",_dependents) ;
+     ownedGenSample = std::make_unique<RooDataSet>("emptySample","emptySample",_dependents);
    }
       }
 
+   _genSample = ownedGenSample.get();
 
     //} else if (asciiFilePat && &asciiFilePat) { //warning: the address of 'asciiFilePat' will always evaluate as 'true'
     } else if (asciiFilePat) {
@@ -446,15 +441,16 @@ bool RooMCStudy::run(bool doGenerate, bool DoFit, Int_t nSamples, Int_t nEvtPerS
       char asciiFile[1024] ;
       snprintf(asciiFile,1024,asciiFilePat,nSamples) ;
       RooArgList depList(_allDependents) ;
-      _genSample = RooDataSet::read(asciiFile,depList,"q") ;
+      ownedGenSample = std::unique_ptr<RooDataSet>{RooDataSet::read(asciiFile,depList,"q")};
+      _genSample = ownedGenSample.get();
 
     } else {
 
       // Load sample from internal list
-      _genSample = (RooDataSet*) _genDataList.At(nSamples) ;
+      _genSample = static_cast<RooDataSet*>(_genDataList.At(nSamples)) ;
       existingData = true ;
       if (!_genSample) {
-      oocoutW(_fitModel,Generation) << "RooMCStudy::run: WARNING: Sample #" << nSamples << " not loaded, skipping" << endl ;
+      oocoutW(_fitModel,Generation) << "RooMCStudy::run: WARNING: Sample #" << nSamples << " not loaded, skipping" << std::endl ;
       continue ;
       }
     }
@@ -463,55 +459,61 @@ bool RooMCStudy::run(bool doGenerate, bool DoFit, Int_t nSamples, Int_t nEvtPerS
     _ngenVar->setVal(_genSample->sumEntries()) ;
 
     // Call module between generation and fitting hook
-    list<RooAbsMCStudyModule*>::iterator iter3 ;
-    for (iter3=_modList.begin() ; iter3!= _modList.end() ; ++iter3) {
-      (*iter3)->processBetweenGenAndFit(nSamples) ;
+    for (RooAbsMCStudyModule *mod : _modList) {
+      mod->processBetweenGenAndFit(nSamples) ;
     }
 
-    if (DoFit) fitSample(_genSample) ;
+    bool fitOk = true;
+    if (DoFit) fitOk = !fitSample(_genSample) ;
+
+    // Keep the generator parameters of this toy for merging into the fit
+    // parameter dataset. Only converged fits get an entry in _fitParData, so
+    // the toys with failed fits have to be skipped here as well. The values
+    // are taken from _genParData because the fit changes the parameters.
+    if (genParDataForMerge && _genParData && fitOk) {
+      genParDataForMerge->add(*_genParData->get(_genParData->numEntries()-1)) ;
+    }
 
     // Call module between generation and fitting hook
-    for (iter3=_modList.begin() ; iter3!= _modList.end() ; ++iter3) {
-      (*iter3)->processAfterFit(nSamples) ;
+    for (RooAbsMCStudyModule *mod : _modList) {
+      mod->processAfterFit(fitOk) ;
     }
 
     // Optionally write to ascii file
     if (doGenerate && asciiFilePat && *asciiFilePat) {
       char asciiFile[1024] ;
       snprintf(asciiFile,1024,asciiFilePat,nSamples) ;
-      RooDataSet* unbinnedData = dynamic_cast<RooDataSet*>(_genSample) ;
-      if (unbinnedData) {
+      if (RooDataSet* unbinnedData = dynamic_cast<RooDataSet*>(_genSample)) {
    unbinnedData->write(asciiFile) ;
       } else {
-   coutE(InputArguments) << "RooMCStudy::run(" << GetName() << ") ERROR: ASCII writing of binned datasets is not supported" << endl ;
+   coutE(InputArguments) << "RooMCStudy::run(" << GetName() << ") ERROR: ASCII writing of binned datasets is not supported" << std::endl ;
       }
     }
 
     // Add to list or delete
     if (!existingData) {
       if (keepGenData) {
-   _genDataList.Add(_genSample) ;
-      } else {
-   delete _genSample ;
+   _genDataList.Add(ownedGenSample.release()) ;
       }
     }
   }
 
-  for (iter=_modList.begin() ; iter!= _modList.end() ; ++iter) {
-    RooDataSet* auxData = (*iter)->finalizeRun() ;
-    if (auxData) {
+  for (RooAbsMCStudyModule *mod : _modList) {
+    if (RooDataSet* auxData = mod->finalizeRun()) {
       _fitParData->merge(auxData) ;
     }
   }
 
   _canAddFitResults = false ;
 
-  if (_genParData) {
-    for(RooAbsArg * arg : *_genParData->get()) {
-      _genParData->changeObservableName(arg->GetName(),Form("%s_gen",arg->GetName())) ;
+  if (genParDataForMerge) {
+    // Append the generator parameter values as additional "<name>_gen"
+    // columns to the fit parameter dataset
+    for(RooAbsArg * arg : *genParDataForMerge->get()) {
+      genParDataForMerge->changeObservableName(arg->GetName(),(std::string(arg->GetName()) + "_gen").c_str());
     }
 
-    _fitParData->merge(_genParData) ;
+    _fitParData->merge(genParDataForMerge.get());
   }
 
   if (DoFit) calcPulls() ;
@@ -544,6 +546,7 @@ bool RooMCStudy::generateAndFit(Int_t nSamples, Int_t nEvtPerSample, bool keepGe
   _fitResList.Delete() ; // even though the fit results are owned by gROOT, we still want to scratch them here.
   _genDataList.Delete() ;
   _fitParData->reset() ;
+  if (_genParData) _genParData->reset() ;
 
   return run(true,true,nSamples,nEvtPerSample,keepGenData,asciiFilePat) ;
 }
@@ -564,6 +567,7 @@ bool RooMCStudy::generate(Int_t nSamples, Int_t nEvtPerSample, bool keepGenData,
 {
   // Clear any previous data in memory
   _genDataList.Delete() ;
+  if (_genParData) _genParData->reset() ;
 
   return run(true,false,nSamples,nEvtPerSample,keepGenData,asciiFilePat) ;
 }
@@ -604,7 +608,7 @@ bool RooMCStudy::fit(Int_t nSamples, TList& dataSetList)
     _genDataList.Add(gset) ;
   }
 
-  return run(false,true,nSamples,0,true,0) ;
+  return run(false,true,nSamples,0,true,nullptr) ;
 }
 
 
@@ -615,7 +619,7 @@ bool RooMCStudy::fit(Int_t nSamples, TList& dataSetList)
 
 void RooMCStudy::resetFitParams()
 {
-  _fitParams->assign(*_fitInitParams) ;
+  _fitParams.assign(_fitInitParams) ;
 }
 
 
@@ -623,13 +627,16 @@ void RooMCStudy::resetFitParams()
 ////////////////////////////////////////////////////////////////////////////////
 /// Internal function. Performs actual fit according to specifications
 
-RooFitResult* RooMCStudy::doFit(RooAbsData* genSample)
+RooFit::OwningPtr<RooFitResult> RooMCStudy::doFit(RooAbsData* genSample)
 {
   // Optionally bin dataset before fitting
+  std::unique_ptr<RooDataHist> ownedDataHist;
   RooAbsData* data ;
   if (_binGenData) {
-    std::unique_ptr<RooArgSet> depList{_fitModel->getObservables(genSample)};
-    data = new RooDataHist(genSample->GetName(),genSample->GetTitle(),*depList,*genSample) ;
+    RooArgSet depList;
+    _fitModel->getObservables(genSample->get(), depList);
+    ownedDataHist = std::make_unique<RooDataHist>(genSample->GetName(),genSample->GetTitle(),depList,*genSample) ;
+    data = ownedDataHist.get();
   } else {
     data = genSample ;
   }
@@ -644,11 +651,7 @@ RooFitResult* RooMCStudy::doFit(RooAbsData* genSample)
     fitOptList.Add(&condo) ;
   }
   fitOptList.Add(&plevel) ;
-  RooFitResult* fr = _fitModel->fitTo(*data,fitOptList) ;
-
-  if (_binGenData) delete data ;
-
-  return fr ;
+  return _fitModel->fitTo(*data,fitOptList);
 }
 
 
@@ -657,18 +660,18 @@ RooFitResult* RooMCStudy::doFit(RooAbsData* genSample)
 /// Redo fit on 'current' toy sample, or if genSample is not nullptr
 /// do fit on given sample instead
 
-RooFitResult* RooMCStudy::refit(RooAbsData* genSample)
+RooFit::OwningPtr<RooFitResult> RooMCStudy::refit(RooAbsData* genSample)
 {
   if (!genSample) {
     genSample = _genSample ;
   }
 
-  RooFitResult* fr(0) ;
+  std::unique_ptr<RooFitResult> fr;
   if (genSample->sumEntries()>0) {
-    fr = doFit(genSample) ;
+    fr = std::unique_ptr<RooFitResult>{doFit(genSample)};
   }
 
-  return fr ;
+  return RooFit::makeOwningPtr(std::move(fr));
 }
 
 
@@ -691,9 +694,9 @@ bool RooMCStudy::fitSample(RooAbsData* genSample)
 
   // Perform actual fit
   bool ok ;
-  RooFitResult* fr(0) ;
+  std::unique_ptr<RooFitResult> fr;
   if (genSample->sumEntries()>0) {
-    fr = doFit(genSample) ;
+    fr = std::unique_ptr<RooFitResult>{doFit(genSample)};
     ok = (fr->status()==0) ;
   } else {
     ok = false ;
@@ -702,7 +705,7 @@ bool RooMCStudy::fitSample(RooAbsData* genSample)
   // If fit converged, store parameters and NLL
   if (ok) {
     _nllVar->setVal(fr->minNll()) ;
-    RooArgSet tmp(*_fitParams) ;
+    RooArgSet tmp(_fitParams) ;
     tmp.add(*_nllVar) ;
     tmp.add(*_ngenVar) ;
 
@@ -710,15 +713,8 @@ bool RooMCStudy::fitSample(RooAbsData* genSample)
   }
 
   // Store fit result if requested by user
-  bool userSaveRequest = false ;
-  if (_fitOptList.GetSize()>0) {
-    if (_fitOptList.FindObject("Save")) userSaveRequest = true ;
-  }
-
-  if (userSaveRequest) {
-    _fitResList.Add(fr) ;
-  } else {
-    delete fr ;
+  if (_fitOptList.FindObject("Save")) {
+    _fitResList.Add(fr.release()) ;
   }
 
   return !ok ;
@@ -739,18 +735,18 @@ bool RooMCStudy::fitSample(RooAbsData* genSample)
 bool RooMCStudy::addFitResult(const RooFitResult& fr)
 {
   if (!_canAddFitResults) {
-    oocoutE(_fitModel,InputArguments) << "RooMCStudy::addFitResult: ERROR cannot add fit results in current state" << endl ;
+    oocoutE(_fitModel,InputArguments) << "RooMCStudy::addFitResult: ERROR cannot add fit results in current state" << std::endl ;
     return true ;
   }
 
   // Transfer contents of fit result to fitParams ;
-  _fitParams->assign(RooArgSet(fr.floatParsFinal())) ;
+  _fitParams.assign(RooArgSet(fr.floatParsFinal())) ;
 
   // If fit converged, store parameters and NLL
   bool ok = (fr.status()==0) ;
   if (ok) {
     _nllVar->setVal(fr.minNll()) ;
-    RooArgSet tmp(*_fitParams) ;
+    RooArgSet tmp(_fitParams) ;
     tmp.add(*_nllVar) ;
     tmp.add(*_ngenVar) ;
     _fitParData->add(tmp) ;
@@ -772,13 +768,12 @@ bool RooMCStudy::addFitResult(const RooFitResult& fr)
 
 void RooMCStudy::calcPulls()
 {
-  for (auto it = _fitParams->begin(); it != _fitParams->end(); ++it) {
+  for (auto it = _fitParams.begin(); it != _fitParams.end(); ++it) {
     const auto par = static_cast<RooRealVar*>(*it);
-    RooErrorVar* err = par->errorVar();
-    _fitParData->addColumn(*err);
-    delete err;
+    _fitParData->addColumn(*std::unique_ptr<RooErrorVar>{par->errorVar()});
 
-    TString name(par->GetName()), title(par->GetTitle()) ;
+    TString name(par->GetName());
+    TString title(par->GetTitle());
     name.Append("pull") ;
     title.Append(" Pull") ;
 
@@ -798,12 +793,12 @@ void RooMCStudy::calcPulls()
 
     } else {
       // If not use fixed generator value
-      genParOrig = static_cast<RooAbsReal*>(_genInitParams->find(par->GetName()));
+      genParOrig = static_cast<RooAbsReal*>(_genInitParams.find(par->GetName()));
 
       if (!genParOrig) {
-        std::size_t index = it - _fitParams->begin();
-        genParOrig = index < _genInitParams->size() ?
-            static_cast<RooAbsReal*>((*_genInitParams)[index]) :
+        std::size_t index = it - _fitParams.begin();
+        genParOrig = index < _genInitParams.size() ?
+            static_cast<RooAbsReal*>(_genInitParams[index]) :
             nullptr;
 
         if (genParOrig) {
@@ -852,17 +847,17 @@ const RooDataSet& RooMCStudy::fitParDataSet()
 ////////////////////////////////////////////////////////////////////////////////
 /// Return an argset with the fit parameters for the given sample number
 ///
-/// NB: The fit parameters are only stored for successfull fits,
+/// NB: The fit parameters are only stored for successful fits,
 ///     thus the maximum sampleNum can be less that the number
-///     of generated samples and if so, the indeces will
+///     of generated samples and if so, the indices will
 ///     be out of synch with genData() and fitResult()
 
 const RooArgSet* RooMCStudy::fitParams(Int_t sampleNum) const
 {
   // Check if sampleNum is in range
   if (sampleNum<0 || sampleNum>=_fitParData->numEntries()) {
-    oocoutE(_fitModel,InputArguments) << "RooMCStudy::fitParams: ERROR, invalid sample number: " << sampleNum << endl ;
-    return 0 ;
+    oocoutE(_fitModel,InputArguments) << "RooMCStudy::fitParams: ERROR, invalid sample number: " << sampleNum << std::endl ;
+    return nullptr ;
   }
 
   return _fitParData->get(sampleNum) ;
@@ -879,19 +874,19 @@ const RooFitResult* RooMCStudy::fitResult(Int_t sampleNum) const
 {
   // Check if sampleNum is in range
   if (sampleNum<0 || sampleNum>=_fitResList.GetSize()) {
-    oocoutE(_fitModel,InputArguments) << "RooMCStudy::fitResult: ERROR, invalid sample number: " << sampleNum << endl ;
-    return 0 ;
+    oocoutE(_fitModel,InputArguments) << "RooMCStudy::fitResult: ERROR, invalid sample number: " << sampleNum << std::endl ;
+    return nullptr ;
   }
 
   // Retrieve fit result object
-  const RooFitResult* fr = (RooFitResult*) _fitResList.At(sampleNum) ;
+  const RooFitResult* fr = static_cast<RooFitResult*>(_fitResList.At(sampleNum)) ;
   if (fr) {
     return fr ;
   } else {
     oocoutE(_fitModel,InputArguments) << "RooMCStudy::fitResult: ERROR, no fit result saved for sample "
-           << sampleNum << ", did you use the 'r; fit option?" << endl ;
+           << sampleNum << ", did you use the 'r; fit option?" << std::endl ;
   }
-  return 0 ;
+  return nullptr ;
 }
 
 
@@ -904,18 +899,110 @@ RooAbsData* RooMCStudy::genData(Int_t sampleNum) const
 {
   // Check that generated data was saved
   if (_genDataList.GetSize()==0) {
-    oocoutE(_fitModel,InputArguments) << "RooMCStudy::genData() ERROR, generated data was not saved" << endl ;
-    return 0 ;
+    oocoutE(_fitModel,InputArguments) << "RooMCStudy::genData() ERROR, generated data was not saved" << std::endl ;
+    return nullptr ;
   }
 
   // Check if sampleNum is in range
   if (sampleNum<0 || sampleNum>=_genDataList.GetSize()) {
-    oocoutE(_fitModel,InputArguments) << "RooMCStudy::genData() ERROR, invalid sample number: " << sampleNum << endl ;
-    return 0 ;
+    oocoutE(_fitModel,InputArguments) << "RooMCStudy::genData() ERROR, invalid sample number: " << sampleNum << std::endl ;
+    return nullptr ;
   }
 
-  return  (RooAbsData*) _genDataList.At(sampleNum) ;
+  return  static_cast<RooAbsData*>(_genDataList.At(sampleNum)) ;
 }
+
+namespace {
+
+// Fits a Gaussian p.d.f. to the distribution of the frame's plot variable in
+// the given dataset, overlays the fitted p.d.f. on the frame and adds a box
+// with the fitted mean and sigma. Implementation detail of RooMCStudy.
+void fitGaussAndPlotOnFrame(RooPlot &frame, RooDataSet &fitParData, RooAbsPdf &gauss, RooRealVar &mean,
+                            RooRealVar &sigma)
+{
+   gauss.fitTo(fitParData, RooFit::Minos(false), RooFit::PrintLevel(-1));
+   gauss.plotOn(&frame);
+
+   // Instead of using paramOn() without command arguments to plot the fit
+   // parameters, we are building the parameter label ourselves for more
+   // flexibility and pass this together with an appropriate layout
+   // parametrization to paramOn().
+   const int sigDigits = 2;
+   const char *options = "ELU";
+   std::stringstream ss;
+   ss << "Fit parameters:\n"
+      << "#mu: " << mean.format(sigDigits, options) << "\n#sigma: " << sigma.format(sigDigits, options);
+   // We set the parameters constant to disable the default label. Still, we
+   // use param() on as a wrapper for the text box generation.
+   mean.setConstant(true);
+   sigma.setConstant(true);
+   gauss.paramOn(&frame, RooFit::Label(ss.str().c_str()), RooFit::Layout(0.60, 0.9, 0.9));
+}
+
+// Fits a Gaussian to the distribution of the variable plotted in the frame.
+// The initial values of the Gaussian parameters are taken from the moments of
+// the plotted distribution. Implementation detail of RooMCStudy::plotParam(),
+// which is also used by RooMCStudy::plotError() and RooMCStudy::plotNLL().
+void fitGaussToFrame(RooPlot &frame, RooDataSet &fitParData)
+{
+   // Build the Gaussian fit model for the plotted variable, then fit it and
+   // plot it. We have to use the RooWorkspace factory here, because different
+   // from the RooMCStudy class, the RooGaussian is not in RooFitCore.
+   RooWorkspace ws;
+   auto plotVar = frame.getPlotVar();
+   const std::string plotVarName = plotVar->GetName();
+   ws.import(*plotVar);
+   ws.factory("Gaussian::frameGauss(" + plotVarName + ", frameMean[0.0, 0.0, 1.0], frameSigma[1.0, 0.1, 10.0])");
+
+   RooRealVar &mean = *ws.var("frameMean");
+   RooRealVar &sigma = *ws.var("frameSigma");
+
+   // Seed the Gaussian with the moments of the plotted distribution, so that
+   // the fit also converges for distributions that are much narrower than the
+   // frame range. The values are set here and not passed via the factory
+   // string above, because the limited precision of the string representation
+   // would matter for variables with large absolute values.
+   auto const *dataVar = static_cast<RooRealVar const *>(fitParData.get()->find(plotVarName.c_str()));
+   if (!dataVar) {
+      oocoutE(nullptr, Plotting) << "RooMCStudy: no Gaussian fit for '" << plotVarName
+                                 << "', which is not in the dataset of fit parameters." << std::endl;
+      return;
+   }
+   const double dataMean = fitParData.mean(*dataVar);
+   const double dataSigma = fitParData.sigma(*dataVar);
+
+   // The mean is limited to the plotted range, extended if necessary such that
+   // it also covers the seed value.
+   mean.setRange(std::min(frame.GetXaxis()->GetXmin(), dataMean), std::max(frame.GetXaxis()->GetXmax(), dataMean));
+   mean.setVal(dataMean);
+
+   // Fall back to the frame range if the distribution has no spread at all,
+   // which can happen for example if there is only a single successful fit.
+   const double sigmaSeed =
+      dataSigma > 0.0 ? dataSigma : 0.05 * (frame.GetXaxis()->GetXmax() - frame.GetXaxis()->GetXmin());
+   sigma.setRange(0.01 * sigmaSeed, 10. * sigmaSeed);
+   sigma.setVal(sigmaSeed);
+
+   fitGaussAndPlotOnFrame(frame, fitParData, *ws.pdf("frameGauss"), mean, sigma);
+}
+
+// Fits a Gaussian to the pull distribution, plots the fit and prints the fit
+// parameters on the canvas. Implementation detail of RooMCStudy::plotPull().
+void fitGaussToPulls(RooPlot& frame, RooDataSet& fitParData)
+{
+   // Build the Gaussian fit mode for the pulls, then fit it and plot it. We
+   // have to use the RooWorkspace factory here, because different from the
+   // RooMCStudy class, the RooGaussian is not in RooFitCore.
+   RooWorkspace ws;
+   auto plotVar = frame.getPlotVar();
+   const std::string plotVarName = plotVar->GetName();
+   ws.import(*plotVar);
+   ws.factory("Gaussian::pullGauss(" + plotVarName  + ", pullMean[0.0, -10.0, 10.0], pullSigma[1.0, 0.1, 5.0])");
+
+   fitGaussAndPlotOnFrame(frame, fitParData, *ws.pdf("pullGauss"), *ws.var("pullMean"), *ws.var("pullSigma"));
+}
+
+} // namespace
 
 
 
@@ -946,6 +1033,7 @@ RooPlot* RooMCStudy::plotParamOn(RooPlot* frame, const RooCmdArg& arg1, const Ro
 /// <tr><td> FrameBins(int bins)              <td> Set default number of bins of frame to given number
 /// <tr><td> Frame()                       <td> Pass supplied named arguments to RooAbsRealLValue::frame() function. See there
 ///     for list of allowed arguments
+/// <tr><td> FitGauss(bool flag)            <td> Add a gaussian fit to the frame
 /// </table>
 /// If no frame specifications are given, the AutoRange() feature will be used to set the range
 /// Any other named argument is passed to the RooAbsData::plotOn() call. See that function for allowed options
@@ -957,8 +1045,8 @@ RooPlot* RooMCStudy::plotParam(const char* paramName, const RooCmdArg& arg1, con
   // Find parameter in fitParDataSet
   RooRealVar* param = static_cast<RooRealVar*>(_fitParData->get()->find(paramName)) ;
   if (!param) {
-    oocoutE(_fitModel,InputArguments) << "RooMCStudy::plotParam: ERROR: no parameter defined with name " << paramName << endl ;
-    return 0 ;
+    oocoutE(_fitModel,InputArguments) << "RooMCStudy::plotParam: ERROR: no parameter defined with name " << paramName << std::endl ;
+    return nullptr ;
   }
 
   // Forward to implementation below
@@ -984,7 +1072,22 @@ RooPlot* RooMCStudy::plotParam(const RooRealVar& param, const RooCmdArg& arg1, c
 
   RooPlot* frame = makeFrameAndPlotCmd(param, cmdList) ;
   if (frame) {
+
+    // Pick up optional FitGauss command from list
+    RooCmdConfig pc("RooMCStudy::plotParam(" + std::string(_genModel->GetName()) + ")");
+    pc.defineInt("fitGauss","FitGauss",0,0) ;
+    pc.allowUndefined() ;
+    pc.process(cmdList) ;
+    bool fitGauss=pc.getInt("fitGauss") ;
+
+    // Pass stripped command list to plotOn()
+    RooCmdConfig::stripCmdList(cmdList,"FitGauss") ;
     _fitParData->plotOn(frame, cmdList) ;
+
+    // Add Gaussian fit if requested
+    if (fitGauss) {
+      fitGaussToFrame(*frame, *_fitParData);
+    }
   }
 
   return frame ;
@@ -1001,6 +1104,7 @@ RooPlot* RooMCStudy::plotParam(const RooRealVar& param, const RooCmdArg& arg1, c
 /// <tr><td> FrameBins(int bins)              <td> Set default number of bins of frame to given number
 /// <tr><td> Frame()                       <td> Pass supplied named arguments to RooAbsRealLValue::frame() function. See there
 ///     for list of allowed arguments
+/// <tr><td> FitGauss(bool flag)            <td> Add a gaussian fit to the frame
 /// </table>
 ///
 /// If no frame specifications are given, the AutoRange() feature will be used to set the range.
@@ -1025,6 +1129,7 @@ RooPlot* RooMCStudy::plotNLL(const RooCmdArg& arg1, const RooCmdArg& arg2,
 /// <tr><td> FrameBins(int bins)              <td> Set default number of bins of frame to given number
 /// <tr><td> Frame()                       <td> Pass supplied named arguments to RooAbsRealLValue::frame() function. See there
 ///     for list of allowed arguments
+/// <tr><td> FitGauss(bool flag)            <td> Add a gaussian fit to the frame
 /// </table>
 ///
 /// If no frame specifications are given, the AutoRange() feature will be used to set a default range.
@@ -1040,47 +1145,16 @@ RooPlot* RooMCStudy::plotError(const RooRealVar& param, const RooCmdArg& arg1, c
     _canAddFitResults=false ;
   }
 
-  RooErrorVar* evar = param.errorVar() ;
-  RooRealVar* evar_rrv = static_cast<RooRealVar*>(evar->createFundamental()) ;
-  RooPlot* frame = plotParam(*evar_rrv,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8) ;
-  delete evar_rrv ;
-  delete evar ;
+  std::unique_ptr<RooErrorVar> evar{param.errorVar()};
+  std::unique_ptr<RooAbsArg> evar_rrv{evar->createFundamental()};
+  RooPlot* frame = plotParam(static_cast<RooRealVar&>(*evar_rrv),arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8) ;
+
+  // To make sure the frame has no dangling pointer to evar_rrv.
+  frame->createInternalPlotVarClone();
+
   return frame ;
 }
 
-namespace {
-
-// Fits a Gaussian to the pull distribution, plots the fit and prints the fit
-// parameters on the canvas. Implementation detail of RooMCStudy::plotPull().
-void fitGaussToPulls(RooPlot& frame, RooDataSet& fitParData)
-{
-   // Build the Gaussian fit mode for the pulls, then fit it and plot it.
-   RooRealVar pullMean("pullMean","Mean of pull",0,-10,10) ;
-   RooRealVar pullSigma("pullSigma","Width of pull",1,0.1,5) ;
-   RooGenericPdf pullGauss("pullGauss","Gaussian of pull",
-            "exp(-0.5*(@0-@1)*(@0-@1)/(@2*@2))",
-            {*frame.getPlotVar(),pullMean,pullSigma}) ;
-   pullGauss.fitTo(fitParData, RooFit::Minos(0), RooFit::PrintLevel(-1)) ;
-   pullGauss.plotOn(&frame) ;
-
-   // Instead of using paramOn() without command arguments to plot the fit
-   // parameters, we are building the parameter label ourselves for more
-   // flexibility and pass this together with an appropriate layout
-   // parametrization to paramOn().
-   const int sigDigits = 2;
-   const char * options = "ELU";
-   std::stringstream ss;
-   ss << "Fit parameters:\n"
-      << "#mu: " << *std::unique_ptr<TString>{pullMean.format(sigDigits, options)}
-      << "\n#sigma: " << *std::unique_ptr<TString>{pullSigma.format(sigDigits, options)};
-   // We set the parameters constant to disable the default label. Still, we
-   // use param() on as a wrapper for the text box generation.
-   pullMean.setConstant(true);
-   pullSigma.setConstant(true);
-   pullGauss.paramOn(&frame, RooFit::Label(ss.str().c_str()), RooFit::Layout(0.60, 0.9, 0.9));
-}
-
-} // namespace
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1134,7 +1208,8 @@ RooPlot* RooMCStudy::plotPull(const RooRealVar& param, const RooCmdArg& arg1, co
   cmdList.Add(const_cast<RooCmdArg*>(&arg5)) ;  cmdList.Add(const_cast<RooCmdArg*>(&arg6)) ;
   cmdList.Add(const_cast<RooCmdArg*>(&arg7)) ;  cmdList.Add(const_cast<RooCmdArg*>(&arg8)) ;
 
-  TString name(param.GetName()), title(param.GetTitle()) ;
+  TString name(param.GetName());
+  TString title(param.GetTitle());
   name.Append("pull") ; title.Append(" Pull") ;
   RooRealVar pvar(name,title,-100,100) ;
   pvar.setBins(100) ;
@@ -1143,8 +1218,8 @@ RooPlot* RooMCStudy::plotPull(const RooRealVar& param, const RooCmdArg& arg1, co
   RooPlot* frame = makeFrameAndPlotCmd(pvar, cmdList, true) ;
   if (frame) {
 
-    // Pick up optonal FitGauss command from list
-    RooCmdConfig pc(Form("RooMCStudy::plotPull(%s)",_genModel->GetName())) ;
+    // Pick up optional FitGauss command from list
+    RooCmdConfig pc("RooMCStudy::plotPull(" + std::string(_genModel->GetName()) + ")");
     pc.defineInt("fitGauss","FitGauss",0,0) ;
     pc.allowUndefined() ;
     pc.process(cmdList) ;
@@ -1163,6 +1238,9 @@ RooPlot* RooMCStudy::plotPull(const RooRealVar& param, const RooCmdArg& arg1, co
     if (fitGauss) {
       fitGaussToPulls(*frame, *_fitParData);
     }
+
+    // To make sure the frame has no dangling pointer to pvar.
+    frame->createInternalPlotVarClone();
   }
   return frame;
 }
@@ -1177,7 +1255,7 @@ RooPlot* RooMCStudy::plotPull(const RooRealVar& param, const RooCmdArg& arg1, co
 RooPlot* RooMCStudy::makeFrameAndPlotCmd(const RooRealVar& param, RooLinkedList& cmdList, bool symRange) const
 {
   // Select the frame-specific commands
-  RooCmdConfig pc(Form("RooMCStudy::plotParam(%s)",_genModel->GetName())) ;
+  RooCmdConfig pc("RooMCStudy::plotParam(" + std::string(_genModel->GetName()) + ")");
   pc.defineInt("nbins","Bins",0,0) ;
   pc.defineDouble("xlo","Range",0,0) ;
   pc.defineDouble("xhi","Range",1,0) ;
@@ -1189,7 +1267,7 @@ RooPlot* RooMCStudy::makeFrameAndPlotCmd(const RooRealVar& param, RooLinkedList&
   pc.allowUndefined() ;
   pc.process(cmdList) ;
   if (!pc.ok(true)) {
-    return 0 ;
+    return nullptr ;
   }
 
   // Make frame according to specs
@@ -1206,14 +1284,14 @@ RooPlot* RooMCStudy::makeFrameAndPlotCmd(const RooRealVar& param, RooLinkedList&
     // FrameBins, FrameRange or none are given, build custom frame command list
     RooCmdArg bins = RooFit::Bins(nbins) ;
     RooCmdArg range = RooFit::Range(xlo,xhi) ;
-    RooCmdArg autor = symRange ? RooFit::AutoSymRange(*_fitParData,0.2) : RooFit::AutoRange(*_fitParData,0.2) ;
+    RooCmdArg autoRange = symRange ? RooFit::AutoSymRange(*_fitParData,0.2) : RooFit::AutoRange(*_fitParData,0.2) ;
     RooLinkedList frameCmdList ;
 
     if (pc.hasProcessed("Bins")) frameCmdList.Add(&bins) ;
     if (pc.hasProcessed("Range")) {
       frameCmdList.Add(&range) ;
     } else {
-      frameCmdList.Add(&autor) ;
+      frameCmdList.Add(&autoRange) ;
     }
     frame = param.frame(frameCmdList) ;
   }
@@ -1251,11 +1329,10 @@ RooPlot* RooMCStudy::plotError(const RooRealVar& param, double lo, double hi, In
     _canAddFitResults=false ;
   }
 
-  RooErrorVar* evar = param.errorVar() ;
+  std::unique_ptr<RooErrorVar> evar{param.errorVar()};
   RooPlot* frame = evar->frame(lo,hi,nbins) ;
   _fitParData->plotOn(frame) ;
 
-  delete evar ;
   return frame ;
 }
 
@@ -1281,8 +1358,8 @@ RooPlot* RooMCStudy::plotPull(const RooRealVar& param, double lo, double hi, Int
     _canAddFitResults=false ;
   }
 
-
-  TString name(param.GetName()), title(param.GetTitle()) ;
+  TString name(param.GetName());
+  TString title(param.GetTitle());
   name.Append("pull") ; title.Append(" Pull") ;
   RooRealVar pvar(name,title,lo,hi) ;
   pvar.setBins(nbins) ;
@@ -1312,12 +1389,12 @@ void RooMCStudy::RecursiveRemove(TObject *obj)
    _fitResList.RecursiveRemove(obj);
    _genDataList.RecursiveRemove(obj);
    _fitOptList.RecursiveRemove(obj);
-   if (_ngenVar == obj) _ngenVar = nullptr;
+   if (_ngenVar.get() == obj) _ngenVar.reset();
 
    if (_fitParData) _fitParData->RecursiveRemove(obj);
-   if (_fitParData == obj) _fitParData = nullptr;
+   if (_fitParData.get() == obj) _fitParData.reset();
 
    if (_genParData) _genParData->RecursiveRemove(obj);
-   if (_genParData == obj) _genParData = nullptr;
+   if (_genParData.get() == obj) _genParData.reset();
 }
 

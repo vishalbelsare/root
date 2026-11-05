@@ -24,6 +24,7 @@
 #include "Math/Integrator.h"
 
 #include <memory>
+#include <string>
 
 class RooBinSamplingPdf : public RooAbsPdf {
 public:
@@ -34,7 +35,7 @@ public:
 
   RooBinSamplingPdf(const RooBinSamplingPdf& other, const char* name = nullptr);
 
-  TObject* clone(const char* newname) const override {
+  TObject* clone(const char* newname=nullptr) const override {
     return new RooBinSamplingPdf(*this, newname);
   }
 
@@ -60,12 +61,16 @@ public:
   double analyticalIntegral(Int_t code, const char* rangeName=nullptr) const override {
     return _pdf->analyticalIntegral(code, rangeName);
   }
+  /// Forwards to the PDF's implementation.
+  std::unique_ptr<RooAbsReal> createExpectedEventsFunc(const RooArgSet *nset) const override {
+    return _pdf->createExpectedEventsFunc(nset);
+  }
 
   /// Forwards to the PDF's implementation.
   bool selfNormalized() const override { return true; }
 
   /// Forwards to the PDF's implementation.
-  RooAbsReal* createIntegral(const RooArgSet& iset,
+  RooFit::OwningPtr<RooAbsReal> createIntegral(const RooArgSet& iset,
                              const RooArgSet* nset=nullptr,
                              const RooNumIntConfig* cfg=nullptr,
                              const char* rangeName=nullptr) const override {
@@ -106,16 +111,11 @@ public:
   const RooAbsPdf& pdf() const { return _pdf.arg(); }
   const RooAbsReal& observable() const { return _observable.arg(); }
 
-  std::unique_ptr<RooArgSet> fillNormSetForServer(RooArgSet const& /*normSet*/,
-                         RooAbsArg const& /*server*/) const override {
-    // servers are evaluated unnormalized
-    return std::make_unique<RooArgSet>();
-  }
+  void doEval(RooFit::EvalContext &) const override;
 
 protected:
   double evaluate() const override;
-  RooSpan<double> evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const override;
-  RooSpan<const double> binBoundaries() const;
+  std::span<const double> binBoundaries() const;
 
 private:
   template<typename Func>
@@ -123,6 +123,7 @@ private:
   // Call operator for our internal integrator.
   double operator()(double x) const;
   double integrate(const RooArgSet* normSet, double low, double high) const;
+  void initializeAnalyticalIntegral(const RooArgSet* normSet) const;
 
 
   RooTemplateProxy<RooAbsPdf> _pdf;
@@ -131,6 +132,8 @@ private:
 
   mutable std::unique_ptr<ROOT::Math::IntegratorOneDim> _integrator{nullptr}; ///<! Integrator used to sample bins.
   mutable std::vector<double> _binBoundaries; ///<! Workspace to store data for bin sampling
+  mutable Int_t _analyticalIntegralCode{-1}; ///<! Analytical integral code of the wrapped pdf over the observable (-1: not yet determined, 0: none).
+  mutable std::string _analyticalIntegralRangeName; ///<! Name of the range used for the per-bin analytical integration.
 
   ClassDefOverride(RooBinSamplingPdf,1)
 };

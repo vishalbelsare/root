@@ -25,17 +25,6 @@ namespace RooStats {
 
    public:
 
-      RatioOfProfiledLikelihoodsTestStat() :
-         fNullProfile(),
-         fAltProfile(),
-         fAltPOI(nullptr),
-         fSubtractMLE(true),
-         fDetailedOutputEnabled(false),
-         fDetailedOutput(nullptr)
-      {
-         // Proof constructor. Don't use.
-      }
-
       RatioOfProfiledLikelihoodsTestStat(RooAbsPdf& nullPdf, RooAbsPdf& altPdf,
                                          const RooArgSet* altPOI=nullptr) :
          fNullProfile(nullPdf),
@@ -46,11 +35,11 @@ namespace RooStats {
       {
          //  Calculates the ratio of profiled likelihoods.
 
-         if(altPOI)
+         if (altPOI) {
             fAltPOI = (RooArgSet*) altPOI->snapshot();
-         else
+         } else {
             fAltPOI = new RooArgSet(); // empty set
-
+         }
       }
 
       //__________________________________________
@@ -142,9 +131,7 @@ namespace RooStats {
       bool fDetailedOutputEnabled;
       RooArgSet* fDetailedOutput;
 
-
-   protected:
-      ClassDefOverride(RatioOfProfiledLikelihoodsTestStat,3)  // implements the ratio of profiled likelihood as test statistic
+      ClassDefOverride(RatioOfProfiledLikelihoodsTestStat,0)  // implements the ratio of profiled likelihood as test statistic
    };
 
 }

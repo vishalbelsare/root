@@ -77,16 +77,13 @@ public:
    GSLRootFinderDeriv();
    ~GSLRootFinderDeriv() override;
 
-private:
-   // usually copying is non trivial, so we make this unaccessible
-   GSLRootFinderDeriv(const GSLRootFinderDeriv &);
-   GSLRootFinderDeriv & operator = (const GSLRootFinderDeriv &);
+   // usually copying is non trivial, so we delete this
+   GSLRootFinderDeriv(const GSLRootFinderDeriv &) = delete;
+   GSLRootFinderDeriv &operator=(const GSLRootFinderDeriv &) = delete;
+   GSLRootFinderDeriv(GSLRootFinderDeriv &&) = delete;
+   GSLRootFinderDeriv &operator=(GSLRootFinderDeriv &&) = delete;
 
-public:
-
-
-
-#if defined(__MAKECINT__) || defined(G__DICTIONARY)
+#if defined(__ROOTCLING__) || defined(G__DICTIONARY)
    bool SetFunction( const IGenFunction & , double , double ) override {
       std::cerr <<"GSLRootFinderDeriv - Error : Algorithm requirs derivatives" << std::endl;
       return false;

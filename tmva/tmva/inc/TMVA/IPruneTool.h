@@ -2,7 +2,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : TMVA::DecisionTree                                                    *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      IPruneTool - a helper interface class to prune a decision tree            *
@@ -42,9 +42,9 @@ namespace TMVA {
 
    PruningInfo( ) : QualityIndex(0), PruneStrength(0), PruneSequence(0) {}
       PruningInfo( Double_t q, Double_t alpha, std::vector<DecisionTreeNode*> sequence );
-      Double_t QualityIndex; //! quality measure for a pruned subtree T of T_max
-      Double_t PruneStrength; //! the regularization parameter for pruning
-      std::vector<DecisionTreeNode*> PruneSequence; //! the sequence of pruning locations in T_max that yields T
+      Double_t QualityIndex; ///<! quality measure for a pruned subtree T of T_max
+      Double_t PruneStrength; ///<! the regularization parameter for pruning
+      std::vector<DecisionTreeNode*> PruneSequence; ///<! the sequence of pruning locations in T_max that yields T
    };
 
    inline PruningInfo::PruningInfo( Double_t q, Double_t alpha, std::vector<DecisionTreeNode*> sequence )

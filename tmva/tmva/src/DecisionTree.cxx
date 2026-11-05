@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : TMVA::DecisionTree                                                    *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Implementation of a Decision Tree                                         *
@@ -89,7 +89,6 @@ const Int_t TMVA::DecisionTree::fgRandomSeed = 0; // set nonzero for debugging a
 
 using std::vector;
 
-ClassImp(TMVA::DecisionTree);
 
 bool almost_equal_float(float x, float y, int ulp=4){
    // the machine epsilon has to be scaled to the magnitude of the values used

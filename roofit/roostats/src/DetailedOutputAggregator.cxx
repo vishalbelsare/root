@@ -89,7 +89,7 @@ namespace RooStats {
 
       if (aset == nullptr) {
          // silently ignore
-         //std::cout << "Attempted to append nullptr" << endl;
+         //std::cout << "Attempted to append nullptr" << std::endl;
          return;
       }
       if (fBuiltSet == nullptr) {
@@ -99,17 +99,17 @@ namespace RooStats {
          TString renamed(TString::Format("%s%s", prefix.Data(), v->GetName()));
          if (fResult == nullptr) {
             // we never committed, so by default all columns are expected to not exist
-            RooAbsArg* var = v->createFundamental();
+            std::unique_ptr<RooAbsArg> var{v->createFundamental()};
             assert(var != nullptr);
             RooArgSet(*var).assign(RooArgSet(*v));
             var->SetName(renamed);
-            if (RooRealVar* rvar= dynamic_cast<RooRealVar*>(var)) {
+            if (RooRealVar* rvar= dynamic_cast<RooRealVar*>(var.get())) {
                if (v->getAttribute("StoreError"))     var->setAttribute("StoreError");
                else rvar->removeError();
                if (v->getAttribute("StoreAsymError")) var->setAttribute("StoreAsymError");
                else rvar->removeAsymError();
             }
-            if (fBuiltSet->addOwned(*var)) continue;  // OK - can skip past setting value
+            if (fBuiltSet->addOwned(std::move(var))) continue;  // OK - can skip past setting value
          }
          if (RooAbsArg* var = fBuiltSet->find(renamed)) {
             // we already committed an argset once, so we expect all columns to already be in the set
@@ -127,13 +127,12 @@ namespace RooStats {
    void DetailedOutputAggregator::CommitSet(double weight) {
       if (fResult == nullptr) {
          // Store dataset as a tree - problem with VectorStore and StoreError (bug #94908)
-         RooRealVar wgt("weight","weight",1.0);
-         fResult = new RooDataSet("", "", RooArgSet(*fBuiltSet,wgt), RooFit::WeightVar(wgt));
+         fResult = new RooDataSet("", "", *fBuiltSet, RooFit::WeightVar());
       }
       fResult->add(RooArgSet(*fBuiltSet), weight);
 
-      for (RooAbsArg* v : *fBuiltSet) {
-         if (RooRealVar* var= dynamic_cast<RooRealVar*>(v)) {
+      for (auto* var : dynamic_range_cast<RooRealVar*>(*fBuiltSet)) {
+         if (var) {
             // Invalidate values in case we don't set some of them next time round (eg. if fit not done)
             var->setVal(std::numeric_limits<double>::quiet_NaN());
             var->removeError();
@@ -153,8 +152,7 @@ namespace RooStats {
          fResult = nullptr;   // we no longer own the dataset
          temp->SetNameTitle( name.Data(), title.Data() );
       }else{
-         RooRealVar wgt("weight","weight",1.0);
-         temp = new RooDataSet(name.Data(), title.Data(), RooArgSet(wgt), RooFit::WeightVar(wgt));
+         temp = new RooDataSet(name.Data(), title.Data(), {}, RooFit::WeightVar());
       }
       delete fBuiltSet;
       fBuiltSet = nullptr;

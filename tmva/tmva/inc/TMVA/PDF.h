@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : PDF                                                                   *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      PDF wrapper for histograms; uses user-defined spline interpolation        *
@@ -27,7 +27,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_PDF
@@ -113,7 +113,7 @@ namespace TMVA {
       TMVA::PDF::EInterpolateMethod GetInterpolMethod() { return fInterpolMethod;}
 
       // modified name (remove TMVA::)
-      const char* GetName() const { return fPDFName; }
+      const char* GetName() const override { return fPDFName; }
 
       // TMVA version control (for weight files)
       void   SetReadingVersion( UInt_t rv ) { fReadingVersion = rv; }
@@ -208,7 +208,7 @@ namespace TMVA {
       // external auxiliary functions
       static Double_t          IGetVal( Double_t*, Double_t* );
 
-      ClassDef(PDF,1)  // PDF wrapper for histograms
+      ClassDefOverride(PDF,1)  // PDF wrapper for histograms
          };
 
 } // namespace TMVA

@@ -58,6 +58,7 @@ Explorer). The widgets used are the new native ROOT GUI widgets.
 #include "TInterpreter.h"
 #include "TGuiBuilder.h"
 #include "TImage.h"
+#include "TASUtils.h"
 #include "TVirtualPad.h"
 #include "KeySymbols.h"
 #include "THashTable.h"
@@ -67,7 +68,6 @@ Explorer). The widgets used are the new native ROOT GUI widgets.
 #include "TBufferFile.h"
 #include "TFolder.h"
 #include "Getline.h"
-#include "snprintf.h"
 #include "TVirtualX.h"
 
 #include "HelpText.h"
@@ -76,6 +76,7 @@ Explorer). The widgets used are the new native ROOT GUI widgets.
 #include "TWin32SplashThread.h"
 #endif
 
+#include <cstdio>
 // Browser menu command ids
 enum ERootBrowserCommands {
    kFileNewBrowserLite,
@@ -339,7 +340,7 @@ private:
 
 public:
    TRootIconList(TRootIconBox* box = nullptr);
-   virtual ~TRootIconList();
+   ~TRootIconList() override;
    void              UpdateName();
    const char       *GetTitle() const  override{ return "ListView Container"; }
    Bool_t            IsFolder() const override { return kFALSE; }
@@ -418,7 +419,7 @@ public:
                 UInt_t options = kSunkenFrame,
                 ULong_t back = GetDefaultFrameBackground());
 
-   virtual ~TRootIconBox();
+   ~TRootIconBox() override;
 
    void   AddObjItem(const char *name, TObject *obj, TClass *cl);
    void   GetObjPictures(const TGPicture **pic, const TGPicture **spic,
@@ -503,11 +504,11 @@ void TRootIconBox::GetObjPictures(const TGPicture **pic, const TGPicture **spic,
 
    if (!(*pic) && xpm) {
       if (im && im->SetImageBuffer((char**)&name, TImage::kXpm)) {
-         *pic = fClient->GetPicturePool()->GetPicture(iconname, im->GetPixmap(),
-                                                      im->GetMask());
+         *pic = fClient->GetPicturePool()->GetPicture(iconname, TASUtils::GetPixmap(im),
+                                                      TASUtils::GetMask(im));
          im->Scale(im->GetWidth()/2, im->GetHeight()/2);
-         *spic = fClient->GetPicturePool()->GetPicture(iconname, im->GetPixmap(),
-                                                      im->GetMask());
+         *spic = fClient->GetPicturePool()->GetPicture(iconname, TASUtils::GetPixmap(im),
+                                                      TASUtils::GetMask(im));
       }
 
       fClient->GetMimeTypeList()->AddType("[thumbnail]", iconname, iconname, iconname, "->Browse()");
@@ -592,10 +593,10 @@ void TRootIconBox::AddObjItem(const char *name, TObject *obj, TClass *cl)
       }
 
       TIconBoxThumb *thumb = 0;
-      char *thumbname = gSystem->ConcatFileName(gSystem->WorkingDirectory(), name);
+      TString temp_name = name;
+      const char *thumbname = gSystem->PrependPathName(gSystem->WorkingDirectory(), temp_name);
       thumb = (TIconBoxThumb *)fThumbnails->FindObject(gSystem->IsAbsoluteFileName(name) ? name :
                                                        thumbname);
-      delete []thumbname;
 
       if (thumb) {
          spic = thumb->fSmall;
@@ -898,7 +899,6 @@ void TRootIconBox::RemoveAll()
 // ROOT object browser (looking like Windows Explorer).
 //_____________________________________________________________________________
 
-ClassImp(TRootBrowserLite);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create browser with a specified width and height.
@@ -1647,7 +1647,7 @@ void TRootBrowserLite::ExecuteDefaultAction(TObject *obj)
    TRootBrowserCursorSwitcher cursorSwitcher(fIconBox, fLt);
    char action[512];
    fBrowser->SetDrawOption(GetDrawOption());
-   TVirtualPad *wasp = gPad ? (TVirtualPad*)gPad->GetCanvas() : 0;
+   TVirtualPad *wasp = gPad ? (TVirtualPad*)gPad->GetCanvas() : nullptr;
    TFile *wasf = gFile;
 
    // Special case for file system objects...
@@ -1701,7 +1701,7 @@ void TRootBrowserLite::ExecuteDefaultAction(TObject *obj)
          BrowseTextFile(obj->GetName());
 
       /////////////// cache and change file's icon ///////////////////////
-      TVirtualPad *nowp = gPad ? (TVirtualPad*)gPad->GetCanvas() : 0;
+      TVirtualPad *nowp = gPad ? (TVirtualPad*)gPad->GetCanvas() : nullptr;
 
       if (fIconBox->fAutoThumbnail && nowp && (nowp != wasp)) {
          TSystemFile *sf = (TSystemFile*)obj;
@@ -1711,9 +1711,8 @@ void TRootBrowserLite::ExecuteDefaultAction(TObject *obj)
          if (gSystem->IsAbsoluteFileName(sf->GetName())) {
             path = sf->GetName();
          } else {
-            char *buf = gSystem->ConcatFileName(gSystem->WorkingDirectory(), sf->GetName());
-            path = buf;
-            delete [] buf;
+            path = sf->GetName();
+            gSystem->PrependPathName(gSystem->WorkingDirectory(), path);
          }
 
          TIconBoxThumb *thumb = (TIconBoxThumb*)fIconBox->fThumbnails->FindObject(path.Data());
@@ -1748,9 +1747,9 @@ void TRootBrowserLite::ExecuteDefaultAction(TObject *obj)
             img->Merge(img, "tint");   // contrasting
             img->DrawBox(0, 0, w, h, "#ffff00", 1); // yellow frame
 
-            pic = fClient->GetPicturePool()->GetPicture(path.Data(), img->GetPixmap(), 0);
+            pic = fClient->GetPicturePool()->GetPicture(path.Data(), TASUtils::GetPixmap(img), 0);
             img->Scale(w/3, h/3);
-            spic = fClient->GetPicturePool()->GetPicture(path.Data(), img->GetPixmap(), 0);
+            spic = fClient->GetPicturePool()->GetPicture(path.Data(), TASUtils::GetPixmap(img), 0);
 
             thumb = new TIconBoxThumb(path.Data(), spic, pic);
             fIconBox->fThumbnails->Add(thumb);
@@ -1967,19 +1966,14 @@ Bool_t TRootBrowserLite::ProcessMessage(Longptr_t msg, Longptr_t parm1, Longptr_
                   // Handle Help menu items...
                   case kHelpAbout:
                      {
-#ifdef R__UNIX
-                        TString rootx = TROOT::GetBinDir() + "/root -a &";
-                        gSystem->Exec(rootx);
-#else
 #ifdef WIN32
                         new TWin32SplashThread(kTRUE);
 #else
                         char str[32];
-                        sprintf(str, "About ROOT %s...", gROOT->GetVersion());
+                        snprintf(str, 32, "About ROOT %s...", gROOT->GetVersion());
                         hd = new TRootHelpDialog(this, str, 600, 400);
                         hd->SetText(gHelpAbout);
                         hd->Popup();
-#endif
 #endif
                      }
                      break;
@@ -3093,14 +3087,13 @@ void TRootBrowserLite::BrowseTextFile(const char *file)
 
 void TRootBrowserLite::ExecMacro()
 {
-   char *tmpfile = gSystem->ConcatFileName(gSystem->TempDirectory(),
-                                           fTextFileName.Data());
+   TString temp = fTextFileName.Data();
+   const char *tmpfile = gSystem->PrependPathName(gSystem->TempDirectory(), temp);
 
    gROOT->SetExecutingMacro(kTRUE);
    fTextEdit->SaveFile(tmpfile, kFALSE);
    gROOT->Macro(tmpfile);
    gSystem->Unlink(tmpfile);
-   delete [] tmpfile;
    gROOT->SetExecutingMacro(kFALSE);
 }
 

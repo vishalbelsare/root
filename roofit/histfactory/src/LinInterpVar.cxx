@@ -25,21 +25,11 @@
 
 #include "RooStats/HistFactory/LinInterpVar.h"
 
-using namespace std;
+using std::vector, std::endl;
 
-ClassImp(RooStats::HistFactory::LinInterpVar);
 
 using namespace RooStats;
 using namespace HistFactory;
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
-
-LinInterpVar::LinInterpVar()
-{
-  _nominal = 0 ;
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -54,7 +44,7 @@ LinInterpVar::LinInterpVar(const char* name, const char* title,
   for (auto param : paramList) {
     if (!dynamic_cast<RooAbsReal*>(param)) {
       coutE(InputArguments) << "LinInterpVar::ctor(" << GetName() << ") ERROR: paramficient " << param->GetName()
-             << " is not of type RooAbsReal" << endl ;
+             << " is not of type RooAbsReal" << std::endl ;
       assert(0) ;
     }
     _paramList.add(*param) ;
@@ -94,10 +84,11 @@ double LinInterpVar::evaluate() const
   
   int i=0;
   for(auto const* param: static_range_cast<RooAbsReal *>(_paramList)) {
-    if(param->getVal()>0)
+    if (param->getVal() > 0) {
       sum +=  param->getVal()*(_high.at(i) - _nominal );
-    else
-      sum += param->getVal()*(_nominal - _low.at(i));
+    } else {
+      sum += param->getVal() * (_nominal - _low.at(i));
+    }
 
     ++i;
   }

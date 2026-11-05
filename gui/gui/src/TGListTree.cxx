@@ -37,10 +37,6 @@ A list tree can generate the following events:
 
 */
 
-
-#include <cstdlib>
-#include <iostream>
-
 #include "TClass.h"
 #include "TGListTree.h"
 #include "TGPicture.h"
@@ -52,6 +48,7 @@ A list tree can generate the following events:
 #include "TGResourcePool.h"
 #include "TGMsgBox.h"
 #include "TError.h"
+#include "TROOT.h"
 #include "TColor.h"
 #include "TSystem.h"
 #include "TString.h"
@@ -61,7 +58,10 @@ A list tree can generate the following events:
 #include "TVirtualX.h"
 #include "RConfigure.h"
 #include "strlcpy.h"
-#include "snprintf.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
 
 Pixel_t          TGListTree::fgGrayPixel = 0;
 const TGFont    *TGListTree::fgDefaultFont = nullptr;
@@ -76,9 +76,6 @@ const TGPicture *TGListTree::fgCheckedPic = nullptr;
 const TGPicture *TGListTree::fgUncheckedPic = nullptr;
 
 
-ClassImp(TGListTreeItem);
-ClassImp(TGListTreeItemStd);
-ClassImp(TGListTree);
 
 /******************************************************************************/
 /******************************************************************************/
@@ -223,15 +220,19 @@ Bool_t TGListTreeItemStd::HasUnCheckedChild(Bool_t first)
 
 void TGListTreeItemStd::UpdateState()
 {
+   const TGPicture *pic1 = nullptr, *pic2 = nullptr;
    if ((!fChecked && HasCheckedChild(kTRUE)) ||
        (fChecked && HasUnCheckedChild(kTRUE))) {
-      SetCheckBoxPictures(gClient->GetPicture("checked_dis_t.xpm"),
-                          gClient->GetPicture("unchecked_dis_t.xpm"));
+      pic1 = gClient->GetPicture("checked_dis_t.xpm");
+      pic2 = gClient->GetPicture("unchecked_dis_t.xpm");
    }
    else {
-      SetCheckBoxPictures(gClient->GetPicture("checked_t.xpm"),
-                          gClient->GetPicture("unchecked_t.xpm"));
+      pic1 = gClient->GetPicture("checked_t.xpm");
+      pic2 = gClient->GetPicture("unchecked_t.xpm");
    }
+   SetCheckBoxPictures(pic1, pic2);
+   gClient->FreePicture(pic1);
+   gClient->FreePicture(pic2);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -577,7 +578,7 @@ Bool_t TGListTree::HandleButton(Event_t *event)
 //                              fCanvas->GetContainer()->GetHeight());
          // choose page size either 1/5 of viewport or 5 lines (90)
          Int_t r = fCanvas->GetViewPort()->GetHeight() / 5;
-         page = TMath::Min(r, 90);
+         page = std::min(r, 90);
       }
    }
 
@@ -1313,10 +1314,10 @@ void TGListTree::AdjustPosition(TGListTreeItem *item)
       vh = fCanvas->GetVScrollbar()->GetPosition()+(Int_t)fViewPort->GetHeight();
 
       if (y<fCanvas->GetVScrollbar()->GetPosition()) {
-         v = TMath::Max(0,y-(Int_t)fViewPort->GetHeight()/2);
+         v = std::max(0,y-(Int_t)fViewPort->GetHeight()/2);
          fCanvas->SetVsbPosition(v);
       } else if (y+(Int_t)it->fHeight>vh) {
-         v = TMath::Min((Int_t)GetHeight()-(Int_t)fViewPort->GetHeight(),
+         v = std::min((Int_t)GetHeight()-(Int_t)fViewPort->GetHeight(),
                         y+(Int_t)it->fHeight-(Int_t)fViewPort->GetHeight()/2);
          if (v<0) v = 0;
          fCanvas->SetVsbPosition(v);
@@ -2553,7 +2554,7 @@ const TGGC &TGListTree::GetColorGC()
 const TGPicture *TGListTree::GetOpenPic()
 {
    if (!fgOpenPic)
-      fgOpenPic = gClient->GetPicture("ofolder_t.xpm");
+      fgOpenPic = gClient->GetPictureOrEmpty("ofolder_t.xpm");
    ((TGPicture *)fgOpenPic)->AddReference();
    return fgOpenPic;
 }
@@ -2564,7 +2565,7 @@ const TGPicture *TGListTree::GetOpenPic()
 const TGPicture *TGListTree::GetClosedPic()
 {
    if (!fgClosedPic)
-      fgClosedPic = gClient->GetPicture("folder_t.xpm");
+      fgClosedPic = gClient->GetPictureOrEmpty("folder_t.xpm");
    ((TGPicture *)fgClosedPic)->AddReference();
    return fgClosedPic;
 }
@@ -2575,7 +2576,7 @@ const TGPicture *TGListTree::GetClosedPic()
 const TGPicture *TGListTree::GetCheckedPic()
 {
    if (!fgCheckedPic)
-      fgCheckedPic = gClient->GetPicture("checked_t.xpm");
+      fgCheckedPic = gClient->GetPictureOrEmpty("checked_t.xpm");
    ((TGPicture *)fgCheckedPic)->AddReference();
    return fgCheckedPic;
 }
@@ -2586,7 +2587,7 @@ const TGPicture *TGListTree::GetCheckedPic()
 const TGPicture *TGListTree::GetUncheckedPic()
 {
    if (!fgUncheckedPic)
-      fgUncheckedPic = gClient->GetPicture("unchecked_t.xpm");
+      fgUncheckedPic = gClient->GetPictureOrEmpty("unchecked_t.xpm");
    ((TGPicture *)fgUncheckedPic)->AddReference();
    return fgUncheckedPic;
 }
@@ -2596,75 +2597,58 @@ const TGPicture *TGListTree::GetUncheckedPic()
 
 void TGListTree::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   if (fBackground != GetWhitePixel()) SaveUserColor(out, option);
+   // store options and color if differ from defaults
+   TString extra_args = SaveCtorArgs(out, kSunkenFrame, kTRUE);
 
-   out << std::endl << "   // list tree" << std::endl;
-   out << "   TGListTree *";
+   out << "\n   // list tree\n";
+   out << "   TGListTree *" << GetName() << " = new TGListTree(";
 
-   if ((fParent->GetParent())->InheritsFrom(TGCanvas::Class())) {
-      out << GetName() << " = new TGListTree(" << GetCanvas()->GetName();
-   } else {
-      out << GetName() << " = new TGListTree(" << fParent->GetName();
-      out << "," << GetWidth() << "," << GetHeight();
-   }
+   if ((fParent->GetParent())->InheritsFrom(TGCanvas::Class()))
+      out << GetCanvas()->GetName();
+   else
+      out << fParent->GetName() << "," << GetWidth() << "," << GetHeight();
+   out << extra_args << ");\n";
 
-   if (fBackground == GetWhitePixel()) {
-      if (GetOptions() == kSunkenFrame) {
-         out <<");" << std::endl;
-      } else {
-         out << "," << GetOptionString() <<");" << std::endl;
-      }
-   } else {
-      out << "," << GetOptionString() << ",ucolor);" << std::endl;
-   }
    if (option && strstr(option, "keep_names"))
-      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");" << std::endl;
+      out << "   " << GetName() << "->SetName(\"" << GetName() << "\");\n";
 
-   out << std::endl;
+   TGListTreeItem *current = GetFirstItem();
 
-   static Int_t n = 0;
-
-   TGListTreeItem *current;
-   current = GetFirstItem();
-
-   out << "   const TGPicture *popen;       //used for list tree items" << std::endl;
-   out << "   const TGPicture *pclose;      //used for list tree items" << std::endl;
-   out << std::endl;
+   out << "   \n";
 
    while (current) {
-      out << "   TGListTreeItem *item" << n << " = " << GetName() << "->AddItem(";
-      current->SavePrimitive(out, TString::Format("%d",n), n);
+      TString var_name = current->SaveTreeItem(out, GetName(), "nullptr");
       if (current->IsOpen())
-         out << "   " << GetName() << "->OpenItem(item" << n << ");" << std::endl;
+         out << "   " << GetName() << "->OpenItem(" << var_name << ");\n";
       else
-         out << "   " << GetName() << "->CloseItem(item" << n << ");" << std::endl;
+         out << "   " << GetName() << "->CloseItem(" << var_name << ");\n";
 
       if (current == fSelected)
-         out << "   " << GetName() << "->SetSelected(item" << n << ");" << std::endl;
+         out << "   " << GetName() << "->SetSelected(" << var_name << ");\n";
 
-      n++;
-      if (current->fFirstchild) {
-         SaveChildren(out, current->fFirstchild, n);
-      }
+      if (current->fFirstchild)
+         SaveChildren(out, var_name, current->fFirstchild);
+
       current = current->fNextsibling;
    }
 
-   out << std::endl;
+   out << "   \n";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Save child items as a C++ statements on output stream out.
 
-void TGListTree::SaveChildren(std::ostream &out, TGListTreeItem *item, Int_t &n)
+void TGListTree::SaveChildren(std::ostream &out, const char *parent_var_name, TGListTreeItem *item)
 {
-   Int_t p = n-1;
    while (item) {
-      out << "   TGListTreeItem *item" << n << " = " << GetName() << "->AddItem(";
-      item->SavePrimitive(out, TString::Format("%d",p),n);
-      n++;
-      if (item->fFirstchild) {
-         SaveChildren(out, item->fFirstchild, n);
-      }
+      TString var_name = item->SaveTreeItem(out, GetName(), parent_var_name);
+
+      if (item == fSelected)
+         out << "   " << GetName() << "->SetSelected(" << var_name << ");\n";
+
+      if (item->fFirstchild)
+         SaveChildren(out, var_name, item->fFirstchild);
+
       item = item->fNextsibling;
    }
 }
@@ -2672,82 +2656,64 @@ void TGListTree::SaveChildren(std::ostream &out, TGListTreeItem *item, Int_t &n)
 ////////////////////////////////////////////////////////////////////////////////
 /// Save a list tree item attributes as a C++ statements on output stream.
 
-void TGListTreeItemStd::SavePrimitive(std::ostream &out, Option_t *option, Int_t n)
+TString TGListTreeItemStd::SaveTreeItem(std::ostream &out, const char *tree_var_name, const char *parent_var_name)
 {
-   static const TGPicture *oldopen = nullptr;
-   static const TGPicture *oldclose = nullptr;
-   static const TGPicture *oldcheck = nullptr;
-   static const TGPicture *olduncheck = nullptr;
-   static Bool_t makecheck = kTRUE;
-   static Bool_t makeuncheck = kTRUE;
-   static Color_t oldcolor = -1;
+   static const TGPicture *oldopen = nullptr, *oldclose = nullptr, *oldcheck = nullptr, *olduncheck = nullptr;
+   static int item_cnt = 0;
 
-   char quote = '"';
-   TString s = TString::Format("%d", n);
+   if (!gROOT->ClassSaved(Class())) {
+      oldopen = oldclose = oldcheck = olduncheck = nullptr;
+      item_cnt = 0;
+      out << "   const TGPicture *pic_litem_open = nullptr, *pic_litem_close = nullptr, *pic_litem_check = nullptr, "
+             "*pic_litem_uncheck = nullptr;\n";
+   }
 
-   if (!fParent)
-      out << "NULL,";
-   else
-      out << "item" << option << ",";
-   TString text = GetText();
-   text.ReplaceAll('\\', "\\\\");
-   text.ReplaceAll("\"", "\\\"");
-   out << quote << text << quote;
-   out << ");" << std::endl;
+   TString var_name = TString::Format("list_tree_item%d", item_cnt++);
 
-   if (oldopen != fOpenPic) {
+   if (fOpenPic && (oldopen != fOpenPic)) {
       oldopen = fOpenPic;
       TString picname = gSystem->UnixPathName(fOpenPic->GetName());
       gSystem->ExpandPathName(picname);
-      out << "   popen = gClient->GetPicture(" << quote << picname << quote << ");" << std::endl;
+      out << "   pic_litem_open = gClient->GetPicture(\"" << picname.ReplaceSpecialCppChars() << "\");\n";
    }
-   if (oldclose != fClosedPic) {
+   if (fClosedPic && (oldclose != fClosedPic)) {
       oldclose = fClosedPic;
       TString picname = gSystem->UnixPathName(fClosedPic->GetName());
       gSystem->ExpandPathName(picname);
-      out << "   pclose = gClient->GetPicture(" << quote << picname << quote << ");" << std::endl;
+      out << "   pic_litem_close = gClient->GetPicture(\"" << picname.ReplaceSpecialCppChars() << "\");\n";
    }
-   out << "   item" << s.Data() << "->SetPictures(popen, pclose);" << std::endl;
+
+   out << "   TGListTreeItem *" << var_name << " = " << tree_var_name << "->AddItem(" << parent_var_name << ", \""
+       << TString(GetText()).ReplaceSpecialCppChars() << "\", " << (fOpenPic ? "pic_litem_open" : "nullptr") << ", "
+       << (fClosedPic ? "pic_litem_close" : "nullptr");
+   if (HasCheckBox())
+      out << ", kTRUE";
+   out << ");\n";
+
    if (HasCheckBox()) {
-      if (fCheckedPic && makecheck) {
-         out << "   const TGPicture *pcheck;        //used for checked items" << std::endl;
-         makecheck = kFALSE;
-      }
-      if (fUncheckedPic && makeuncheck) {
-         out << "   const TGPicture *puncheck;      //used for unchecked items" << std::endl;
-         makeuncheck = kFALSE;
-      }
-      out << "   item" << s.Data() << "->CheckItem();" << std::endl;
+      out << "   " << var_name << "->CheckItem();\n";
       if (fCheckedPic && oldcheck != fCheckedPic) {
          oldcheck = fCheckedPic;
          TString picname = gSystem->UnixPathName(fCheckedPic->GetName());
          gSystem->ExpandPathName(picname);
-         out << "   pcheck = gClient->GetPicture(" << quote << picname << quote << ");" << std::endl;
+         out << "   pic_litem_check = gClient->GetPicture(\"" << picname.ReplaceSpecialCppChars() << "\");\n";
       }
       if (fUncheckedPic && olduncheck != fUncheckedPic) {
          olduncheck = fUncheckedPic;
          TString picname = gSystem->UnixPathName(fUncheckedPic->GetName());
          gSystem->ExpandPathName(picname);
-         out << "   puncheck = gClient->GetPicture(" << quote << picname << quote << ");" << std::endl;
+         out << "   pic_litem_uncheck = gClient->GetPicture(\"" << picname.ReplaceSpecialCppChars() << "\");\n";
       }
-      out << "   item" << s.Data() << "->SetCheckBoxPictures(pcheck, puncheck);" << std::endl;
-      out << "   item" << s.Data() << "->SetCheckBox(kTRUE);" << std::endl;
+      out << "   " << var_name << "->SetCheckBoxPictures(" << (fCheckedPic ? "pic_litem_check" : "nullptr") << ", "
+          << (fUncheckedPic ? "pic_litem_uncheck" : "nullptr") << ");\n";
    }
-   if (fHasColor) {
-      if (oldcolor != fColor) {
-         oldcolor = fColor;
-         out << "   item" << s.Data() << "->SetColor(" << fColor << ");" << std::endl;
-      }
-   }
-   if (fTipText.Length() > 0) {
-      TString tiptext = GetTipText();
-      tiptext.ReplaceAll('\\', "\\\\");
-      tiptext.ReplaceAll("\n", "\\n");
-      tiptext.ReplaceAll("\"", "\\\"");
-      out << "   item" << s.Data() << "->SetTipText(" << quote
-          << tiptext << quote << ");" << std::endl;
-   }
+   if (fHasColor)
+      out << "   " << var_name << "->SetColor(" << fColor << ");\n";
 
+   if (fTipText.Length() > 0)
+      out << "   " << var_name << "->SetTipText(\"" << TString(GetTipText()).ReplaceSpecialCppChars() << "\");\n";
+
+   return var_name;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2781,6 +2747,7 @@ void TGListTree::UpdateChecked(TGListTreeItem *item, Bool_t redraw)
 {
    if (fAutoCheckBoxPic == kFALSE) return;
 
+   const TGPicture *pic1 = nullptr, *pic2 = nullptr;
    TGListTreeItem *parent;
    TGListTreeItem *current;
    current = item->GetFirstChild();
@@ -2789,27 +2756,32 @@ void TGListTree::UpdateChecked(TGListTreeItem *item, Bool_t redraw)
    while (parent && parent->HasCheckBox()) {
       if ((!parent->IsChecked() && parent->HasCheckedChild(kTRUE)) ||
           (parent->IsChecked() && parent->HasUnCheckedChild(kTRUE))) {
-         parent->SetCheckBoxPictures(fClient->GetPicture("checked_dis_t.xpm"),
-                                     fClient->GetPicture("unchecked_dis_t.xpm"));
+         pic1 = fClient->GetPicture("checked_dis_t.xpm");
+         pic2 = fClient->GetPicture("unchecked_dis_t.xpm");
       }
       else {
-         parent->SetCheckBoxPictures(fClient->GetPicture("checked_t.xpm"),
-                                     fClient->GetPicture("unchecked_t.xpm"));
+         pic1 = fClient->GetPicture("checked_t.xpm");
+         pic2 = fClient->GetPicture("unchecked_t.xpm");
       }
+      parent->SetCheckBoxPictures(pic1, pic2);
+      fClient->FreePicture(pic1);
+      fClient->FreePicture(pic2);
       parent = parent->GetParent();
       if (parent && fCheckMode == kRecursive) {
+         pic1 = fClient->GetPicture("checked_t.xpm");
+         pic2 = fClient->GetPicture("unchecked_t.xpm");
          if (!parent->IsChecked() && parent->GetFirstChild() &&
              !parent->GetFirstChild()->HasUnCheckedChild()) {
-            parent->SetCheckBoxPictures(fClient->GetPicture("checked_t.xpm"),
-                                        fClient->GetPicture("unchecked_t.xpm"));
+            parent->SetCheckBoxPictures(pic1, pic2);
             parent->CheckItem(kTRUE);
          }
          else if (parent->IsChecked() && parent->GetFirstChild() &&
                   !parent->GetFirstChild()->HasCheckedChild()) {
-            parent->SetCheckBoxPictures(fClient->GetPicture("checked_t.xpm"),
-                                        fClient->GetPicture("unchecked_t.xpm"));
+            parent->SetCheckBoxPictures(pic1, pic2);
             parent->CheckItem(kFALSE);
          }
+         fClient->FreePicture(pic1);
+         fClient->FreePicture(pic2);
       }
    }
    if (redraw) {

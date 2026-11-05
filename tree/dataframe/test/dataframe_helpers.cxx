@@ -9,10 +9,17 @@
 
 #include <algorithm>
 #include <deque>
-#include <vector>
+#include <iomanip>
+#include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
+
+#include <TFile.h>
+#include <TTree.h>
+
 using namespace ROOT;
 using namespace ROOT::RDF;
 using namespace ROOT::VecOps;
@@ -358,9 +365,9 @@ TEST(RDFHelpers, SaveGraphRootFromTree)
    t.Write();
    f.Close();
 
-   static const std::string expectedGraph(
-      "digraph {\n\t1 [label=\"Count\", style=\"filled\", fillcolor=\"#e47c7e\", shape=\"box\"];\n\t0 [label=\"t\", "
-      "style=\"filled\", fillcolor=\"#f4b400\", shape=\"ellipse\"];\n\t0 -> 1;\n}");
+   static const std::string expectedGraph("digraph {\n\t1 [label=\"Count\", style=\"filled\", fillcolor=\"#e47c7e\", "
+                                          "shape=\"box\"];\n\t0 [label=\"TTreeDS\", "
+                                          "style=\"filled\", fillcolor=\"#f4b400\", shape=\"ellipse\"];\n\t0 -> 1;\n}");
 
    ROOT::RDataFrame df("t", "savegraphrootfromtree.root");
    auto c = df.Count();
@@ -381,9 +388,9 @@ TEST(RDFHelpers, SaveGraphToFile)
    t.Write();
    f.Close();
 
-   static const std::string expectedGraph(
-      "digraph {\n\t1 [label=\"Count\", style=\"filled\", fillcolor=\"#e47c7e\", shape=\"box\"];\n\t0 [label=\"t\", "
-      "style=\"filled\", fillcolor=\"#f4b400\", shape=\"ellipse\"];\n\t0 -> 1;\n}");
+   static const std::string expectedGraph("digraph {\n\t1 [label=\"Count\", style=\"filled\", fillcolor=\"#e47c7e\", "
+                                          "shape=\"box\"];\n\t0 [label=\"TTreeDS\", "
+                                          "style=\"filled\", fillcolor=\"#f4b400\", shape=\"ellipse\"];\n\t0 -> 1;\n}");
 
    ROOT::RDataFrame df("t", "savegraphtofile.root");
    auto c = df.Count();
@@ -463,13 +470,16 @@ TEST(RDFHelpers, GraphRunTimeErrors)
    const std::vector<double> xx = {-0.22}; // smaller size
    const std::vector<double> yy = {1., 2.9};
 
-   auto df =
-      RDataFrame(1).Define("xx", [&] { return xx; }).Define("yy", [&] { return yy; }).Define("x", [] { return .5; });
+   auto GetRDF = [&] {return RDataFrame(1)
+         .Define("yy", [&] { return yy; })
+         .Define("xx", [&] { return xx; })
+         .Define("x", [] { return .5; });
+   };
 
-   auto gr1 = df.Graph<std::vector<double>, std::vector<double>>("xx", "yy"); // still no error since lazy action
-   auto gr2 = df.Graph<double, std::vector<double>>("x", "yy");               // still no error since lazy action
-
+   auto gr1 = GetRDF().Graph<std::vector<double>, std::vector<double>>("xx", "yy"); // still no error since lazy action
    EXPECT_THROW(gr1.GetValue(), std::runtime_error);
+
+   auto gr2 = GetRDF().Graph<double, std::vector<double>>("x", "yy"); // still no error since lazy action
    EXPECT_THROW(gr2.GetValue(), std::runtime_error);
 }
 
@@ -557,20 +567,23 @@ TEST(RDFHelpers, GraphAsymmErrorsRunTimeErrors)
    const Ds eyl = {.8, .7};
    const Ds eyh = {.6, .5};
 
-   auto df = RDataFrame(1)
-                .Define("xx", [&] { return xx; })
-                .Define("yy", [&] { return yy; })
-                .Define("exl", [&] { return exl; })
-                .Define("exh", [&] { return exh; })
-                .Define("eyl", [&] { return eyl; })
-                .Define("eyh", [&] { return eyh; })
-                .Define("x", [] { return 3.14; }); // scalar
+   auto GetRDF = [&] {
+      return RDataFrame(1)
+         .Define("xx", [&] { return xx; })
+         .Define("yy", [&] { return yy; })
+         .Define("exl", [&] { return exl; })
+         .Define("exh", [&] { return exh; })
+         .Define("eyl", [&] { return eyl; })
+         .Define("eyh", [&] { return eyh; })
+         .Define("x", [] { return 3.14; }); // scalar
+   };
 
    // still no error since lazy action
-   auto gr1 = df.GraphAsymmErrors<Ds, Ds, Ds, Ds, Ds, Ds>("xx", "yy", "exl", "exh", "eyl", "eyh");
-   auto gr2 = df.GraphAsymmErrors<Ds, Ds, Ds, Ds, Ds, Ds>("x", "yy", "exl", "exh", "eyl", "eyh");
-
+   auto gr1 = GetRDF().GraphAsymmErrors<Ds, Ds, Ds, Ds, Ds, Ds>("xx", "yy", "exl", "exh", "eyl", "eyh");
    EXPECT_THROW(gr1.GetValue(), std::runtime_error);
+
+   // still no error since lazy action
+   auto gr2 = GetRDF().GraphAsymmErrors<Ds, Ds, Ds, Ds, Ds, Ds>("x", "yy", "exl", "exh", "eyl", "eyh");
    EXPECT_THROW(gr2.GetValue(), std::runtime_error);
 }
 
@@ -682,3 +695,452 @@ TEST(RunGraphs, AlreadyRun)
    ROOT_EXPECT_WARNING(ROOT::RDF::RunGraphs({r1, r2, r3, r4}), "RunGraphs",
                        "Got 4 handles from which 2 link to results which are already ready.");
 }
+
+// Ensure that slot number in RunGraphs are unique across all graphs.
+TEST(RunGraphs, UniqueSlotNumbersInDefines)
+{
+#ifdef R__USE_IMT
+   ROOT::EnableImplicitMT();
+#endif // R__USE_IMT
+   std::set<unsigned int> assignedSlots;
+   std::mutex mutex;
+   auto slotTask = [&](unsigned int slot, ULong64_t x) {
+      {
+         std::scoped_lock lock{mutex};
+         EXPECT_TRUE(assignedSlots.insert(slot).second) << slot;
+      }
+      {
+         std::scoped_lock lock{mutex};
+         EXPECT_EQ(assignedSlots.erase(slot), 1) << slot;
+      }
+      return x;
+   };
+
+   constexpr unsigned int N = 100;
+
+   ROOT::RDataFrame df1(N);
+   auto df1a = df1.DefineSlot("x", slotTask, {"rdfentry_"});
+   auto r1 = df1a.Count();
+
+   ROOT::RDataFrame df2(N);
+   auto df2a = df2.DefineSlot("x", slotTask, {"rdfentry_"});
+   auto r3 = df2a.Max<ULong64_t>("x");
+   auto r4 = df2a.Count();
+
+   ROOT::RDataFrame df3(N);
+   auto df3a = df3.DefineSlot("x", slotTask, {"rdfentry_"});
+   auto r5 = df3a.Count();
+
+   std::vector<RResultHandle> v = {r1, r3, r4, r5};
+   ROOT::RDF::RunGraphs(v);
+   EXPECT_TRUE(assignedSlots.empty());
+
+   EXPECT_EQ(df1.GetNRuns(), 1u);
+   EXPECT_EQ(df2.GetNRuns(), 1u);
+   EXPECT_EQ(df3.GetNRuns(), 1u);
+
+   for (auto &h : v)
+      EXPECT_TRUE(h.IsReady());
+   EXPECT_EQ(r1.GetValue(), N);
+   EXPECT_EQ(r3.GetValue(), 99);
+   EXPECT_EQ(r4.GetValue(), N);
+   EXPECT_EQ(r5.GetValue(), N);
+
+#ifdef R__USE_IMT
+   ROOT::DisableImplicitMT();
+#endif // R__USE_IMT
+}
+
+int ret42 () {return 42;}
+int ret1 () {return 1;}
+
+TEST(RDFHelpers, ProgressHelper_Existence_ST)
+{
+   // Redirect cout.
+   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
+   std::ostringstream strCout;
+   std::cout.rdbuf(strCout.rdbuf());
+   auto d_write_1 = ROOT::RDataFrame(10000).Define("x", ret42).Snapshot("tree", "fh1.root", {"x"});
+   auto d_write_2 = ROOT::RDataFrame(10000).Define("y", ret1).Snapshot("tree", "fh2.root", {"y"});
+   ROOT::RDF::RNode d = ROOT::RDataFrame("tree", {"fh1.root", "fh2.root"});
+   ROOT::RDF::Experimental::AddProgressBar(d);
+   d.Count().GetValue();
+   // Restore old cout.
+   std::cout.rdbuf(oldCoutStreamBuf);
+
+   EXPECT_FALSE(strCout.str().empty());
+}
+
+// A test for #10484
+class SimpleActionHelper : public ROOT::Detail::RDF::RActionImpl<SimpleActionHelper> {
+public:
+   using Result_t = int;
+
+private:
+   std::shared_ptr<Result_t> fValue;
+   int &fTestVal;
+
+public:
+   static constexpr int fgRefVal = 42;
+   SimpleActionHelper(int &testVal) : fValue(new int), fTestVal(testVal) {}
+   SimpleActionHelper(SimpleActionHelper &&) = default;
+   SimpleActionHelper(const SimpleActionHelper &) = delete;
+   std::shared_ptr<int> GetResultPtr() const { return fValue; }
+   void Initialize() {}
+   void InitTask(TTreeReader *, unsigned int) {}
+   template <typename... ColumnTypes>
+   void Exec(unsigned int, ColumnTypes...)
+   {
+   }
+   void Finalize() { fTestVal = SimpleActionHelper::fgRefVal; }
+   std::string GetActionName() { return "SimpleAction"; }
+};
+
+TEST(RDFHelpers, Cleanup_After_Exception)
+{
+   auto exceptionThrower = [](ULong64_t ievt) {
+      if (ievt == 4) {
+         throw std::invalid_argument("Time to throw.");
+      }
+      return int(0);
+   };
+
+   int testVal = 123;
+   SimpleActionHelper helper(testVal);
+   auto rdf = ROOT::RDataFrame(8).Define("dummy", exceptionThrower, {"rdfentry_"});
+   auto valRes = rdf.Book<int>(std::move(helper), {"dummy"});
+   EXPECT_THROW(valRes.GetValue(), std::invalid_argument)
+      << "An exception should have been thrown during the event loop.";
+   EXPECT_EQ(SimpleActionHelper::fgRefVal, testVal)
+      << "The Finalize method should have changed the value of testVal during the post-exception cleanup." << std::endl;
+}
+
+struct SimpleExecLoopAction : public ROOT::Internal::RDF::ExecLoopTrait<SimpleExecLoopAction> {
+   std::vector<double> fValues;
+
+   template <typename... ColumnTypes>
+   void ExecSingle(unsigned int, const ColumnTypes &...columnValues)
+   {
+      fValues.emplace_back(columnValues...);
+   }
+};
+
+TEST(RDFHelpers, ExecLoopTrait)
+{
+   SimpleExecLoopAction execLoop;
+
+   execLoop.Exec(/*slot=*/0, 42.0);
+   ASSERT_EQ(execLoop.fValues.size(), 1);
+   EXPECT_EQ(execLoop.fValues.front(), 42.0);
+   execLoop.fValues.clear();
+
+   // One-dimensional containers are processed in order.
+   std::vector<double> v = {43.0};
+   execLoop.Exec(/*slot=*/0, v);
+   EXPECT_EQ(execLoop.fValues.size(), 1);
+   EXPECT_EQ(execLoop.fValues, v);
+   execLoop.fValues.clear();
+
+   v = {44.0, 45.0};
+   execLoop.Exec(/*slot=*/0, v);
+   EXPECT_EQ(execLoop.fValues.size(), 2);
+   EXPECT_EQ(execLoop.fValues, v);
+   execLoop.fValues.clear();
+
+   v = {};
+   execLoop.Exec(/*slot=*/0, v);
+   EXPECT_TRUE(execLoop.fValues.empty());
+   execLoop.fValues.clear();
+
+   // Multi-dimensional containers are traversed recursively.
+   std::vector<std::vector<double>> v2 = {{1.0}, {}, {2.0, 3.0}, {4.0}};
+   execLoop.Exec(/*slot=*/0, v2);
+   EXPECT_EQ(execLoop.fValues.size(), 4);
+   v = {1.0, 2.0, 3.0, 4.0};
+   EXPECT_EQ(execLoop.fValues, v);
+   execLoop.fValues.clear();
+
+   std::vector<std::vector<std::vector<double>>> v3 = {{{1.0}, {2.0}}, {}, {{3.0, 4.0}}, {{5.0}}};
+   execLoop.Exec(/*slot=*/0, v3);
+   EXPECT_EQ(execLoop.fValues.size(), 5);
+   v = {1.0, 2.0, 3.0, 4.0, 5.0};
+   EXPECT_EQ(execLoop.fValues, v);
+   execLoop.fValues.clear();
+}
+
+struct ExecLoopActionTwo : public ROOT::Internal::RDF::ExecLoopTrait<ExecLoopActionTwo> {
+   std::vector<std::pair<double, double>> fValues;
+
+   template <typename... ColumnTypes>
+   void ExecSingle(unsigned int, const ColumnTypes &...columnValues)
+   {
+      fValues.emplace_back(columnValues...);
+   }
+};
+
+TEST(RDFHelpers, ExecLoopTraitTwo)
+{
+   ExecLoopActionTwo execLoop;
+
+   execLoop.Exec(/*slot=*/0, 42.0, 43.0);
+   ASSERT_EQ(execLoop.fValues.size(), 1);
+   EXPECT_EQ(execLoop.fValues.front(), std::make_pair(42.0, 43.0));
+   execLoop.fValues.clear();
+
+   // Two containers are traversed in sync.
+   std::vector<double> v1 = {1.0, 2.0};
+   std::vector<double> v2 = {3.0, 4.0};
+   execLoop.Exec(/*slot=*/0, v1, v2);
+   ASSERT_EQ(execLoop.fValues.size(), 2);
+   EXPECT_EQ(execLoop.fValues.at(0), std::make_pair(1.0, 3.0));
+   EXPECT_EQ(execLoop.fValues.at(1), std::make_pair(2.0, 4.0));
+   execLoop.fValues.clear();
+
+   // A scalar is broadcasted to match the containers.
+   execLoop.Exec(/*slot=*/0, v1, 42.0);
+   ASSERT_EQ(execLoop.fValues.size(), 2);
+   EXPECT_EQ(execLoop.fValues.at(0), std::make_pair(1.0, 42.0));
+   EXPECT_EQ(execLoop.fValues.at(1), std::make_pair(2.0, 42.0));
+   execLoop.fValues.clear();
+
+   execLoop.Exec(/*slot=*/0, 42.0, v2);
+   ASSERT_EQ(execLoop.fValues.size(), 2);
+   EXPECT_EQ(execLoop.fValues.at(0), std::make_pair(42.0, 3.0));
+   EXPECT_EQ(execLoop.fValues.at(1), std::make_pair(42.0, 4.0));
+   execLoop.fValues.clear();
+
+   // Two nested containers are traversed in sync.
+   std::vector<std::vector<double>> v3 = {{1.0, 2.0}, {3.0}};
+   std::vector<std::vector<double>> v4 = {{4.0, 5.0}, {6.0}};
+   execLoop.Exec(/*slot=*/0, v3, v4);
+   ASSERT_EQ(execLoop.fValues.size(), 3);
+   EXPECT_EQ(execLoop.fValues.at(0), std::make_pair(1.0, 4.0));
+   EXPECT_EQ(execLoop.fValues.at(1), std::make_pair(2.0, 5.0));
+   EXPECT_EQ(execLoop.fValues.at(2), std::make_pair(3.0, 6.0));
+   execLoop.fValues.clear();
+
+   // Broadcasting works recursively in multiple dimensions.
+   execLoop.Exec(/*slot=*/0, v3, 42.0);
+   ASSERT_EQ(execLoop.fValues.size(), 3);
+   EXPECT_EQ(execLoop.fValues.at(0), std::make_pair(1.0, 42.0));
+   EXPECT_EQ(execLoop.fValues.at(1), std::make_pair(2.0, 42.0));
+   EXPECT_EQ(execLoop.fValues.at(2), std::make_pair(3.0, 42.0));
+   execLoop.fValues.clear();
+
+   execLoop.Exec(/*slot=*/0, v1, v3);
+   ASSERT_EQ(execLoop.fValues.size(), 3);
+   EXPECT_EQ(execLoop.fValues.at(0), std::make_pair(1.0, 1.0));
+   EXPECT_EQ(execLoop.fValues.at(1), std::make_pair(1.0, 2.0));
+   EXPECT_EQ(execLoop.fValues.at(2), std::make_pair(2.0, 3.0));
+   execLoop.fValues.clear();
+}
+
+TEST(RDFHelpers, ExecLoopTraitInvalid)
+{
+   ExecLoopActionTwo execLoop;
+
+   // The number of elements has to match for all columns.
+   std::vector<double> v0;
+   std::vector<double> v1 = {1.0};
+   std::vector<double> v2 = {2.0, 3.0};
+   EXPECT_THROW(execLoop.Exec(/*slot=*/0, v0, v1), std::runtime_error);
+   EXPECT_THROW(execLoop.Exec(/*slot=*/0, v0, v2), std::runtime_error);
+   EXPECT_THROW(execLoop.Exec(/*slot=*/0, v2, v1), std::runtime_error);
+
+   // For multiple dimensions, the number of elements has to match recursively.
+   std::vector<std::vector<double>> v4 = {{1.0}, {2.0}};
+   std::vector<std::vector<double>> v5 = {{3.0, 4.0}};
+   std::vector<std::vector<double>> v6 = {{3.0, 4.0}, {}};
+   EXPECT_THROW(execLoop.Exec(/*slot=*/0, v4, v5), std::runtime_error);
+   EXPECT_THROW(execLoop.Exec(/*slot=*/0, v4, v6), std::runtime_error);
+   EXPECT_THROW(execLoop.Exec(/*slot=*/0, v6, v5), std::runtime_error);
+}
+
+TEST(RDFHelpers, ProgressBarRestorePrecision)
+{
+   // Regression test for https://github.com/root-project/root/issues/21165
+   std::vector<double> values{13922869, 13599, 277, 40003186, 68.5966, 999.008, 40107.1};
+   // To ensure that all values above are printed with full precision
+   std::cout << std::setprecision(8);
+
+   struct StreamRAII{
+      std::streambuf* fOldStreamBuf;
+      std::ostringstream fStrBuf;
+      StreamRAII() : fOldStreamBuf(std::cout.rdbuf()) {
+         std::cout.rdbuf(fStrBuf.rdbuf());
+      }
+      ~StreamRAII() {
+         std::cout.rdbuf(fOldStreamBuf);
+      }
+   };
+
+   {
+      StreamRAII raii;
+      for (auto v : values)
+         std::cout << v << ", ";
+      EXPECT_EQ(raii.fStrBuf.str(), "13922869, 13599, 277, 40003186, 68.5966, 999.008, 40107.1, ");
+   }
+
+   {
+      // Just to run with the progress bar activated
+      StreamRAII raii;
+      ROOT::RDF::RNode d = ROOT::RDataFrame(1);
+      ROOT::RDF::Experimental::AddProgressBar(d);
+      d.Count().GetValue();
+   }
+
+   {
+      // Values after running with the progress bar should be printed the same way as before
+      StreamRAII raii;
+      for (auto v : values)
+         std::cout << v << ", ";
+      EXPECT_EQ(raii.fStrBuf.str(), "13922869, 13599, 277, 40003186, 68.5966, 999.008, 40107.1, ");
+   }
+}
+
+// Regression test for the final statistics line of the RDF progress bar. The events/s figure was
+// computed by dividing the event count by a duration that had already been truncated to whole
+// seconds, so an event loop shorter than one second divided by zero and printed `inf evt/s`.
+TEST(RDFHelpers, ProgressBarFinalRateIsFinite)
+{
+   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
+   std::ostringstream strCout;
+   std::cout.rdbuf(strCout.rdbuf());
+   {
+      ROOT::TestSupport::FileRaii raii{"fh_rate.root"};
+      auto d_write = ROOT::RDataFrame(100).Define("x", ret42).Snapshot("tree", raii.GetPath(), {"x"});
+      ROOT::RDF::RNode d = ROOT::RDataFrame("tree", raii.GetPath());
+      ROOT::RDF::Experimental::AddProgressBar(d);
+      d.Count().GetValue();
+   }
+   std::cout.rdbuf(oldCoutStreamBuf);
+
+   const std::string out = strCout.str();
+   ASSERT_NE(out.find("evt/s"), std::string::npos) << "no final statistics line was printed";
+   EXPECT_EQ(out.find("inf"), std::string::npos) << "the events/s figure is not finite: " << out;
+   EXPECT_EQ(out.find("nan"), std::string::npos) << "the events/s figure is not a number: " << out;
+}
+
+// Regression test for #15323: RDF Progress bar final stats report actual
+// processed events even when Range is applied
+TEST(RDFHelpers, ProgressBarFinalEventsWithRange)
+{
+   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
+   std::ostringstream strCout;
+   std::cout.rdbuf(strCout.rdbuf());
+   {
+      ROOT::TestSupport::FileRaii raii{"fh_range.root"};
+      auto d_write = ROOT::RDataFrame(100).Define("x", ret42).Snapshot("tree", raii.GetPath(), {"x"});
+      ROOT::RDF::RNode d = ROOT::RDataFrame("tree", raii.GetPath());
+      auto d_range = d.Range(20);
+      ROOT::RDF::Experimental::AddProgressBar(d_range);
+      d_range.Count().GetValue();
+   }
+   std::cout.rdbuf(oldCoutStreamBuf);
+
+   const std::string out = strCout.str();
+   EXPECT_NE(out.find("processed events: 20"), std::string::npos)
+      << "the final statistics line should report 20 events: " << out;
+   EXPECT_EQ(out.find("processed events: 100"), std::string::npos)
+      << "the final statistics line should not report 100 events: " << out;
+}
+
+// The code below is a unit test for a function called `ProgressHelper_Existence_MT` in the `RDFHelpers` class.
+
+#ifdef R__USE_IMT
+
+TEST(RDFHelpers, ProgressHelper_Existence_MT)
+{
+   // Redirect cout.
+   ROOT::EnableImplicitMT();
+   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
+   std::ostringstream strCout;
+   std::cout.rdbuf(strCout.rdbuf());
+   auto d_write_1 = ROOT::RDataFrame(10000).Define("x", ret42).Snapshot("tree", "fh1.root", {"x"});
+   auto d_write_2 = ROOT::RDataFrame(10000).Define("y", ret1).Snapshot("tree", "fh2.root", {"y"});
+   ROOT::RDF::RNode d = ROOT::RDataFrame("tree", {"fh1.root", "fh2.root"});
+   ROOT::RDF::Experimental::AddProgressBar(d);
+   d.Count().GetValue();
+   // Restore old cout.
+   std::cout.rdbuf(oldCoutStreamBuf);
+
+   EXPECT_FALSE(strCout.str().empty());
+}
+
+TEST(RDFHelpers, ProgressHelper_existence_singleTTreeInput)
+{
+   // Redirect cout.
+   ROOT::EnableImplicitMT();
+   std::streambuf *oldCoutStreamBuf = std::cout.rdbuf();
+   std::ostringstream strCout;
+   std::cout.rdbuf(strCout.rdbuf());
+   auto d_write_1 = ROOT::RDataFrame(10000).Define("x", ret42).Snapshot("tree", "fh1.root", {"x"});
+   ROOT::RDF::RNode d = ROOT::RDataFrame("tree", {"fh1.root"});
+   ROOT::RDF::Experimental::AddProgressBar(d);
+   d.Count().GetValue();
+   // Restore old cout.
+   std::cout.rdbuf(oldCoutStreamBuf);
+
+   EXPECT_FALSE(strCout.str().empty());
+}
+
+TEST(RDFHelpers, Histo3DThreadSafe)
+{
+   constexpr unsigned int N = 100;
+   // target mean value generated by the x sequence below:
+   constexpr double xMean = ((N - 1) / 2.) / N * 0.5;
+   constexpr double yMean = xMean + 0.1;
+   constexpr double zMean = xMean + 0.2;
+   auto addDefines = [=](auto rdf) {
+      return rdf.Define("x", [=](ULong64_t x) { return ((double)x) / N * 0.5; }, {"rdfentry_"})
+         .Define("y", [](double x) { return x + .1; }, {"x"})
+         .Define("z", [](double x) { return x + .2; }, {"x"})
+         .Define("w", []() { return 0.1; });
+   };
+
+   ROOT::RDataFrame rdf1(N);
+   auto d1 = addDefines(rdf1);
+   auto h1 = d1.Histo3D(::TH3D("h1", "h1", 10, 0, 1, 5, 0, 1, 2, 0, 1), "x", "y", "z");
+   auto h1w = d1.Histo3D(::TH3D("h1w", "h1w", 10, 0, 1, 5, 0, 1, 2, 0, 1), "x", "y", "z", "w");
+
+   // Trigger event loop before going MT:
+   h1->GetEntries();
+
+   ROOT::EnableImplicitMT(16);
+   for (unsigned int threadsPerTH3 : {1, 8, 16}) {
+      ROOT::RDF::Experimental::ThreadsPerTH3(threadsPerTH3);
+
+      ROOT::RDataFrame rdf2(N);
+      auto d2 = addDefines(rdf2);
+      auto h2 = d2.Histo3D(::TH3D("h1", "h1", 10, 0, 1, 5, 0, 1, 2, 0, 1), "x", "y", "z");
+      auto h2w = d2.Histo3D(::TH3D("h1w", "h1w", 10, 0, 1, 5, 0, 1, 2, 0, 1), "x", "y", "z", "w");
+
+      for (auto h : {h1, h2}) {
+         EXPECT_EQ(h->GetEntries(), N);
+         EXPECT_DOUBLE_EQ(h->GetSumOfWeights(), N) << "ThreadsPerTH3: " << threadsPerTH3;
+         EXPECT_NEAR(h->GetMean(1), xMean, 1.E-14);
+         EXPECT_NEAR(h->GetMean(2), yMean, 1.E-14);
+         EXPECT_NEAR(h->GetMean(3), zMean, 1.E-14);
+      }
+
+      for (auto h : {h1w, h2w}) {
+         EXPECT_EQ(h->GetEntries(), N);
+         EXPECT_NEAR(h->GetSumOfWeights(), N * 0.1, 1.E-14);
+         EXPECT_NEAR(h->GetMean(1), xMean, 1.E-14);
+         EXPECT_NEAR(h->GetMean(2), yMean, 1.E-14);
+         EXPECT_NEAR(h->GetMean(3), zMean, 1.E-14);
+      }
+
+      for (auto axis : {1, 2, 3, 11, 12, 13}) {
+         EXPECT_NEAR(h1->GetMean(axis), h2->GetMean(axis), h1->GetMean() * 1.E-14);
+         EXPECT_NEAR(h1w->GetMean(axis), h2w->GetMean(axis), h1w->GetMean() * 1.E-14);
+      }
+
+      const auto nbin = (h1->GetNbinsX() + 2) * (h1->GetNbinsY() + 2) + (h1->GetNbinsZ() + 2);
+      for (int i = 0; i < nbin; ++i) {
+         EXPECT_NEAR(h1->GetBinContent(i), h2->GetBinContent(i), fabs(h1->GetBinContent(i)) * 1.E-13);
+         EXPECT_NEAR(h1w->GetBinContent(i), h2w->GetBinContent(i), fabs(h1w->GetBinContent(i)) * 1.E-13);
+      }
+   }
+}
+#endif // R__USE_IMT

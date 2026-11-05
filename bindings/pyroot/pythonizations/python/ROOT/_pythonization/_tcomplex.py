@@ -9,7 +9,7 @@
 ################################################################################
 
 from . import pythonization
-import cppyy
+
 
 def _rsub(self, other):
     # Parameters:
@@ -18,18 +18,20 @@ def _rsub(self, other):
     return -self+other
 
 def _perform_division(self, other):
+    import ROOT
+
     # Parameters:
     # - self: complex number
     # - other: int, float of long (Py2) number
-    TComplex = cppyy.gbl.TComplex
-    other_complex = TComplex.TComplex(other,0)
+    TComplex = ROOT.TComplex
+    other_complex = TComplex(other,0)
     return other_complex/self
 
 def _rdiv(self, other):
     # Parameters:
     # - self: complex number
     # - other: other term
-    if isinstance(other, (int, long, float)):
+    if isinstance(other, (int, float)):
         return _perform_division(self, other)
     else:
         return NotImplemented
@@ -60,7 +62,3 @@ def pythonize_tcomplex(klass):
     # implements __rtruediv__ by assigning the function previously defined
     # necessary for Python3
     klass.__rtruediv__ = _rtruediv
-
-    # implements __rtruediv__ by assigning the function previously defined
-    # necessary for Python2
-    klass.__rdiv__ = _rdiv

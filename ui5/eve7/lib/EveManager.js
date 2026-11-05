@@ -9,9 +9,20 @@ sap.ui.define([], function() {
 
    class EveManager {
 
+      /** An element's matrix as streamed by REveElement: base64 of its 16
+        * doubles, column-major. Returns a Float64Array, or null for none. */
+      static decodeMatrix(m) {
+         if (!m) return null;
+         const bin = atob(m), bytes = new Uint8Array(bin.length);
+         for (let i = 0; i < bin.length; ++i)
+            bytes[i] = bin.charCodeAt(i);
+         return new Float64Array(bytes.buffer, 0, 16);
+      }
+
       constructor()
       {
          this.map    = {}; // use object, not array
+         this.server_time_offset = null; // performance.now() - server ms
          this.childs = [];
          this.last_json = null;
          this.scene_changes = null;
@@ -25,7 +36,7 @@ sap.ui.define([], function() {
          this.global_selection_id = null;
          this.global_highlight_id = null;
 
-         this.EChangeBits = { "kCBColorSelection": 1, "kCBTransBBox": 2, "kCBObjProps": 4, "kCBVisibility": 8,  "kCBAdded": 16 };
+         this.EChangeBits = { "kCBCoreJson": 1, "kCBTrans": 2, "kCBObjProps": 4, "kCBVisibility": 8,  "kCBAdded": 16 };
 
          this.controllers = [];
          this.gl_controllers = [];
@@ -44,10 +55,8 @@ sap.ui.define([], function() {
       globExceptionHandler(msg, url, lineNo, columnNo, error) {
          // NOTE: currently NOT connected, see onWebsocketOpened() below.
 
-         console.log("EveManager got global error", msg, url, lineNo, columnNo, error);
+         console.error("EveManager got global error", msg, url, lineNo, columnNo, error);
 
-         EVE.alert("Global Exception handler: " + msg + "\n" + url +
-            " line:" + lineNo + " col:" + columnNo);
          let suppress_alert = false;
          return suppress_alert;
       }
@@ -56,9 +65,27 @@ sap.ui.define([], function() {
       UseConnection(handle)
       {
          this.handle = handle;
+         this.is_rcore = (handle.getUserArgs("GLViewer") == "RCore");
 
          handle.setReceiver(this);
          handle.connect();
+      }
+
+      /** For a router page (expanded view) of viewer viewName: the manager and
+       * viewer element id of the main page in the same app, what switchSingle()
+       * passes in EVE.$eve7tmp. Needed when the page is reached without it,
+       * e.g. by browser forward. The name can be shortened at the first space
+       * (Views menu), so a prefix also matches. Returns null when there is no
+       * main page or no such viewer. */
+      static FindMainPageViewer(view, viewName)
+      {
+         let app = view.getParent();
+         let main = app?.getPages?.().find(p => p.getViewName?.() === "rootui5.eve7.view.Main");
+         let mgr = main?.getController()?.mgr;
+         let viewers = (viewName && mgr?.FindViewers()) || [];
+         let viewer = viewers.find(v => v.fName === viewName) ||
+                      viewers.find(v => v.fName.indexOf(viewName) === 0);
+         return viewer ? { mgr: mgr, eveViewerId: viewer.fElementId } : null;
       }
 
       onWebsocketClosed() {
@@ -135,9 +162,13 @@ sap.ui.define([], function() {
             }
 
             else if (resp[0] && resp[0].content == "REveScene::StreamElements") {
+               // The last entry is a trailer with the server time, see
+               // REveScene::AppendServerTime(); the rest are header and elements.
+               this.noteServerTime(resp.pop().server_time);
                this.ImportSceneJson(resp);
             }
             else if (resp.header && resp.header.content == "ElementsRepresentaionChanges") {
+               this.noteServerTime(resp.server_time);
                this.ImportSceneChangeJson(resp);
             }
             else if (resp.content == "BeginChanges") {
@@ -146,11 +177,25 @@ sap.ui.define([], function() {
             }
             else if (resp.content == "EndChanges") {
                this.ServerEndRedrawCallback();
-               if (resp.log)
-                  console.log(resp.log);
+               if (resp.log) {
+                  resp.log.forEach((item) => {
+                     // use console error above warning serverity
+                     if (item.lvl < 3)
+                        console.error(item.msg);
+                     else
+                        console.log(item.msg);
+                  });
+               }
+            }
+            else if (resp.content == "Motion") {
+               this.noteServerTime(resp.server_time);
+               this.ImportMotion(resp);
             }
             else if (resp.content == "BrowseElement") {
                this.BrowseElement(resp.id);
+            }
+            else if (resp.content == "GrabImage") {
+               this.GrabImages(resp);
             } else {
                console.error("OnWebsocketMsg Unhandled message type: msg len=", msg.length, " txt:", msg.substr(0, 120), "...");
             }
@@ -174,7 +219,7 @@ sap.ui.define([], function() {
 
          // Sergey: NextEvent() here just to handle data recording in event_demo.C
 
-         if ((this.handle.kind != "file") || (mir_call == "NextEvent()")) {
+         if (!this.handle.isStandalone() || (mir_call == "NextEvent()")) {
 
             let req = {
                "mir" : mir_call,
@@ -201,6 +246,18 @@ sap.ui.define([], function() {
             elem.$receivers.push(receiver);
       }
 
+      /** Disconnect scene from the updates */
+      UnRegisterSceneReceiver(id, receiver){
+         let elem = this.GetElement(id);
+
+         if (!elem) return;
+         let idx = elem.$receivers.indexOf(receiver);
+         if (idx > -1) { // only splice array when item is found
+            console.log("unregister scene receiver");
+            elem.$receivers.splice(idx, 1); // 2nd parameter means remove one item only
+          }
+      }
+
       /** Returns list of scene elements */
       getSceneElements()
       {
@@ -208,16 +265,68 @@ sap.ui.define([], function() {
          return this.childs[0].childs[2].childs;
       }
 
-      /** Invoke function on all receiver of scene events - when such function exists */
-      callSceneReceivers(scene, fname, arg) {
+      /** Dispatch an element change to the scene's receivers, skipping any whose
+        * `changeBitMask` excludes its bits. Summary masks out kCBTrans, which
+        * a moving element streams several times a second. */
+      callSceneElementChange(scene, em) {
+         if ( ! scene.$receivers) return;
+
+         for (let i = 0; i < scene.$receivers.length; i++) {
+            let receiver = scene.$receivers[i];
+            if (typeof receiver.sceneElementChange != "function") continue;
+
+            let mask = receiver.changeBitMask;
+            if (mask !== undefined && !(em.changeBit & mask)) continue;
+
+            receiver.sceneElementChange(em);
+         }
+      }
+
+      /** Invoke `fname` on every receiver of `scene` that implements it; a receiver
+        * may implement only some of the callbacks. */
+      callSceneReceivers(scene, fname, ...args) {
          if (scene.$receivers) {
              for (let i=0; i < scene.$receivers.length; i++) {
                  let receiver = scene.$receivers[i];
                  if (typeof receiver[fname] == "function")
-                    receiver[fname](arg);
+                    receiver[fname](...args);
              }
          }
      }
+
+      //==============================================================================
+      // The server clock, for motion
+      //==============================================================================
+
+      /** Feed one observation of the server clock: `t` is the server time, in
+        * ms, at which the message carrying it was sent.
+        *
+        * A sample is performance.now() - t: the true offset plus the one-way
+        * delay plus local processing delay. The additions are positive, so the
+        * smallest sample is the best estimate, as in NTP. A sample above the
+        * estimate pulls it up by 0.0005 of the difference, so one fast outlier
+        * does not pin it low and clock drift is followed.
+        *
+        * The residual error is a constant lag of about the one-way latency. It
+        * shifts every object equally, so objects do not jitter against each
+        * other.
+        */
+      noteServerTime(t) {
+         if (t === undefined) return;
+         const s = performance.now() - t;
+
+         if (this.server_time_offset === null || s < this.server_time_offset)
+            this.server_time_offset = s;
+         else
+            this.server_time_offset += (s - this.server_time_offset) * 0.0005;
+      }
+
+      /** The server's time now, in ms; 0 before the first message. */
+      serverNow() {
+         return (this.server_time_offset === null) ? 0 : performance.now() - this.server_time_offset;
+      }
+
+      //==============================================================================
 
       ImportSceneJson(arr)
       {
@@ -276,7 +385,7 @@ sap.ui.define([], function() {
             let elId = ids[i];
             let elem = this.GetElement(elId);
             if (!elem) {
-               console.warning("EveManager.removeElements REveElement not found in map, id = ", elId);
+               console.warn("EveManager.removeElements REveElement not found in map, id = ", elId);
                continue;
             }
 
@@ -288,14 +397,26 @@ sap.ui.define([], function() {
 
                   if (mc[i].fElementId === elId) {
                      mc.splice(i, 1);
+                     i--; // ensure that next element checked
                   }
                }
             }
-            else
-               console.warning("EveManager.removeElements can't remove child from mother, mother id = ", elem.fMotherId);
-
+            else {
+               console.warn("EveManager.removeElements can't remove child from mother, mother id = ", elem.fMotherId);
+            }
             delete this.map[elId];
          }
+      }
+
+      recursiveDestroy(el) {
+         if (el.childs) {
+            let mc = el.childs;
+            for (let i = 0; i < mc.length; ++i) {
+               this.recursiveDestroy(mc[i]);
+            }
+         }
+         // delete this.map[el.fElementId];
+         delete this.map[el.fElementId];
       }
 
       //______________________________________________________________________________
@@ -386,19 +507,30 @@ sap.ui.define([], function() {
             }
 
             if (em.changeBit & this.EChangeBits.kCBObjProps) {
+               // Optional keys: clear the old values; the message brings the
+               // current ones, if any.
                delete obj.render_data;
-               // AMT note ... the REveSelection changes fall here
-               // I think this should be a separate change bit
+               delete obj.bbox;
+               delete obj.bbox_not_in_world;
                delete obj.sel_list;
+               delete obj.matrix;
+               delete obj.motion;
                jQuery.extend(obj, em);
                this.ParseUpdateTriggersAndProcessPostStream(obj);
             }
-            else if (em.changeBit & this.EChangeBits.kCBColorSelection) {
-               delete em.render_data;
-               Object.assign(obj, em);
+            else {
+               if (em.changeBit & this.EChangeBits.kCBCoreJson) {
+                  delete em.render_data;
+                  Object.assign(obj, em);
+               }
+               if (em.changeBit & this.EChangeBits.kCBTrans) {
+                  // Matrix and motion; EveScene sets them on the element's node.
+                  delete obj.matrix;
+                  Object.assign(obj, em);
+               }
             }
 
-            this.callSceneReceivers(scene, "sceneElementChange", em);
+            this.callSceneElementChange(scene, em);
          }
 
          this.listScenesToRedraw.push(scene);
@@ -427,10 +559,20 @@ sap.ui.define([], function() {
 
          let lastoff = offset;
 
-         for (let n=1; n<arr.length;++n) {
+         // Start at 1, EveScene does not have render data.
+         for (let n = 1; n < arr.length; ++n)
+         {
             let elem = arr[n];
 
             if (!elem.render_data) continue;
+
+            // in the scene change update check change bits are kCBElementAdded or kCBObjProps
+           //  see REveScene::StreamRepresentationChanges binary stream
+            if (this.scene_changes) {
+               if (!(elem.changeBit & this.EChangeBits.kCBObjProps
+                  || elem.changeBit & this.EChangeBits.kCBAdded))
+                  continue;
+            }
 
             let rd = elem.render_data,
                 off = offset + rd.rnr_offset,
@@ -439,22 +581,18 @@ sap.ui.define([], function() {
             if (off !== lastoff)
                console.error('Element ' + elem.fName + ' offset mismatch ' + off + ' != ' + lastoff);
 
-            if (rd.trans_size) {
-               rd.matrix = new Float32Array(rawdata, off, rd.trans_size);
-               off += rd.trans_size*4;
-            }
+            // Copies, not views: the message's buffer is then freed, and each
+            // element's arrays go with the element.
             if (rd.vert_size) {
-               rd.vtxBuff = new Float32Array(rawdata, off, rd.vert_size);
+               rd.vtxBuff = new Float32Array(rawdata, off, rd.vert_size).slice();
                off += rd.vert_size*4;
             }
-
             if (rd.norm_size) {
-               rd.nrmBuff = new Float32Array(rawdata, off, rd.norm_size);
+               rd.nrmBuff = new Float32Array(rawdata, off, rd.norm_size).slice();
                off += rd.norm_size*4;
             }
-
             if (rd.index_size) {
-               rd.idxBuff = new Uint32Array(rawdata, off, rd.index_size);
+               rd.idxBuff = new Uint32Array(rawdata, off, rd.index_size).slice();
                off += rd.index_size*4;
             }
 
@@ -476,8 +614,13 @@ sap.ui.define([], function() {
          // call controllers when all the last scene is imported
          let world     = this.map[1];
          let scenes    = world.childs[2];
-         let lastChild = scenes.childs.length -1;
+         let lastChild = 0;
+         for (let i = 0; i < scenes.childs.length; ++i){
+            if (scenes.childs[i].Mandatory)
+            lastChild = i;
+         }
 
+         // AMT:: TODO rename nEveManagerInit in the controllers
          if (scenes.childs[lastChild].fElementId == msg.fSceneId)
             this.controllers.forEach(ctrl => {
                if (ctrl.onEveManagerInit)
@@ -579,9 +722,11 @@ sap.ui.define([], function() {
             if (EVE.DebugSelection)
                console.log("UnSel prim", id, this.GetElement(id), this.GetElement(id).fSceneId);
 
-            this.UnselectElement(sel, id);
-            let iel = this.GetElement(id);
-            changedSet.add(iel.fSceneId);
+            let primEl = this.GetElement(id);
+            if (primEl) {
+               this.UnselectElement(sel, primEl);
+               changedSet.add(primEl.fSceneId);
+            }
 
             for (let imp of value.implied)
             {
@@ -590,7 +735,7 @@ sap.ui.define([], function() {
                   if (EVE.DebugSelection)
                      console.log("UnSel impl", imp, impEl, impEl.fSceneId);
 
-                  this.UnselectElement(sel, imp);
+                  this.UnselectElement(sel, impEl);
                   changedSet.add(impEl.fSceneId);
                }
             }
@@ -602,21 +747,22 @@ sap.ui.define([], function() {
                console.log("Sel prim", id, this.GetElement(id), this.GetElement(id).fSceneId);
 
             let secIdcs = Array.from(value.set);
-            let iel = this.GetElement(id);
-            if ( ! iel) {
-               console.log("EveManager.UT_Selection_Refresh_State this should not happen ", iel);
-               continue;
+            let primEl = this.GetElement(id);
+            if (primEl) {
+               changedSet.add(primEl.fSceneId);
+               this.SelectElement(sel, primEl, secIdcs, value.extra);
             }
-            changedSet.add(iel.fSceneId);
-            this.SelectElement(sel, id, secIdcs, value.extra);
 
-            for (let imp of value.implied)
+            for (let impId of value.implied)
             {
-               if (EVE.DebugSelection)
-                  console.log("Sel impl", imp, this.GetElement(imp), this.GetElement(imp).fSceneId);
+               let impEl = this.GetElement(impId);
+               if (impEl) {
+                  if (EVE.DebugSelection)
+                     console.log("Sel impl", impId, impEl, impEl.fSceneId);
 
-               this.SelectElement(sel, imp, secIdcs, value.extra);
-               changedSet.add(this.GetElement(imp).fSceneId);
+                  this.SelectElement(sel, impEl, secIdcs, value.extra);
+                  changedSet.add(impEl.fSceneId);
+               }
             }
          }
 
@@ -649,35 +795,21 @@ sap.ui.define([], function() {
          // So, we need something like reapply selections after new scenes arrive.
       }
 
-      SelectElement(selection_obj, element_id, sec_idcs, extra)
+      SelectElement(selection_obj, element, sec_idcs, extra)
       {
-         let element = this.GetElement(element_id);
-         if ( ! element) return;
-
          let scene = this.GetElement(element.fSceneId);
-         if (scene.$receivers) {
-            for (let r of scene.$receivers)
-            {
-               r.SelectElement(selection_obj, element_id, sec_idcs, extra);
-            }
-         }
+         this.callSceneReceivers(scene, "SelectElement",
+                                 selection_obj, element.fElementId, sec_idcs, extra);
 
          // console.log("EveManager.SelectElement", element, scene.$receivers[0].viewer.outline_pass.id2obj_map);
       }
 
-      UnselectElement(selection_obj, element_id)
+      UnselectElement(selection_obj, element)
       {
-         let element = this.GetElement(element_id);
-         if ( ! element) return;
-
          let scene = this.GetElement(element.fSceneId);
 
-         if (scene.$receivers) {
-            for (let r of scene.$receivers)
-            {
-               r.UnselectElement(selection_obj, element_id);
-            }
-         }
+         this.callSceneReceivers(scene, "UnselectElement",
+                                 selection_obj, element.fElementId);
 
          // console.log("EveManager.UnselectElement", element, scene.$receivers[0].viewer.outline_pass.id2obj_map);
       }
@@ -686,29 +818,102 @@ sap.ui.define([], function() {
       {
          // console.log("ServerEndRedrawCallback ", this.listScenesToRedraw);
          let recs = new Set();
+         let viewers = new Set();
          for ( let i =0; i < this.listScenesToRedraw.length; i++) {
             let scene = this.listScenesToRedraw[i];
             if (scene.$receivers) {
                for (let r=0; r < scene.$receivers.length; r++) {
-                  recs.add( scene.$receivers[r]);
+                  let sr = scene.$receivers[r];
+                  recs.add(sr);
+                  if (sr.glctrl) { viewers.add(sr.glctrl.viewer)};
                }
             }
          }
+
+         if (this.is_rcore)
+         {
+            for (let v of viewers ) {
+               v.timeStampAttributesAndTextures();
+            }
+         }
+
          for (let item of recs) {
+            // A receiver implements only the callbacks it needs;
+            // Annotations, for one, has no endChanges().
+            if (typeof item.endChanges !== "function") continue;
             try {
                item.endChanges();
             } catch (e) {
-               EVE.alert("EveManager: Exception caught during update processing: " + e + "\n" +
-                  "You might want to reload the page in browser and / or check error consoles.");
                console.error("EveManager: Exception caught during update processing", e);
-
                // XXXX We might want to send e.name, e.message, e.stack back to the server.
             }
          }
 
-         if (this.handle.kind != "file")
+         if (this.is_rcore)
+         {
+            for (let v of viewers ) {
+               v.clearAttributesAndTextures();
+            }
+         }
+
+
+         if (!this.handle.isStandalone())
             this.handle.send("__REveDoneChanges");
          this.busyProcessingChanges = false;
+      }
+
+      /** Apply a "Motion" message: transformation-only updates sent outside the
+        * BeginChanges/EndChanges cycle, with no acknowledgement.
+        * Only EveScene implements sceneElementMotion, so the element tree and
+        * the editor never see these. */
+      ImportMotion(resp)
+      {
+         let els = resp.els;
+         if (!els) return;
+
+         for (let i = 0; i < els.length; ++i) {
+            let em = els[i];
+            let obj = this.map[em.fElementId];
+            if (!obj) continue;   // removed, or not yet created
+
+            // The element mirrors what the server sent; a view that is built
+            // again, see EveScene.redrawScene(), places its node from it.
+            if (em.matrix) obj.matrix = em.matrix; else delete obj.matrix;
+            obj.motion = em.motion;
+
+            let scene = this.GetElement(em.fSceneId);
+            if (scene)
+               this.callSceneReceivers(scene, "sceneElementMotion", em);
+         }
+      }
+
+      /** Server-driven image capture: every GL viewer on this client, or those named
+        * in `req.viewers`, grabs its frame and posts it to `req.url`. */
+      GrabImages(req)
+      {
+         let want = (req.viewers && req.viewers.length) ? new Set(req.viewers) : null;
+         let n = 0;
+
+         for (let ctrl of this.gl_controllers)
+         {
+            let v = ctrl.viewer;
+            if (!v || typeof v.grabAndPostImage !== "function")
+               continue; // e.g. the JSRoot/Three viewers, which have no capture path
+
+            let eveView = this.GetElement(ctrl.eveViewerId);
+            let name = eveView ? eveView.fName : "unknown_view";
+            if (want && !want.has(name))
+               continue;
+
+            v.grabAndPostImage({ url:       req.url,
+                                 event_id:  req.event_id,
+                                 view_type: name,
+                                 scale:     req.scale });
+            ++n;
+         }
+
+         if (n === 0)
+            console.warn("EveManager.GrabImages: no capable GL viewer matched", req);
       }
 
       /** Method invoked from server message to browse to element elid */
@@ -743,6 +948,23 @@ sap.ui.define([], function() {
          }
       }
 
+      UT_EveViewerUpdate(el) {
+         if (el.hasOwnProperty('pendInstance')) {
+            this.controllers[0].makeEveViewController(el);
+            return;
+         }
+
+         // function can be called from import scene, or scene update
+         if (el.changeBit === undefined || el.changeBit === 0)
+            return;
+
+         for (const evl of this.controllers) {
+            if (typeof evl.eveViewerId !== 'undefined' && evl.eveViewerId == el.fElementId)
+            {
+               evl.updateViewerAttributes();
+            }
+         }
+      }
 
       //==============================================================================
       // Offline handling
@@ -840,7 +1062,7 @@ sap.ui.define([], function() {
        * Can be used for debugging or as offline app */
       InterceptMIR(mir_call, element_id, element_class) {
 
-         if (this.handle.kind != "file")
+         if (!this.handle.isStandalone())
             return false;
 
          // just do not intercept

@@ -13,8 +13,10 @@ class PythonizationDecorator(unittest.TestCase):
     # in some tests, and because of immediate pythonization they will be
     # processed by the pythonizors. Just ignore them
     exclude = [ 'TClass', 'TSystem', 'TUnixSystem', 'TMacOSXSystem',
-                'TWinNTSystem', 'TDictionary', 'TEnv', 'TInterpreter',
-                'TObject', 'TNamed', 'TROOT', 'TIter', 'TDirectory', 'TString' ]
+                'TWinNTSystem', 'TDictionary', 'TEnv', 'TInterpreter', 'TApplication',
+                'TObject', 'TNamed', 'TROOT', 'TIter', 'TDirectory', 'TString',
+                # Used when the PyROOT application is set up
+                'TQObject', 'TBenchmark' ]
 
     # Helpers
     def _define_class(self, class_name, namespace=None):

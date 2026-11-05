@@ -26,23 +26,27 @@ in the GNU scientific library (v0.99).
 
 #include "RooBrentRootFinder.h"
 #include "RooAbsFunc.h"
-#include <math.h>
-#include "Riostream.h"
 #include "RooMsgService.h"
 
-using namespace std;
+#include <cmath>
+#include <ostream>
 
-ClassImp(RooBrentRootFinder);
-;
+using std::endl;
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor taking function binding as input
 
 RooBrentRootFinder::RooBrentRootFinder(const RooAbsFunc& function) :
-  RooAbsRootFinder(function),
+  _function(&function), _valid(function.isValid()),
   _tol(2.2204460492503131e-16)
 {
+  if(_function->getDimension() != 1) {
+    oocoutE(nullptr,Eval) << "RooBrentRootFinder:: cannot find roots for function of dimension "
+               << _function->getDimension() << std::endl;
+    _valid= false;
+  }
 }
 
 
@@ -57,18 +61,21 @@ bool RooBrentRootFinder::findRoot(double &result, double xlo, double xhi, double
 {
   _function->saveXVec() ;
 
-  double a(xlo),b(xhi);
+  double a(xlo);
+  double b(xhi);
   double fa= (*_function)(&a) - value;
   double fb= (*_function)(&b) - value;
   if(fb*fa > 0) {
-    oocxcoutD((TObject*)0,Eval) << "RooBrentRootFinder::findRoot(" << _function->getName() << "): initial interval does not bracket a root: ("
-            << a << "," << b << "), value = " << value << " f[xlo] = " << fa << " f[xhi] = " << fb << endl;
+    oocxcoutD((TObject*)nullptr,Eval) << "RooBrentRootFinder::findRoot(" << _function->getName() << "): initial interval does not bracket a root: ("
+            << a << "," << b << "), value = " << value << " f[xlo] = " << fa << " f[xhi] = " << fb << std::endl;
     return false;
   }
 
   bool ac_equal(false);
   double fc= fb;
-  double c(0),d(0),e(0);
+  double c(0);
+  double d(0);
+  double e(0);
   for(Int_t iter= 0; iter <= MaxIterations; iter++) {
 
     if ((fb < 0 && fc < 0) || (fb > 0 && fc > 0)) {
@@ -80,7 +87,7 @@ bool RooBrentRootFinder::findRoot(double &result, double xlo, double xhi, double
       e = b - a;
     }
 
-    if (fabs (fc) < fabs (fb)) {
+    if (std::abs(fc) < std::abs(fb)) {
       ac_equal = true;
       a = b;
       b = c;
@@ -90,25 +97,27 @@ bool RooBrentRootFinder::findRoot(double &result, double xlo, double xhi, double
       fc = fa;
     }
 
-    double tol = 0.5 * _tol * fabs(b);
+    double tol = 0.5 * _tol * std::abs(b);
     double m = 0.5 * (c - b);
 
 
-    if (fb == 0 || fabs(m) <= tol) {
-      //cout << "RooBrentRootFinder: iter = " << iter << " m = " << m << " tol = " << tol << endl ;
+    if (fb == 0 || std::abs(m) <= tol) {
+      //cout << "RooBrentRootFinder: iter = " << iter << " m = " << m << " tol = " << tol << std::endl ;
       result= b;
       _function->restoreXVec() ;
       return true;
     }
 
-    if (fabs (e) < tol || fabs (fa) <= fabs (fb)) {
+    if (std::abs(e) < tol || std::abs(fa) <= std::abs(fb)) {
       // Bounds decreasing too slowly: use bisection
       d = m;
       e = m;
     }
     else {
       // Attempt inverse cubic interpolation
-      double p, q, r;
+      double p;
+      double q;
+      double r;
       double s = fb / fa;
 
       if (ac_equal) {
@@ -129,8 +138,8 @@ bool RooBrentRootFinder::findRoot(double &result, double xlo, double xhi, double
    p = -p;
       }
 
-      double min1= 3 * m * q - fabs (tol * q);
-      double min2= fabs (e * q);
+      double min1= 3 * m * q - std::abs(tol * q);
+      double min2= std::abs(e * q);
       if (2 * p < (min1 < min2 ? min1 : min2)) {
    // Accept the interpolation
    e = d;
@@ -146,7 +155,7 @@ bool RooBrentRootFinder::findRoot(double &result, double xlo, double xhi, double
     a = b;
     fa = fb;
     // Evaluate new trial root
-    if (fabs (d) > tol) {
+    if (std::abs(d) > tol) {
       b += d;
     }
     else {
@@ -156,7 +165,7 @@ bool RooBrentRootFinder::findRoot(double &result, double xlo, double xhi, double
 
   }
   // Return our best guess if we run out of iterations
-  oocoutE(nullptr,Eval) << "RooBrentRootFinder::findRoot(" << _function->getName() << "): maximum iterations exceeded." << endl;
+  oocoutE(nullptr,Eval) << "RooBrentRootFinder::findRoot(" << _function->getName() << "): maximum iterations exceeded." << std::endl;
   result= b;
 
   _function->restoreXVec() ;

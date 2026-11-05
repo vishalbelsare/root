@@ -9,22 +9,6 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-//////////////////////////////////////////////////////////////////////////
-//                                                                      //
-// TGrid                                                                //
-//                                                                      //
-// Abstract base class defining interface to common GRID services.      //
-//                                                                      //
-// To open a connection to a GRID use the static method Connect().      //
-// The argument of Connect() is of the form:                            //
-//    <grid>[://<host>][:<port>], e.g. alien://alice.cern.ch            //
-// Depending on the <grid> specified an appropriate plugin library      //
-// will be loaded which will provide the real interface.                //
-//                                                                      //
-// Related classes are TGridResult.                                     //
-//                                                                      //
-//////////////////////////////////////////////////////////////////////////
-
 #include "TGrid.h"
 #include "TROOT.h"
 #include "TPluginManager.h"
@@ -33,7 +17,6 @@
 TGrid *gGrid = 0;
 
 
-ClassImp(TGrid);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// The grid should be of the form:  `<grid>://<host>[:<port>]`,
@@ -64,9 +47,13 @@ TGrid *TGrid::Connect(const char *grid, const char *uid, const char *pw,
       options = "";
 
    if ((h = gROOT->GetPluginManager()->FindHandler("TGrid", grid))) {
-      if (h->LoadPlugin() == -1)
+      if (h->LoadPlugin() == -1) {
+         ::Error("TGrid::Connect", "Loading Plugin failed");
          return 0;
+      }
       g = (TGrid *) h->ExecPlugin(4, grid, uid, pw, options);
+   } else {
+      ::Error("TGrid::Connect", "Could not find plugin to handle TGrid");
    }
 
    return g;

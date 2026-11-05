@@ -17,7 +17,6 @@
 #include "THttpWSEngine.h"
 
 /** \class THttpCallArg
-\ingroup http
 
 Contains arguments for single HTTP call
 
@@ -25,7 +24,6 @@ Must be used in THttpEngine to process incoming http requests
 */
 
 
-ClassImp(THttpCallArg);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// destructor
@@ -355,6 +353,26 @@ void THttpCallArg::AddNoCacheHeader()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Mark as chunked
+///
+/// Data to the client transferred in chunks.
+/// So many ProcessRequests will be invoked and produced data will be send as next chunk
+/// - until empty conent will be returned or chunked flag is cleared
+
+void THttpCallArg::SetChunked(Bool_t on)
+{
+   AccessHeader(fHeader, "Transfer-Encoding", on ? "chunked" : nullptr, kTRUE);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// If marked as chunked
+
+Bool_t THttpCallArg::IsChunked()
+{
+   return AccessHeader(fHeader, "Transfer-Encoding") == "chunked";
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Fills HTTP header, which can be send at the beginning of reply on the http request
 ///
 /// @param name is HTTP protocol name (default "HTTP/1.1")
@@ -367,13 +385,21 @@ std::string THttpCallArg::FillHttpHeader(const char *name)
       hdr.append(" 404 Not Found\r\n"
                  "Content-Length: 0\r\n"
                  "Connection: close\r\n\r\n");
+   else if (IsChunked())
+      hdr.append(TString::Format(" 200 OK\r\n"
+                                 "Content-Type: %s\r\n"
+                                 "Connection: keep-alive\r\n"
+                                 "%s\r\n",
+                                 GetContentType(), fHeader.Data())
+                    .Data());
    else
-      hdr.append(Form(" 200 OK\r\n"
-                      "Content-Type: %s\r\n"
-                      "Connection: keep-alive\r\n"
-                      "Content-Length: %ld\r\n"
-                      "%s\r\n",
-                      GetContentType(), GetContentLength(), fHeader.Data()));
+      hdr.append(TString::Format(" 200 OK\r\n"
+                                 "Content-Type: %s\r\n"
+                                 "Connection: keep-alive\r\n"
+                                 "Content-Length: %ld\r\n"
+                                 "%s\r\n",
+                                 GetContentType(), GetContentLength(), fHeader.Data())
+                    .Data());
 
    return hdr;
 }
@@ -417,6 +443,10 @@ Bool_t THttpCallArg::CompressWithGzip()
 
    // R__memcompress fills first 6 bytes with own header, therefore just overwrite them
    unsigned long ziplen = R__memcompress(bufcur - 6, objlen + 6, objbuf, objlen);
+   if (!ziplen) {
+      Set404();
+      return kFALSE;
+   }
 
    memcpy(bufcur - 6, dummy, 6);
 

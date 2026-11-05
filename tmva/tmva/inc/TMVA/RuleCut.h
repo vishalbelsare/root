@@ -19,7 +19,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 #ifndef ROOT_TMVA_RuleCut
 #define ROOT_TMVA_RuleCut
@@ -94,7 +94,7 @@ namespace TMVA {
       Double_t              fPurity;  // S/(S+B) on training data
 
 
-      mutable MsgLogger*    fLogger;   // message logger
+      mutable MsgLogger*    fLogger;   ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
    };
 }

@@ -9,18 +9,11 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
-#include <cmath>
-#include <iostream>
-
 #include "TROOT.h"
 #include "TBuffer.h"
 #include "TGaxis.h"
 #include "TAxisModLab.h"
 #include "TVirtualPad.h"
-#include "TVirtualX.h"
 #include "TLine.h"
 #include "TArrow.h"
 #include "TLatex.h"
@@ -34,16 +27,16 @@
 #include "TColor.h"
 #include "TTimeStamp.h"
 #include "strlcpy.h"
-#include "snprintf.h"
 
-Int_t   TGaxis::fgMaxDigits = 5;
-Float_t TGaxis::fXAxisExpXOffset = 0.;
-Float_t TGaxis::fXAxisExpYOffset = 0.;
-Float_t TGaxis::fYAxisExpXOffset = 0.;
-Float_t TGaxis::fYAxisExpYOffset = 0.;
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <cmath>
+#include <iostream>
+
 const Int_t kHori = BIT(9);
 
-ClassImp(TGaxis);
 
 /** \class TGaxis
 \ingroup BasicGraphics
@@ -103,50 +96,7 @@ Where:
 The example below generates various kind of axis.
 
 Begin_Macro(source)
-{
-   TCanvas *c1 = new TCanvas("c1","Examples of TGaxis",10,10,700,500);
-
-   c1->Range(-10,-1,10,1);
-
-   TGaxis *axis1 = new TGaxis(-4.5,-0.2,5.5,-0.2,-6,8,510,"");
-   axis1->SetName("axis1");
-   axis1->Draw();
-
-   TGaxis *axis2 = new TGaxis(-4.5,0.2,5.5,0.2,0.001,10000,510,"G");
-   axis2->SetName("axis2");
-   axis2->Draw();
-
-   TGaxis *axis3 = new TGaxis(-9,-0.8,-9,0.8,-8,8,50510,"");
-   axis3->SetName("axis3");
-   axis3->Draw();
-
-   TGaxis *axis4 = new TGaxis(-7,-0.8,-7,0.8,1,10000,50510,"G");
-   axis4->SetName("axis4");
-   axis4->Draw();
-
-   TGaxis *axis5 = new TGaxis(-4.5,-0.6,5.5,-0.6,1.2,1.32,80506,"-+");
-   axis5->SetName("axis5");
-   axis5->SetLabelSize(0.03);
-   axis5->SetTextFont(72);
-   axis5->SetLabelOffset(0.025);
-
-   axis5->Draw();
-
-   TGaxis *axis6 = new TGaxis(-4.5,0.6,5.5,0.6,100,900,50510,"-");
-   axis6->SetName("axis6");
-   axis6->Draw();
-
-   TGaxis *axis7 = new TGaxis(8,-0.8,8,0.8,0,9000,50510,"+L");
-   axis7->SetName("axis7");
-   axis7->SetLabelOffset(0.01);
-   axis7->Draw();
-
-   //one can make axis going top->bottom. However because of a long standing
-   //problem, the two x values should not be equal
-   TGaxis *axis8 = new TGaxis(6.5,0.8,6.499,-0.8,0,90,50510,"-");
-   axis8->SetName("axis8");
-   axis8->Draw();
-}
+../../../tutorials/visualisation/graphics/gaxis.C
 End_Macro
 
 \anchor GA01
@@ -362,7 +312,7 @@ only with histograms because the labels'definition is stored in `TAxis`.
 The following example demonstrates how to create such labels.
 
 Begin_Macro(source)
-../../../tutorials/hist/hlabels2.C
+../../../tutorials/hist/hist036_TH2_labels.C
 End_Macro
 
 Because the alphanumeric labels are usually longer that the numeric labels, their
@@ -433,7 +383,7 @@ And other signature is also allowed:
 \anchor GA12
 ## Maximum Number of Digits for the axis labels
 
-The static function `TGaxis::SetMaxDigits` sets the maximum number of
+The static method `TGaxis::SetMaxDigits` sets the maximum number of
 digits permitted for the axis labels above which the notation with 10^N is used.
 For example, to accept 6 digits number like 900000 on an axis call
 `TGaxis::SetMaxDigits(6)`. The default value is 5.
@@ -465,8 +415,8 @@ Histograms' axis can be defined as "time axis". To do that it is enough to activ
 the TAxis::SetTimeDisplay attribute on a given axis. If `h` is an histogram, it is
 done the following way:
 
-~~~ .cpp
-h->GetXaxis()->SetTimeDisplay(1);  // The X axis is a time axis
+~~~ {.cpp}
+    h->GetXaxis()->SetTimeDisplay(1);  // The X axis is a time axis
 ~~~
 
 Two parameters can be adjusted in order to define time axis:
@@ -495,8 +445,8 @@ It's a string containing the following formatting characters:
  The other characters are output as is. For example to have a format like
  `dd/mm/yyyy` one should do:
 
-~~~ .cpp
-h->GetXaxis()->SetTimeFormat("%d\/%m\/%Y");
+~~~ {.cpp}
+    h->GetXaxis()->SetTimeFormat("%d\/%m\/%Y");
 ~~~
 
 ### The time offset:
@@ -508,9 +458,9 @@ three ways to define the time offset:
 
 #### By setting the global default time offset:
 
-~~~ .cpp
-TDatime da(2003,02,28,12,00,00);
-gStyle->SetTimeOffset(da.Convert());
+~~~ {.cpp}
+    TDatime da(2003,02,28,12,00,00);
+    gStyle->SetTimeOffset(da.Convert());
 ~~~
 
   If no time offset is defined for a particular axis, the default time offset
@@ -519,9 +469,9 @@ gStyle->SetTimeOffset(da.Convert());
 
 #### By setting a time offset to a particular axis:
 
-~~~ .cpp
-TDatime dh(2001,09,23,15,00,00);
-h->GetXaxis()->SetTimeOffset(dh.Convert());
+~~~ {.cpp}
+    TDatime dh(2001,09,23,15,00,00);
+    h->GetXaxis()->SetTimeOffset(dh.Convert());
 ~~~
 
 #### Together with the time format using TAxis::SetTimeFormat:
@@ -532,8 +482,8 @@ the normal time format. **%F** is followed by the date in the format:
 
 Example:
 
-~~~ .cpp
-h->GetXaxis()->SetTimeFormat("%d\/%m\/%y%F2000-02-28 13:00:01");
+~~~ {.cpp}
+    h->GetXaxis()->SetTimeFormat("%d\/%m\/%y%F2000-02-28 13:00:01");
 ~~~
 
 
@@ -637,8 +587,8 @@ and maximum values (in seconds) of the axis. Let's take again an example. Having
 defined "2003, February 28 at 12h" we would like to see the axis a day before and
 a day after. A TGaxis can be created the following way (a day has 86400 seconds):
 
-~~~ .cpp
-TGaxis *axis = new TGaxis(x1,y1,x2,y2,-100000,150000,2405,"t");
+~~~ {.cpp}
+    TGaxis *axis = new TGaxis(x1,y1,x2,y2,-100000,150000,2405,"t");
 ~~~
 
 the `t` option (in lower case) means it is a "time axis". The axis goes form
@@ -648,7 +598,7 @@ So the complete macro is:
 
 Begin_Macro(source)
 {
-   c1 = new TCanvas("c1","Examples of TGaxis",10,10,700,100);
+   auto c1 = new TCanvas("c1","Examples of TGaxis",10,10,700,100);
    c1->Range(-10,-1,10,1);
 
    TGaxis *axis = new TGaxis(-8,0.,8,0.,-100000,150000,2405,"tS");
@@ -667,16 +617,16 @@ End_Macro
 Thanks to the TLatex directive `#splitline` it is possible to write the time
 labels on two lines. In the previous example changing the `SetTimeFormat` line by
 
-~~~ .cpp
-   axis->SetLabelOffset(0.15);
-   axis->SetTimeFormat("#splitline{%Y}{%d\/%m}");
+~~~ {.cpp}
+    axis->SetLabelOffset(0.15);
+    axis->SetTimeFormat("#splitline{%Y}{%d\/%m}");
 ~~~
 
 will produce the following axis:
 
 Begin_Macro
 {
-   c1 = new TCanvas("c1","Examples of TGaxis",10,10,700,100);
+   auto c1 = new TCanvas("c1","Examples of TGaxis",10,10,700,100);
    c1->Range(-10,-1,10,1);
 
    TGaxis *axis = new TGaxis(-8,0.,8,0.,-100000,150000,2405,"tS");
@@ -723,7 +673,7 @@ and `localtime` give with what gives `TGaxis`. It can be used
 as referenced test to check if the time option of `TGaxis` is working properly.
 
 Begin_Macro(source)
-../../../tutorials/graphs/timeonaxis3.C
+../../../tutorials/visualisation/graphics/timeonaxis3.C
 End_Macro
 
 
@@ -731,7 +681,7 @@ The following macro illustrates the use, with histograms axis, of the time mode 
 with different time intervals and time formats.
 
 Begin_Macro(source)
-../../../tutorials/graphs/timeonaxis.C
+../../../tutorials/hist/hist061_TH1_timeonaxis.C
 End_Macro
 
 */
@@ -990,12 +940,11 @@ TGaxis *TGaxis::DrawAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t y
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Static function returning fgMaxDigits (See SetMaxDigits).
+/// Static function returning `gStyle->GetAxisMaxDigits()`.
 
 Int_t TGaxis::GetMaxDigits()
 {
-
-   return fgMaxDigits;
+   return gStyle->GetAxisMaxDigits();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1034,6 +983,7 @@ void TGaxis::ImportAxisAttributes(TAxis *axis)
 
 void TGaxis::Paint(Option_t *)
 {
+   if (!gPad) return;
 
    Double_t wmin = fWmin;
    Double_t wmax = fWmax;
@@ -1057,6 +1007,7 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
                        Double_t &wmin, Double_t &wmax, Int_t &ndiv,   Option_t *chopt,
                        Double_t gridlength, Bool_t drawGridOnly)
 {
+   if (!gPad) return;
 
    const char *where = "PaintAxis";
 
@@ -1073,10 +1024,8 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    Double_t binHigh = 0., binHigh2 = 0., binHigh3 = 0.;
    Double_t binWidth = 0., binWidth2 = 0., binWidth3 = 0.;
    Double_t xpl1, xpl2, ypl1, ypl2;
-   Double_t xtick = 0;
-   Double_t xtick0, xtick1, dxtick=0;
-   Double_t ytick, ytick0, ytick1;
-   Double_t wlabel, dwlabel;
+   Double_t dxtick=0;
+   Double_t wlabel, dwlabel, axis_value;
    Double_t xfactor, yfactor;
    Double_t xlabel, ylabel, dxlabel;
    Double_t xone, xtwo;
@@ -1089,10 +1038,9 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    Double_t ww, af, rne;
    Double_t xx, yy;
    Double_t xmnlog, x00, x11, h2, h2sav, axmul, y;
-   Float_t chupxvsav, chupyvsav;
    Double_t rtxw, rtyw;
-   Int_t nlabels, nticks, nticks0, nticks1;
-   Int_t i, j, k, l, decade, ltick;
+   Int_t nlabels, nticks, nticks0 = 0, nticks1 = 0;
+   Int_t i, j, k, l, decade;
    Int_t mside, lside;
    Int_t nexe  = 0;
    Int_t lnlen = 0;
@@ -1110,7 +1058,7 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    Int_t ndyn;
    Int_t nhilab = 0;
    Int_t idn;
-   Bool_t flexe = 0;
+   Bool_t flexe = false;
    Bool_t flexpo,flexne;
    char *label;
    char *chtemp;
@@ -1300,7 +1248,7 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    nn1       = TMath::Max(n1a,1)*nn2+1;
    nticks    = nn1;
    maxDigits = (ndiv/1000000);
-   if (maxDigits==0) maxDigits = fgMaxDigits;
+   if (maxDigits==0) maxDigits = gStyle->GetAxisMaxDigits();
 
 // Axis bining optimisation is ignored if:
 //   - the first and the last label are equal
@@ -1419,11 +1367,6 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    SetLineStyle(1); // axis line style
    Int_t TitleColor = GetTextColor();
    Int_t TitleFont  = GetTextFont();
-
-   if (!gPad->IsBatch()) {
-      gVirtualX->GetCharacterUp(chupxvsav, chupyvsav);
-      gVirtualX->SetClipOFF(gPad->GetCanvasID());
-   }
 
 // Compute length of axis
    axis_length = TMath::Sqrt((x1-x0)*(x1-x0)+(y1-y0)*(y1-y0));
@@ -1586,8 +1529,8 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
                   if (angle == 0) textaxis.SetTextAlign(21);
                   s = 3;
                }
-               strncpy(chtemp, fAxis->GetBinLabel(i), 255);
-               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp);
+               strlcpy(chtemp, fAxis->GetBinLabel(i), 255);
+               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp, i, 0.1);
                textaxis.PaintLatex(fAxis->GetBinCenter(i),
                                    ymin + s*fAxis->GetLabelOffset()*(gPad->GetUymax()-gPad->GetUymin()),
                                    textaxis.GetTextAngle(),
@@ -1608,8 +1551,8 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
                   double scale=gPad->GetWw()*gPad->GetWNDC();
                   if (scale>0.0) toffset = TMath::Max(toffset,(double)w/scale);
                }
-               strncpy(chtemp, fAxis->GetBinLabel(i), 255);
-               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp);
+               strlcpy(chtemp, fAxis->GetBinLabel(i), 255);
+               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp, i, 0.1);
                textaxis.PaintLatex(xmin + s*fAxis->GetLabelOffset()*(gPad->GetUxmax()-gPad->GetUxmin()),
                                    fAxis->GetBinCenter(i),
                                    0,
@@ -1617,8 +1560,8 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
                                    chtemp);
                if (fNModLabs) ResetLabelAttributes(&textaxis);
             } else {
-               strncpy(chtemp, fAxis->GetBinLabel(i), 255);
-               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp);
+               strlcpy(chtemp, fAxis->GetBinLabel(i), 255);
+               if (fNModLabs) ChangeLabelAttributes(i, fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp, i, 0.1);
                textaxis.PaintLatex(xmin - 3*fAxis->GetLabelOffset()*(gPad->GetUxmax()-gPad->GetUxmin()),
                                    ymin +(i-0.5)*(ymax-ymin)/nl,
                                    0,
@@ -1628,16 +1571,6 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
             }
          }
       }
-   }
-
-// Now determine orientation of labels on axis
-   if (!gPad->IsBatch()) {
-      if (cosphi > 0) gVirtualX->SetCharacterUp(-sinphi,cosphi);
-      else            gVirtualX->SetCharacterUp(sinphi,-cosphi);
-      if (x0 == x1)   gVirtualX->SetCharacterUp(0,1);
-      if (optionVert) gVirtualX->SetCharacterUp(0,1);
-      if (optionPara) gVirtualX->SetCharacterUp(-sinphi,cosphi);
-      if (optionDown) gVirtualX->SetCharacterUp(cosphi,sinphi);
    }
 
 // Now determine text alignment
@@ -1687,181 +1620,118 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
    if (optionText) ylabel /= 2;
 
 // Draw the linear tick marks if needed...
-   if (!optionLog) {
-      if (ndiv) {
-         if (fFunction) {
-            dxtick=(binHigh-binLow)/Double_t(nticks-1);
-         } else {
-            if (optionNoopt && !optionInt) dxtick=axis_length/Double_t(nticks-1);
-            else                           dxtick=axis_lengthN/Double_t(nticks-1);
-         }
-         for (k=0;k<nticks; k++) {
+   if (!optionLog && ndiv) {
+      if (fFunction) {
+         dxtick = (binHigh-binLow)/Double_t(nticks-1);
+         axis_length0 = binLow-wmin;
+         axis_length1 = wmax-binHigh;
+      } else {
+         if (optionNoopt && !optionInt) dxtick = axis_length/Double_t(nticks-1);
+         else                           dxtick = axis_lengthN/Double_t(nticks-1);
+      }
+      if (!optionNoopt || optionInt) {
+         if (axis_length0)
+            nticks0 = TMath::Min(Int_t(axis_length0/dxtick + epsilon), 1000);
+         if (axis_length1)
+            nticks1 = TMath::Min(Int_t(axis_length1/dxtick + epsilon), 1000);
+      }
+
+      std::vector<Double_t> ticksx, ticksy, gridx, gridy;
+      if (!drawGridOnly) {
+         ticksx.reserve(nticks + nticks0 + nticks1);
+         ticksy.reserve(nticks + nticks0 + nticks1);
+      }
+      if (optionGrid) {
+         gridx.reserve((nticks + nticks0 + nticks1) / nn2 + 2);
+         gridy.reserve((nticks + nticks0 + nticks1) / nn2 + 2);
+      }
+
+      auto draw_tick = [&](int indx, double xtick, double xf) {
+         int ltick;
+         if (indx % nn2 == 0)
+            ltick = 0;
+         else if (indx % nn3 == 0)
+            ltick = 1;
+         else
             ltick = 2;
-            if (k%nn3 == 0) ltick = 1;
-            if (k%nn2 == 0) ltick = 0;
-            if (fFunction) {
-               Double_t xf = binLow+Double_t(k)*dxtick;
-               Double_t zz = fFunction->Eval(xf)-rwmi;
-               xtick = zz* axis_length / TMath::Abs(rwma-rwmi);
-            } else {
-               xtick = Double_t(k)*dxtick;
-            }
-            ytick = 0;
-            if (!mside) ytick -= atick[ltick];
-            if ( optionNoopt && !optionInt) {
-               Rotate(xtick,ytick,cosphi,sinphi,x0,y0,xpl2,ypl2);
-               Rotate(xtick,atick[ltick],cosphi,sinphi,x0,y0,xpl1,ypl1);
-            }
-            else {
-               Rotate(xtick,ytick,cosphi,sinphi,xx0,yy0,xpl2,ypl2);
-               Rotate(xtick,atick[ltick],cosphi,sinphi,xx0,yy0,xpl1,ypl1);
-            }
-            if (optionVert) {
-               if ((x0 != x1) && (y0 != y1)) {
-                  if (mside) {
-                     xpl1 = xpl2;
-                     if (cosphi > 0) ypl1 = ypl2 + atick[ltick];
-                     else            ypl1 = ypl2 - atick[ltick];
-                  }
-                  else {
-                     xpl1 = 0.5*(xpl1 + xpl2);
-                     xpl2 = xpl1;
-                     ypl1 = 0.5*(ypl1 + ypl2) + atick[ltick];
-                     ypl2 = 0.5*(ypl1 + ypl2) - atick[ltick];
-                  }
-               }
-            }
-            if (!drawGridOnly) {
-               if (!optionArrow) {
-                     PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
+
+         if (fFunction) {
+            Double_t zz = fFunction->Eval(xf)-rwmi;
+            xtick = zz * axis_length / TMath::Abs(rwma-rwmi);
+         }
+
+         Double_t ytick = mside ? 0. : -atick[ltick];
+         if (optionNoopt && !optionInt) {
+            Rotate(xtick,ytick,cosphi,sinphi,x0,y0, xpl2,ypl2);
+            Rotate(xtick,atick[ltick],cosphi,sinphi,x0,y0, xpl1,ypl1);
+         } else {
+            Rotate(xtick,ytick,cosphi,sinphi,xx0,yy0, xpl2,ypl2);
+            Rotate(xtick,atick[ltick],cosphi,sinphi,xx0,yy0, xpl1,ypl1);
+         }
+         if (optionVert) {
+            if ((x0 != x1) && (y0 != y1)) {
+               if (mside) {
+                  xpl1 = xpl2;
+                  if (cosphi > 0) ypl1 = ypl2 + atick[ltick];
+                  else            ypl1 = ypl2 - atick[ltick];
                } else {
-                  if (optionArrow==1) {
-                     if (x1!=x0) {
-                       if (xpl2<x1) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                     } else {
-                       if (ypl2<y1) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                     }
-                  }
-                  if (optionArrow==2) {
-                     if (x1!=x0) {
-                       if (xpl1>x0) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                     } else {
-                       if (ypl1>y0) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                     }
-                  }
-                  if (optionArrow==3) {
-                      if (x1!=x0) {
-                       if (xpl1>x0 && xpl2<x1) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                     } else {
-                       if (ypl1>y0 && ypl2<y1) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                     }
-                  }
-               }
-            }
-
-            if (optionGrid) {
-               if (ltick == 0) {
-                  if (optionNoopt && !optionInt) {
-                     Rotate(xtick,0,cosphi,sinphi,x0,y0 ,xpl2,ypl2);
-                     Rotate(xtick,grid_side*gridlength ,cosphi,sinphi,x0,y0 ,xpl1,ypl1);
-                  }
-                  else {
-                     Rotate(xtick,0,cosphi ,sinphi,xx0,yy0 ,xpl2,ypl2);
-                     Rotate(xtick,grid_side*gridlength ,cosphi,sinphi,xx0,yy0 ,xpl1,ypl1);
-                  }
-                  linegrid.PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
+                  xpl1 = 0.5*(xpl1 + xpl2);
+                  xpl2 = xpl1;
+                  ypl1 = 0.5*(ypl1 + ypl2) + atick[ltick];
+                  ypl2 = 0.5*(ypl1 + ypl2) - atick[ltick];
                }
             }
          }
-         xtick0 = 0;
-         xtick1 = xtick;
-
-         if (fFunction) axis_length0 = binLow-wmin;
-         if ((!optionNoopt || optionInt) && axis_length0) {
-            nticks0 = Int_t(axis_length0/dxtick);
-            if (nticks0 > 1000) nticks0 = 1000;
-            for (k=0; k<=nticks0; k++) {
-               ltick = 2;
-               if (k%nn3 == 0) ltick = 1;
-               if (k%nn2 == 0) ltick = 0;
-               ytick0 = 0;
-               if (!mside) ytick0 -= atick[ltick];
-               if (fFunction) {
-                  xtick0 = (fFunction->Eval(binLow - Double_t(k)*dxtick)-rwmi)
-                           * axis_length / TMath::Abs(rwma-rwmi);
-               }
-               Rotate(xtick0,ytick0,cosphi,sinphi,xx0,yy0 ,xpl2,ypl2);
-               Rotate(xtick0,atick[ltick],cosphi,sinphi,xx0,yy0 ,xpl1,ypl1);
-               if (optionVert) {
-                  if ((x0 != x1) && (y0 != y1)) {
-                     if (mside) {
-                        xpl1 = xpl2;
-                        if (cosphi > 0) ypl1 = ypl2 + atick[ltick];
-                        else            ypl1 = ypl2 - atick[ltick];
-                     }
-                     else {
-                        xpl1 = 0.5*(xpl1 + xpl2);
-                        xpl2 = xpl1;
-                        ypl1 = 0.5*(ypl1 + ypl2) + atick[ltick];
-                        ypl2 = 0.5*(ypl1 + ypl2) - atick[ltick];
-                     }
-                  }
-               }
-               if (!drawGridOnly) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-
-               if (optionGrid) {
-                  if (ltick == 0) {
-                     Rotate(xtick0,0,cosphi,sinphi,xx0,yy0,xpl2,ypl2);
-                     Rotate(xtick0,grid_side*gridlength ,cosphi,sinphi,xx0,yy0 ,xpl1,ypl1);
-                     linegrid.PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                  }
-               }
-               xtick0 -= dxtick;
+         if (!drawGridOnly) {
+            Bool_t paint_tick = kTRUE;
+            if (optionArrow == 1)
+               paint_tick = (x1 != x0) ? (xpl2 < x1) : (ypl2 < y1);
+            else if (optionArrow == 2)
+               paint_tick = (x1 != x0) ? (xpl1 > x0) : (ypl1 > y0);
+            else if (optionArrow == 3)
+               paint_tick = (x1 != x0) ? (xpl1 > x0 && xpl2 < x1) : (ypl1 > y0 && ypl2 < y1);
+            if (paint_tick) {
+               ticksx.push_back(xpl1);
+               ticksx.push_back(xpl2);
+               ticksy.push_back(ypl1);
+               ticksy.push_back(ypl2);
             }
          }
 
-         if (fFunction) axis_length1 = wmax-binHigh;
-         if ((!optionNoopt || optionInt) && axis_length1) {
-            nticks1 = int(axis_length1/dxtick);
-            if (nticks1 > 1000) nticks1 = 1000;
-            for (k=0; k<=nticks1; k++) {
-               ltick = 2;
-               if (k%nn3 == 0) ltick = 1;
-               if (k%nn2 == 0) ltick = 0;
-               ytick1 = 0;
-               if (!mside) ytick1 -= atick[ltick];
-               if (fFunction) {
-                  xtick1 = (fFunction->Eval(binHigh + Double_t(k)*dxtick)-rwmi)
-                           * axis_length / TMath::Abs(rwma-rwmi);
-               }
-               Rotate(xtick1,ytick1,cosphi,sinphi,xx0,yy0 ,xpl2,ypl2);
-               Rotate(xtick1,atick[ltick],cosphi,sinphi,xx0,yy0 ,xpl1,ypl1);
-               if (optionVert) {
-                  if ((x0 != x1) && (y0 != y1)) {
-                     if (mside) {
-                        xpl1 = xpl2;
-                        if (cosphi > 0) ypl1 = ypl2 + atick[ltick];
-                        else            ypl1 = ypl2 - atick[ltick];
-                     }
-                     else {
-                        xpl1 = 0.5*(xpl1 + xpl2);
-                        xpl2 = xpl1;
-                        ypl1 = 0.5*(ypl1 + ypl2) + atick[ltick];
-                        ypl2 = 0.5*(ypl1 + ypl2) - atick[ltick];
-                     }
-                  }
-               }
-               if (!drawGridOnly) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-               if (optionGrid) {
-                  if (ltick == 0) {
-                     Rotate(xtick1,0,cosphi,sinphi,xx0,yy0 ,xpl2,ypl2);
-                     Rotate(xtick1,grid_side*gridlength,cosphi,sinphi,xx0,yy0,xpl1,ypl1);
-                     linegrid.PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
-                  }
-               }
-               xtick1 += dxtick;
+         if (optionGrid && (ltick == 0)) {
+            if (optionNoopt && !optionInt) {
+               Rotate(xtick,0,cosphi,sinphi,x0,y0, xpl2,ypl2);
+               Rotate(xtick,grid_side*gridlength,cosphi,sinphi,x0,y0, xpl1,ypl1);
+            } else {
+               Rotate(xtick,0,cosphi,sinphi,xx0,yy0, xpl2,ypl2);
+               Rotate(xtick,grid_side*gridlength,cosphi,sinphi,xx0,yy0, xpl1,ypl1);
             }
+            gridx.push_back(xpl1);
+            gridx.push_back(xpl2);
+            gridy.push_back(ypl1);
+            gridy.push_back(ypl2);
          }
+      };
+
+      for (k = 0; k < nticks; k++)
+         draw_tick(k, Double_t(k) * dxtick, binLow + Double_t(k)*dxtick);
+
+      for (k = 1; k <= nticks0; k++)
+         draw_tick(k, -1. * Double_t(k) * dxtick, binLow - Double_t(k)*dxtick);
+
+      for (k = 1; k <= nticks1; k++)
+         draw_tick(k, Double_t(nticks-1 + k) * dxtick, binHigh + Double_t(k)*dxtick);
+
+      // paint ticks all together with one command
+      if (ticksx.size() > 0) {
+         TAttLine::Modify();
+         gPad->PaintSegmentsNDC(ticksx.size() / 2, ticksx.data(), ticksy.data());
+      }
+
+      // paint grid lines all together after ticks
+      if (gridx.size() > 0) {
+         linegrid.TAttLine::Modify();
+         gPad->PaintSegmentsNDC(gridx.size() / 2, gridx.data(), gridy.data());
       }
    }
 
@@ -1923,7 +1793,7 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
 
                if (flexpo) {
                   flexe = kTRUE;
-                  while (1) {
+                  while (true) {
                      nexe++;
                      ww      /= 10;
                      wlabel  /= 10;
@@ -1935,7 +1805,7 @@ void TGaxis::PaintAxis(Double_t xmin, Double_t ymin, Double_t xmax, Double_t yma
                if (flexne) {
                   flexe = kTRUE;
                   rne   = 1/TMath::Power(10,maxDigits-2);
-                  while (1) {
+                  while (true) {
                      nexe--;
                      ww      *= 10;
                      wlabel  *= 10;
@@ -2016,23 +1886,26 @@ L110:
                }
                if (optionM)    xlabel += 0.5*dxlabel;
 
+               axis_value = wlabel;
+
                if (!optionText && !optionTime) {
                   snprintf(label,256,chcoded,wlabel);
+
                   label[28] = 0;
                   wlabel += dwlabel;
 
                   LabelsLimits(label,first,last);  //Eliminate blanks
 
                   if (label[first] == '.') { //check if '.' is preceded by a digit
-                     strncpy(chtemp, "0",256);
+                     strncpy(chtemp, "0", 256);
                      strlcat(chtemp, &label[first],256);
-                     strncpy(label, chtemp,256);
+                     strlcpy(label, chtemp, 256);
                      first = 1; last = strlen(label);
                   }
                   if (label[first] == '-' && label[first+1] == '.') {
                      strncpy(chtemp, "-0",256);
                      strlcat(chtemp, &label[first+1],256);
-                     strncpy(label, chtemp, 256);
+                     strlcpy(label, chtemp, 256);
                      first = 1; last = strlen(label);
                   }
 
@@ -2094,7 +1967,7 @@ L110:
                   } else {
                      strncpy(label, "invalid", 256);
                   }
-                  strncpy(chtemp, &label[0], 256);
+                  strlcpy(chtemp, &label[0], 256);
                   first = 0; last=strlen(label)-1;
                   wlabel = wTimeIni + (k+1)*dwlabel;
                }
@@ -2119,8 +1992,8 @@ L110:
                if (!optionY || (x0 == x1)) {
                   if (!optionText) {
                      if (first > last)  strncpy(chtemp, " ", 256);
-                     else               strncpy(chtemp, &label[first], 255);
-                     if (fNModLabs) ChangeLabelAttributes(k+1, nlabels, &textaxis, chtemp);
+                     else               strlcpy(chtemp, &label[first], 255);
+                     if (fNModLabs) ChangeLabelAttributes(k+1, nlabels, &textaxis, chtemp, axis_value, dwlabel*0.01);
                      typolabel = chtemp;
                      if (!optionTime) typolabel.ReplaceAll("-", "#minus");
                      if (autotoff) {
@@ -2137,8 +2010,8 @@ L110:
                            typolabel.Data());
                      if (fNModLabs) ResetLabelAttributes(&textaxis);
                   } else  {
-                     strncpy(chtemp, fAxis->GetBinLabel(k+fAxis->GetFirst()), 255);
-                     if (fNModLabs) ChangeLabelAttributes(k+fAxis->GetFirst(), fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp);
+                     strlcpy(chtemp, fAxis->GetBinLabel(k+fAxis->GetFirst()), 255);
+                     if (fNModLabs) ChangeLabelAttributes(k+fAxis->GetFirst(), fAxis->GetLabels()->GetSize()-1, &textaxis, chtemp, k+fAxis->GetFirst(), 0.1);
                      if (optionText == 1) textaxis.PaintLatex(gPad->GetX1() + xx*(gPad->GetX2() - gPad->GetX1()),
                                                    gPad->GetY1() + yy*(gPad->GetY2() - gPad->GetY1()),
                                                    0,
@@ -2182,12 +2055,16 @@ L110:
                if (GetLabelFont()%10 < 2) // force TLatex mode in PaintLatex
                   textaxis.SetTextFont((Int_t)(GetLabelFont()/10)*10+2);
                if (fAxis && !strcmp(fAxis->GetName(),"xaxis")) {
-                  xx = xx + fXAxisExpXOffset;
-                  yy = yy + fXAxisExpYOffset;
+                  Float_t xoff = 0., yoff = 0.;
+                  gStyle->GetExponentOffset(xoff, yoff, "x");
+                  xx += xoff;
+                  yy += yoff;
                }
                if (fAxis && !strcmp(fAxis->GetName(),"yaxis")) {
-                  xx = xx + fYAxisExpXOffset;
-                  yy = yy + fYAxisExpYOffset;
+                  Float_t xoff = 0., yoff = 0.;
+                  gStyle->GetExponentOffset(xoff, yoff, "y");
+                  xx += xoff;
+                  yy += yoff;
                }
                typolabel = label;
                typolabel.ReplaceAll("-", "#minus");
@@ -2232,6 +2109,27 @@ L110:
       nbinin = ih2-ih1+1;
       axmul  = (x11-x00)/(h2sav-xmnlog);
 
+      std::vector<Double_t> ticksx, ticksy, gridsx, gridsy;
+
+      if (!drawGridOnly) {
+         ticksx.reserve(nbinin*2);
+         ticksy.reserve(nbinin*2);
+      }
+      if (optionGrid) {
+         gridsx.reserve(nbinin*2);
+         gridsy.reserve(nbinin*2);
+      }
+
+      struct LogLabel {
+         Int_t id = 0, num = 0;
+         Double_t u = 0., v = 0., value = 0.;
+         TString lbl;
+      };
+      std::vector<LogLabel> loglabels;
+      if (!drawGridOnly && !optionUnlab)
+         loglabels.reserve(nbinin);
+
+
 // Plot decade and intermediate tick marks
       decade      = ih1-2;
       labelnumber = ih1;
@@ -2270,17 +2168,26 @@ L110:
                }
             }
          }
-         if (!drawGridOnly) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
+         if (!drawGridOnly) {
+            ticksx.emplace_back(xpl1);
+            ticksx.emplace_back(xpl2);
+            ticksy.emplace_back(ypl1);
+            ticksy.emplace_back(ypl2);
+         }
 
          if (optionGrid) {
             Rotate(xone,0,cosphi,sinphi,x0,y0,xpl2,ypl2);
             Rotate(xone,grid_side*gridlength,cosphi,sinphi,x0,y0,xpl1,ypl1);
-            linegrid.PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
+            gridsx.emplace_back(xpl1);
+            gridsx.emplace_back(xpl2);
+            gridsy.emplace_back(ypl1);
+            gridsy.emplace_back(ypl2);
          }
 
          if (!drawGridOnly && !optionUnlab)  {
 
 // We generate labels (numeric only).
+            axis_value = TMath::Power(10,labelnumber);
             if (noExponent) {
                rlab = TMath::Power(10,labelnumber);
                snprintf(label,256, "%f", rlab);
@@ -2329,7 +2236,7 @@ L110:
                if (fNModLabs) {
                   if (changelablogid  == 0) changelablognum = nbinin-j;
                   changelablogid++;
-                  ChangeLabelAttributes(changelablogid, changelablognum, &textaxis, chtemp);
+                  ChangeLabelAttributes(changelablogid, changelablognum, &textaxis, chtemp, axis_value, axis_value*1e-6);
                }
                typolabel = chtemp;
                typolabel.ReplaceAll("-", "#minus");
@@ -2340,9 +2247,14 @@ L110:
                   double scale=gPad->GetWw()*gPad->GetWNDC();
                   if (scale>0.0) toffset = TMath::Max(toffset,(double)w/scale);
                }
-               textaxis.PaintLatex(gPad->GetX1() + xx*(gPad->GetX2() - gPad->GetX1()),
-                                   gPad->GetY1() + yy*(gPad->GetY2() - gPad->GetY1()),
-                                   0, textaxis.GetTextSize(), typolabel.Data());
+               loglabels.emplace_back();
+               auto &back = loglabels.back();
+               back.id = changelablogid;
+               back.num = changelablognum;
+               back.u = gPad->GetX1() + xx*(gPad->GetX2() - gPad->GetX1());
+               back.v = gPad->GetY1() + yy*(gPad->GetY2() - gPad->GetY1());
+               back.value = axis_value;
+               back.lbl = typolabel;
                if (fNModLabs) ResetLabelAttributes(&textaxis);
             }
             labelnumber++;
@@ -2376,13 +2288,19 @@ L160:
             }
             idn = n1a*2;
             if ((nbinin <= idn) || ((nbinin > idn) && (k == 5))) {
-               if (!drawGridOnly) PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
+               if (!drawGridOnly) {
+                  ticksx.emplace_back(xpl1);
+                  ticksx.emplace_back(xpl2);
+                  ticksy.emplace_back(ypl1);
+                  ticksy.emplace_back(ypl2);
+               }
 
 // Draw the intermediate LOG labels if requested
 
                if (moreLogLabels && !optionUnlab && !drawGridOnly && !overlap) {
+                  axis_value = Double_t(k)*TMath::Power(10,labelnumber-1);
                   if (noExponent) {
-                     rlab = Double_t(k)*TMath::Power(10,labelnumber-1);
+                     rlab = axis_value;
                      snprintf(chtemp,256, "%g", rlab);
                   } else {
                      if (labelnumber-1 == 0) {
@@ -2427,11 +2345,18 @@ L160:
                      firstintlab = kFALSE;
                      if (fNModLabs) {
                         changelablogid++;
-                        ChangeLabelAttributes(changelablogid, 0, &textaxis, chtemp);
+                        ChangeLabelAttributes(changelablogid, 0, &textaxis, chtemp, axis_value, axis_value*1e-6);
                      }
                      typolabel = chtemp;
                      typolabel.ReplaceAll("-", "#minus");
-                     textaxis.PaintLatex(u,v,0,textaxis.GetTextSize(),typolabel.Data());
+                     loglabels.emplace_back();
+                     auto &back = loglabels.back();
+                     back.id = changelablogid;
+                     back.num = 0;
+                     back.u = u;
+                     back.v = v;
+                     back.value = axis_value;
+                     back.lbl = typolabel;
                      if (fNModLabs) ResetLabelAttributes(&textaxis);
                   } else {
                      xi2 = gPad->XtoAbsPixel(u);
@@ -2446,11 +2371,18 @@ L160:
                         textaxis.GetBoundingBox(wi, hi); wi=(UInt_t)(wi*1.3); hi=(UInt_t)(hi*1.3);
                         if (fNModLabs) {
                            changelablogid++;
-                           ChangeLabelAttributes(changelablogid, 0, &textaxis, chtemp);
+                           ChangeLabelAttributes(changelablogid, 0, &textaxis, chtemp, axis_value, axis_value*1e-6);
                         }
                         typolabel = chtemp;
                         typolabel.ReplaceAll("-", "#minus");
-                        textaxis.PaintLatex(u,v,0,textaxis.GetTextSize(),typolabel.Data());
+                        loglabels.emplace_back();
+                        auto &back = loglabels.back();
+                        back.id = changelablogid;
+                        back.num = 0;
+                        back.u = u;
+                        back.v = v;
+                        back.value = axis_value;
+                        back.lbl = typolabel;
                         if (fNModLabs) ResetLabelAttributes(&textaxis);
                      }
                   }
@@ -2458,15 +2390,38 @@ L160:
 
 // Draw the intermediate LOG grid if only three decades are requested
                if (optionGrid && nbinin <= 5 && ndiv > 100) {
-                  Rotate(xone,0,cosphi,sinphi,x0,y0,xpl2, ypl2);
+                  Rotate(xone,0,cosphi,sinphi,x0,y0, xpl2, ypl2);
                   Rotate(xone,grid_side*gridlength,cosphi,sinphi,x0,y0, xpl1,ypl1);
-                  linegrid.PaintLineNDC(xpl1, ypl1, xpl2, ypl2);
+                  gridsx.emplace_back(xpl1);
+                  gridsx.emplace_back(xpl2);
+                  gridsy.emplace_back(ypl1);
+                  gridsy.emplace_back(ypl2);
                }
             }  //endif ((nbinin <= idn) ||
          }  //endfor (k=2;k<10;k++)
       } //endfor (j=1; j<=nbinin; j++)
 L200:
-      Int_t dummy = 0; if (dummy) { }
+      // paint ticks all together with one command
+      if (ticksx.size() > 0) {
+         TAttLine::Modify();
+         gPad->PaintSegmentsNDC(ticksx.size() / 2, ticksx.data(), ticksy.data());
+      }
+
+      // paint all labels after ticks
+      for(auto & lbl : loglabels) {
+         if (fNModLabs)
+            ChangeLabelAttributes(lbl.id, lbl.num, &textaxis, chtemp, lbl.value, lbl.value*1e-6);
+         textaxis.PaintLatex(lbl.u, lbl.v, 0, textaxis.GetTextSize(), lbl.lbl.Data());
+         if (fNModLabs)
+            ResetLabelAttributes(&textaxis);
+      }
+
+      // paint grid lines all together at the end
+      if (gridsx.size() > 0) {
+         linegrid.TAttLine::Modify();
+         gPad->PaintSegmentsNDC(gridsx.size() / 2, gridsx.data(), gridsy.data());
+      }
+
    }  //endif (optionLog && ndiv)
 
 // Draw axis title if it exists
@@ -2590,63 +2545,51 @@ void TGaxis::Rotate(Double_t X,  Double_t Y,  Double_t CFI, Double_t SFI
 ////////////////////////////////////////////////////////////////////////////////
 /// Save primitive as a C++ statement(s) on output stream out
 
-void TGaxis::SavePrimitive(std::ostream &out, Option_t * /*= ""*/)
+void TGaxis::SavePrimitive(std::ostream &out, Option_t *option)
 {
-   char quote = '"';
-   if (gROOT->ClassSaved(TGaxis::Class())) {
-      out<<"   ";
-   } else {
-      out<<"   TGaxis *";
-   }
-   out<<"gaxis = new TGaxis("<<fX1<<","<<fY1<<","<<fX2<<","<<fY2
-      <<","<<fWmin<<","<<fWmax<<","<<fNdiv<<","<<quote<<fChopt.Data()<<quote<<");"<<std::endl;
-   out<<"   gaxis->SetLabelOffset("<<GetLabelOffset()<<");"<<std::endl;
-   out<<"   gaxis->SetLabelSize("<<GetLabelSize()<<");"<<std::endl;
-   out<<"   gaxis->SetTickSize("<<GetTickSize()<<");"<<std::endl;
-   out<<"   gaxis->SetGridLength("<<GetGridLength()<<");"<<std::endl;
-   out<<"   gaxis->SetTitleOffset("<<GetTitleOffset()<<");"<<std::endl;
-   out<<"   gaxis->SetTitleSize("<<GetTitleSize()<<");"<<std::endl;
-   out<<"   gaxis->SetTitleColor("<<GetTextColor()<<");"<<std::endl;
-   out<<"   gaxis->SetTitleFont("<<GetTextFont()<<");"<<std::endl;
+   SavePrimitiveConstructor(out, Class(), "gaxis",
+                            TString::Format("%g, %g, %g, %g, %14.12g, %14.12g, %d, \"%s\", %g", fX1, fY1, fX2, fY2,
+                                            fWmin, fWmax, fNdiv, fChopt.Data(), GetGridLength()));
 
-   if (strlen(GetName())) {
-      out<<"   gaxis->SetName("<<quote<<GetName()<<quote<<");"<<std::endl;
-   }
-   if (strlen(GetTitle())) {
-      out<<"   gaxis->SetTitle("<<quote<<GetTitle()<<quote<<");"<<std::endl;
-   }
+   SaveLineAttributes(out, "gaxis", 1, 1, 1);
+   SaveTextAttributes(out, "gaxis", 11, 0, 1, 62, 0.04);
 
-   if (fLabelColor != 1) {
-      if (fLabelColor > 228) {
-         TColor::SaveColor(out, fLabelColor);
-         out<<"   gaxis->SetLabelColor(ci);" << std::endl;
-      } else
-         out<<"   gaxis->SetLabelColor("<<GetLabelColor()<<");"<<std::endl;
-   }
-   if (fLineColor != 1) {
-      if (fLineColor > 228) {
-         TColor::SaveColor(out, fLineColor);
-         out<<"   gaxis->SetLineColor(ci);" << std::endl;
-      } else
-         out<<"   gaxis->SetLineColor("<<GetLineColor()<<");"<<std::endl;
-   }
-   if (fLineStyle != 1) {
-      out<<"   gaxis->SetLineStyle("<<GetLineStyle()<<");"<<std::endl;
-   }
-   if (fLineWidth != 1) {
-      out<<"   gaxis->SetLineWidth("<<GetLineWidth()<<");"<<std::endl;
-   }
-   if (fLabelFont != 62) {
-      out<<"   gaxis->SetLabelFont("<<GetLabelFont()<<");"<<std::endl;
-   }
-   if (TestBit(TAxis::kMoreLogLabels)) {
-      out<<"   gaxis->SetMoreLogLabels();"<<std::endl;
-   }
-   if (TestBit(TAxis::kNoExponent)) {
-      out<<"   gaxis->SetNoExponent();"<<std::endl;
+   if (strlen(GetName()))
+      out << "   gaxis->SetName(\"" << GetName() << "\");\n";
+   if (strlen(GetTitle()))
+      out << "   gaxis->SetTitle(\"" << TString(GetTitle()).ReplaceSpecialCppChars() << "\");\n";
+   if (fTimeFormat.Length() > 0)
+      out << "   gaxis->SetTimeFormat(\"" << TString(fTimeFormat).ReplaceSpecialCppChars() << "\");\n";
+
+   out << "   gaxis->SetLabelOffset(" << GetLabelOffset() << ");\n";
+   out << "   gaxis->SetLabelSize(" << GetLabelSize() << ");\n";
+   if (fLabelColor != 1)
+      out << "   gaxis->SetLabelColor(" << TColor::SavePrimitiveColor(GetLabelColor()) << ");\n";
+   if (fLabelFont != 62)
+      out << "   gaxis->SetLabelFont(" << GetLabelFont() << ");\n";
+   if (TestBit(TAxis::kMoreLogLabels))
+      out << "   gaxis->SetMoreLogLabels();\n";
+
+   out << "   gaxis->SetTickSize(" << GetTickSize() << ");\n";
+   out << "   gaxis->SetTitleOffset(" << GetTitleOffset() << ");\n";
+   out << "   gaxis->SetTitleSize(" << GetTitleSize() << ");\n";
+
+   if (TestBit(TAxis::kNoExponent))
+      out << "   gaxis->SetNoExponent();\n";
+   if (fModLabs) {
+      TIter next(fModLabs);
+      while (auto ml = static_cast<TAxisModLab *>(next())) {
+         if (ml->GetLabNum() == 0)
+            out << "   gaxis->ChangeLabelByValue(" << ml->GetLabValue();
+         else
+            out << "   gaxis->ChangeLabel(" << ml->GetLabNum();
+         out << ", " << ml->GetAngle() << ", " << ml->GetSize() << ", " << ml->GetAlign() << ", "
+             << TColor::SavePrimitiveColor(ml->GetColor()) << ", " << ml->GetFont() << ", \""
+             << TString(ml->GetText()).ReplaceSpecialCppChars() << "\");\n";
+      }
    }
 
-   out<<"   gaxis->Draw();"<<std::endl;
+   SavePrimitiveDraw(out, "gaxis", option);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2680,6 +2623,38 @@ void TGaxis::SetFunction(const char *funcname)
       fWmax = fFunction->GetXmax();
    }
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// Search for axis modifier by index or value
+
+TAxisModLab *TGaxis::FindModLab(Int_t indx, Int_t numlabels, Double_t v, Double_t eps) const
+{
+   if (!fModLabs)
+      return nullptr;
+
+   TIter next(fModLabs);
+   while (auto ml = (TAxisModLab*)next()) {
+
+      if (ml->GetLabNum() == 0) {
+         if (TMath::Abs(v - ml->GetLabValue()) <= eps)
+            return ml;
+      } else if (indx != 0) {
+         Bool_t match = ml->GetLabNum() == indx;
+         if (!match && (ml->GetLabNum() < 0) && (indx > 0) && (numlabels > 0)) {
+            if (TestBit(TAxis::kMoreLogLabels)) {
+               Error("FindModLab", "reverse numbering in ChangeLabel doesn't work when more log labels are requested");
+               return nullptr;
+            }
+
+            match = indx == (ml->GetLabNum() + 2 + numlabels);
+         }
+         if (match) return ml;
+      }
+   }
+
+   return nullptr;
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Define new text attributes for the label number "labNum". It allows to do a
@@ -2726,7 +2701,7 @@ void TGaxis::SetFunction(const char *funcname)
 
 void TGaxis::ChangeLabel(Int_t labNum, Double_t labAngle, Double_t labSize,
                          Int_t labAlign, Int_t labColor, Int_t labFont,
-                         TString labText)
+                         const TString &labText)
 {
    // special situation when mod labs taken from axis - one have to reset pointer
    if (fModLabs && !IsOwnedModLabs()) {
@@ -2746,23 +2721,96 @@ void TGaxis::ChangeLabel(Int_t labNum, Double_t labAngle, Double_t labSize,
       fModLabs->SetOwner(kTRUE);
    }
 
-   TAxisModLab *ml = new TAxisModLab();
-   ml->SetLabNum(labNum);
+   TAxisModLab *ml = FindModLab(labNum);
+   if (!ml) {
+      ml = new TAxisModLab();
+      ml->SetLabNum(labNum);
+      fModLabs->Add(ml);
+   }
+
    ml->SetAngle(labAngle);
    ml->SetSize(labSize);
    ml->SetAlign(labAlign);
    ml->SetColor(labColor);
    ml->SetFont(labFont);
    ml->SetText(labText);
-
-   fModLabs->Add(ml);
 }
 
-static Double_t SavedTextAngle; ///< Global variable saving the current label's text angle. Used by TGaxis::ChangeLabelAttributes.
-static Double_t SavedTextSize;  ///< Global variable saving the current label's text size. Used by TGaxis::ChangeLabelAttributes.
-static Int_t    SavedTextAlign; ///< Global variable saving the current label's text alignment. Used by TGaxis::ChangeLabelAttributes.
-static Int_t    SavedTextColor; ///< Global variable saving the current label's text color. Used by TGaxis::ChangeLabelAttributes.
-static Int_t    SavedTextFont;  ///< Global variable saving the current label's text font. Used by TGaxis::ChangeLabelAttributes.
+////////////////////////////////////////////////////////////////////////////////
+/// Define new text attributes for the label value "labValue". It allows to do a
+/// fine tuning of the labels. All the attributes can be changed, even the
+/// label text itself.
+///
+/// \param[in] labValue  Axis value to be changed
+/// \param[in] labAngle  New angle value
+/// \param[in] labSize   New size (0 erase the label)
+/// \param[in] labAlign  New alignment value
+/// \param[in] labColor  New label color
+/// \param[in] labFont   New label font
+/// \param[in] labText   New label text
+///
+/// #### Example:
+///
+/// Begin_Macro(source)
+/// {
+///   auto c = new TCanvas("c1","Examples of TGaxis",900,100);
+///   c->Range(-6,-0.1,6,0.1);
+///   auto *axis = new TGaxis(-5.5,0.,5.5,0.,0.0,100,510,"S");
+///   axis->SetName("axis1");
+///   axis->SetTitle("Axis Title");
+///   axis->SetTitleSize(0.2);
+///   axis->SetLabelSize(0.2);
+///   axis->SetTickSize(0.15);
+///   axis->SetTitleColor(kBlue);
+///   axis->SetTitleFont(42);
+///   axis->ChangeLabelByValue(0., -1, -1, -1, kRed);
+///   axis->ChangeLabelByValue(20., -1, 0);
+///   axis->ChangeLabelByValue(40., 30.);
+///   axis->ChangeLabelByValue(50., -1, -1, -1, kBlue, -1, "blue for 50.");
+///   axis->ChangeLabelByValue(90., -1, -1, -1, kGreen, -1, "green for 90.");
+///   axis->Draw();
+/// }
+/// End_Macro
+///
+///  #### Notes:
+///
+///  - If an attribute should not be changed just give the value "-1".
+///  - To erase a label set labSize to 0
+///  - If labText is not specified or is an empty string, the text label is not changed.
+
+void TGaxis::ChangeLabelByValue(Double_t labValue, Double_t labAngle, Double_t labSize,
+                              Int_t labAlign, Int_t labColor, Int_t labFont,
+                              const TString &labText)
+{
+   // special situation when mod labs taken from axis - one have to reset pointer
+   if (fModLabs && !IsOwnedModLabs()) {
+      fModLabs = nullptr;
+      fNModLabs = 0;
+   }
+
+   fNModLabs++;
+   if (!fModLabs) {
+      fModLabs = new TList();
+      fModLabs->SetOwner(kTRUE);
+   }
+
+   TAxisModLab *ml = FindModLab(0, 0, labValue, 0.);
+   if (!ml) {
+      ml = new TAxisModLab();
+      ml->SetLabValue(labValue);
+      fModLabs->Add(ml);
+   }
+
+   ml->SetAngle(labAngle);
+   ml->SetSize(labSize);
+   ml->SetAlign(labAlign);
+   ml->SetColor(labColor);
+   ml->SetFont(labFont);
+   ml->SetText(labText);
+}
+
+
+static TAttText SavedAttText;  ///< Global variable saving the current label's text angle. Used by TGaxis::ChangeLabelAttributes.
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Helper method used by TGaxis::ChangeLabel.
@@ -2772,35 +2820,23 @@ static Int_t    SavedTextFont;  ///< Global variable saving the current label's 
 /// \param[in] nlabels  Totals number of labels for this axis (useful when i is counted from the end)
 /// \param[in] t        Original TLatex string holding the label to be changed
 /// \param[in] c        Text string to be drawn
+/// \param[in] value    Axis value which should be changed
+/// \param[in] eps      Epsilon parameter for axis value, -1 means ignore axis value at all
 
-void TGaxis::ChangeLabelAttributes(Int_t i, Int_t nlabels, TLatex* t, char* c)
+
+void TGaxis::ChangeLabelAttributes(Int_t i, Int_t nlabels, TLatex* t, char* c, Double_t value, Double_t eps)
 {
-   if (!fModLabs) return;
+   t->TAttText::Copy(SavedAttText);
 
-   TIter next(fModLabs);
-   while (auto ml = (TAxisModLab*)next()) {
-      SavedTextAngle = t->GetTextAngle();
-      SavedTextSize  = t->GetTextSize();
-      SavedTextAlign = t->GetTextAlign();
-      SavedTextColor = t->GetTextColor();
-      SavedTextFont  = t->GetTextFont();
-      Int_t labNum = ml->GetLabNum();
-      if (labNum < 0) {
-         if (TestBit(TAxis::kMoreLogLabels)) {
-            Error("ChangeLabelAttributes", "reverse numbering in ChangeLabel doesn't work when more log labels are requested");
-            return;
-         }
-         labNum = nlabels + labNum + 2;
-      }
-      if (i == labNum) {
-         if (ml->GetAngle()>=0.) t->SetTextAngle(ml->GetAngle());
-         if (ml->GetSize()>=0.)  t->SetTextSize(ml->GetSize());
-         if (ml->GetAlign()>0)   t->SetTextAlign(ml->GetAlign());
-         if (ml->GetColor()>=0)  t->SetTextColor(ml->GetColor());
-         if (ml->GetFont()>0)    t->SetTextFont(ml->GetFont());
-         if (!(ml->GetText().IsNull())) strncpy(c, (ml->GetText()).Data(), 256);
-         return;
-      }
+   auto ml = FindModLab(i, nlabels, value, eps);
+
+   if (ml) {
+      if (ml->GetAngle()>=0.) t->SetTextAngle(ml->GetAngle());
+      if (ml->GetSize()>=0.)  t->SetTextSize(ml->GetSize());
+      if (ml->GetAlign()>0)   t->SetTextAlign(ml->GetAlign());
+      if (ml->GetColor()>=0)  t->SetTextColor(ml->GetColor());
+      if (ml->GetFont()>0)    t->SetTextFont(ml->GetFont());
+      if (!ml->GetText().IsNull()) strlcpy(c, ml->GetText().Data(), 256);
    }
 }
 
@@ -2811,11 +2847,7 @@ void TGaxis::ChangeLabelAttributes(Int_t i, Int_t nlabels, TLatex* t, char* c)
 
 void TGaxis::ResetLabelAttributes(TLatex* t)
 {
-   t->SetTextAngle(SavedTextAngle);
-   t->SetTextSize(SavedTextSize);
-   t->SetTextAlign(SavedTextAlign);
-   t->SetTextColor(SavedTextColor);
-   t->SetTextFont(SavedTextFont);
+   SavedAttText.Copy(*t);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2831,8 +2863,7 @@ void TGaxis::ResetLabelAttributes(TLatex* t)
 
 void TGaxis::SetMaxDigits(Int_t maxd)
 {
-   fgMaxDigits = maxd;
-   if (maxd < 1) fgMaxDigits = 1;
+   gStyle->SetAxisMaxDigits(maxd);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2962,25 +2993,16 @@ void TGaxis::SetTimeOffset(Double_t toffset, Option_t *option)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Static function to set X and Y offset of the axis 10^n notation.
+/// Static method to set X and Y offset of the axis 10^n notation.
 /// It applies on axis belonging to an histogram (TAxis). It has no effect on standalone TGaxis.
 /// It is in % of the pad size. It can be negative.
 /// axis specifies which axis ("x","y"), default = "x"
 /// if axis="xz" set the two axes
+/// Redirected to TStyle::SetExponentOffset
 
 void TGaxis::SetExponentOffset(Float_t xoff, Float_t yoff, Option_t *axis)
 {
-   TString opt = axis;
-   opt.ToLower();
-
-   if (opt.Contains("x")) {
-      fXAxisExpXOffset = xoff;
-      fXAxisExpYOffset = yoff;
-   }
-   if (opt.Contains("y")) {
-      fYAxisExpXOffset = xoff;
-      fYAxisExpYOffset = yoff;
-   }
+   gStyle->SetExponentOffset(xoff, yoff, axis);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -3025,4 +3047,9 @@ void TGaxis::Streamer(TBuffer &R__b)
    } else {
       R__b.WriteClassBuffer(TGaxis::Class(),this);
    }
+}
+
+void TGaxis::SetLabelColor(TColorNumber lcolor)
+{
+   SetLineColor(lcolor.number());
 }

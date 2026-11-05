@@ -9,10 +9,10 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#include <ROOT/REveDataCollection.hxx>
-#include <ROOT/REveUtil.hxx>
-#include <ROOT/REveSelection.hxx>
 #include <ROOT/REveManager.hxx>
+#include <ROOT/REveDataCollection.hxx>
+#include <ROOT/REveSelection.hxx>
+#include <ROOT/REveUtil.hxx>
 
 #include "TROOT.h"
 #include "TMethod.h"
@@ -22,6 +22,7 @@
 #include "TList.h"
 #include "TBaseClass.h"
 
+#include <memory>
 #include <sstream>
 #include <regex>
 
@@ -207,7 +208,7 @@ std::string REveDataItemList::GetHighlightTooltip(const std::set<int>& secondary
 //______________________________________________________________________________
 void REveDataItemList::AddTooltipExpression(const std::string &title, const std::string &expr, bool init)
 {
-   fTooltipExpressions.push_back(std::unique_ptr<TTip>(new TTip()));
+   fTooltipExpressions.push_back(std::make_unique<TTip>());
    TTip *tt = fTooltipExpressions.back().get();
 
    tt->fTooltipTitle = title;
@@ -259,7 +260,7 @@ REveDataCollection::REveDataCollection(const std::string& n, const std::string& 
    REveElement(n, t)
 {
    std::string lname = n + "Items";
-   fItemList = new REveDataItemList(lname.c_str());
+   fItemList = new REveDataItemList(lname);
    AddElement(fItemList);
 
    SetupDefaultColorAndTransparency(fgDefaultColor, true, true);
@@ -293,21 +294,22 @@ void REveDataCollection::SetFilterExpr(const char* filter)
 
    if (fFilterExpr.Length())
    {
+      if ( ! REveUtil::VerifyObjectFilterOrTableExpression(fFilterExpr.Data())) {
+         throw eh + "filter-expression verification failed.";
+      }
       std::stringstream s;
       s << "*((std::function<bool(" << fItemClass->GetName() << "*)>*)" << std::hex << std::showbase
         << (size_t)&fFilterFoo << ") = [](" << fItemClass->GetName() << "* p){" << fItemClass->GetName()
         << " &i=*p; return (" << fFilterExpr.Data() << "); };";
 
       // printf("%s\n", s.Data());
-      try {
-         gROOT->ProcessLine(s.str().c_str());
-         // AMT I don't know why ApplyFilter call is separated
-         ApplyFilter();
+      int err;
+      gROOT->ProcessLine(s.str().c_str(), &err);
+      if (err != TInterpreter::kNoError) {
+         throw eh + "filter expression compilation failed.";
       }
-      catch (const std::exception &exc)
-      {
-         R__LOG_ERROR(REveLog()) << "EveDataCollection::SetFilterExpr" << exc.what();
-      }
+      // AMT I don't know why ApplyFilter call is separated
+      ApplyFilter();
    }
    else
    {
@@ -344,7 +346,7 @@ void REveDataCollection::ApplyFilter()
 
       ii->SetFiltered( ! res );
 
-      ids.push_back(idx++);
+      ids.push_back(idx++); // all of them? SetFiltered() could return status-change
    }
    StampObjProps();
    fItemList->StampObjProps();
@@ -355,68 +357,50 @@ void REveDataCollection::ApplyFilter()
 
 void  REveDataCollection::StreamPublicMethods(nlohmann::json &j) const
 {
-   struct PubMethods
-   {
-      void FillJSON(TClass* c, nlohmann::json & arr)
-      {
-         TString  ctor = c->GetName(), dtor = "~";
-         {
-            int i = ctor.Last(':');
-            if (i != kNPOS)
-            {
-               ctor.Replace(0, i + 1, "");
-            }
-            dtor += ctor;
-         }
+   j["fPublicFunctions"] = nlohmann::json::array();
+   TMethod *meth;
+   TIter next(fItemClass->GetListOfAllPublicMethods());
+   while ((meth = (TMethod *)next())) {
+      // Filter out ctor, dtor, some ROOT stuff.
 
-         TMethod *meth;
-         TIter    next(c->GetListOfMethods());
-         while ((meth = (TMethod*) next()))
-         {
-            // Filter out ctor, dtor, some ROOT stuff.
-            {
-               TString m(meth->GetName());
-               if (m == ctor || m == dtor ||
-                   m == "Class" || m == "Class_Name" || m == "Class_Version" || m == "Dictionary" || m == "IsA" ||
-                   m == "DeclFileName" || m == "ImplFileName" || m == "DeclFileLine" || m == "ImplFileLine" ||
-                   m == "Streamer" || m == "StreamerNVirtual" || m == "ShowMembers" ||
-                   m == "CheckTObjectHashConsistency")
-               {
-                  continue;
-               }
-            }
+      TString m(meth->GetName());
 
-            TString     ms;
-            TMethodArg *ma;
-            TIter       next_ma(meth->GetListOfMethodArgs());
-            while ((ma = (TMethodArg*) next_ma()))
-            {
-               if ( ! ms.IsNull()) ms += ", ";
-
-               ms += ma->GetTypeName();
-               ms += " ";
-               ms += ma->GetName();
-            }
-            std::string entry(TString::Format("i.%s(%s)",meth->GetName(),ms.Data()).Data());
-            nlohmann::json jm ;
-            jm["f"] = entry;
-            jm["r"] = meth->GetReturnTypeName();
-            jm["c"] = c->GetName();
-            arr.push_back(jm);
-         }
-         {
-            TBaseClass *base;
-            TIter       blnext(c->GetListOfBases());
-            while ((base = (TBaseClass*) blnext()))
-            {
-               FillJSON(base->GetClassPointer(), arr);
-            }
-         }
+      if (m == "Class" || m == "Class_Name" || m == "Class_Version" || m == "Dictionary" || m == "IsA" ||
+          m == "DeclFileName" || m == "ImplFileName" || m == "DeclFileLine" || m == "ImplFileLine" || m == "Streamer" ||
+          m == "StreamerNVirtual" || m == "ShowMembers" || m == "CheckTObjectHashConsistency") {
+         continue;
       }
-   };
-   j["fPublicFunctions"]  = nlohmann::json::array();
-   PubMethods pm;
-   pm.FillJSON(fItemClass, j["fPublicFunctions"]);
+
+      if (m.BeginsWith('~'))
+         continue;
+
+      if (m.Contains("operator"))
+         continue;
+
+      if (meth->GetListOfMethodArgs()->GetLast() > 1)
+         continue;
+
+      if (strcmp(meth->GetReturnTypeName(),"void") == 0)
+         continue;
+
+      TString ms;
+      TMethodArg *ma;
+      TIter next_ma(meth->GetListOfMethodArgs());
+      while ((ma = (TMethodArg *)next_ma())) {
+         if (!ms.IsNull())
+            ms += ", ";
+
+         ms += ma->GetTypeName();
+         ms += " ";
+         ms += ma->GetName();
+      }
+      std::string entry(TString::Format("i.%s(%s)", meth->GetName(), ms.Data()).Data());
+      nlohmann::json jm;
+      jm["f"] = entry;
+      jm["r"] = meth->GetReturnTypeName();
+      jm["c"] = meth->GetClass()->GetName();
+      j["fPublicFunctions"].push_back(jm);
+   }
 }
 
 //______________________________________________________________________________
@@ -469,3 +453,10 @@ Int_t REveDataCollection::WriteCoreJson(nlohmann::json &j, Int_t rnr_offset)
    return ret;
 }
 
+void REveDataCollection::ClearItems()
+{
+   for (size_t i = 0; i < fItemList->fItems.size(); ++i) {
+      delete fItemList->fItems[i];
+   }
+   fItemList->fItems.clear();
+}

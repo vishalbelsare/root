@@ -18,7 +18,6 @@
 
 #include "RooAbsPdf.h"
 #include "RooListProxy.h"
-#include "RooAICRegistry.h"
 #include "RooObjCacheManager.h"
 
 class RooRealSumPdf : public RooAbsPdf {
@@ -30,13 +29,12 @@ public:
   RooRealSumPdf(const char *name, const char *title,
          RooAbsReal& func1, RooAbsReal& func2, RooAbsReal& coef1) ;
   RooRealSumPdf(const RooRealSumPdf& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooRealSumPdf(*this,newname) ; }
-  ~RooRealSumPdf() override ;
+  TObject* clone(const char* newname=nullptr) const override { return new RooRealSumPdf(*this,newname) ; }
 
   double evaluate() const override ;
   bool checkObservables(const RooArgSet* nset) const override ;
 
-  void computeBatch(cudaStream_t*, double* output, size_t size, RooFit::Detail::DataMap const&) const override;
+  void doEval(RooFit::EvalContext &) const override;
 
   bool forceAnalyticalInt(const RooAbsArg& arg) const override { return arg.isFundamental() ; }
   Int_t getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& numVars, const RooArgSet* normSet, const char* rangeName=nullptr) const override ;
@@ -44,6 +42,7 @@ public:
 
   const RooArgList& funcList() const { return _funcList ; }
   const RooArgList& coefList() const { return _coefList ; }
+  const RooArgList &funcIntListFromCache(Int_t code, const char *rangeName = nullptr) const;
 
   ExtendMode extendMode() const override ;
 
@@ -65,19 +64,16 @@ public:
   static void setFloorGlobal(bool flag) { _doFloorGlobal = flag ; }
   static bool getFloorGlobal() { return _doFloorGlobal ; }
 
-  CacheMode canNodeBeCached() const override { return RooAbsArg::NotAdvised ; } ;
-  void setCacheAndTrackHints(RooArgSet&) override ;
 
-  std::unique_ptr<RooArgSet> fillNormSetForServer(RooArgSet const& /*normSet*/, RooAbsArg const& /*server*/) const override {
-     return std::make_unique<RooArgSet>();
-  }
+  std::unique_ptr<RooAbsArg> compileForNormSet(RooArgSet const &normSet, RooFit::Detail::CompileContext & ctx) const override;
+
+  std::unique_ptr<RooAbsReal> createExpectedEventsFunc(const RooArgSet* nset) const override;
 
 protected:
 
   class CacheElem : public RooAbsCacheElement {
   public:
     CacheElem()  {} ;
-    ~CacheElem() override {} ;
     RooArgList containedArgs(Action) override { RooArgList ret(_funcIntList) ; ret.add(_funcNormList) ; return ret ; }
     RooArgList _funcIntList ;
     RooArgList _funcNormList ;
@@ -109,8 +105,11 @@ private:
                          bool doFloor,
                          bool & hasWarnedBefore);
 
-  static bool checkObservables(RooAbsReal const& caller, RooArgSet const* nset,
-                               RooArgList const& funcList, RooArgList const& coefList);
+  static bool checkObservables(RooAbsReal const &caller, RooArgSet const *nset, RooArgList const &funcList,
+                               RooArgList const &coefList);
+
+  static const RooArgList &
+  funcIntListFromCache(RooAbsReal const &caller, RooObjCacheManager &normIntMgr, Int_t code, const char *rangeName);
 
   static Int_t getAnalyticalIntegralWN(RooAbsReal const& caller, RooObjCacheManager & normIntMgr,
                                        RooArgList const& funcList, RooArgList const& coefList,
@@ -120,6 +119,9 @@ private:
                                      Int_t code, const RooArgSet* normSet, const char* rangeName,
                                      bool hasWarnedBefore);
 
+  static const CacheElem *
+  getCacheElem(RooAbsReal const &caller, RooObjCacheManager &normIntMgr, Int_t code, const char *rangeName);
+
   static std::list<double>* binBoundaries(
           RooArgList const& funcList, RooAbsRealLValue& /*obs*/, double /*xlo*/, double /*xhi*/);
   static std::list<double>* plotSamplingHint(
@@ -128,7 +130,8 @@ private:
 
   static void printMetaArgs(RooArgList const& funcList, RooArgList const& coefList, std::ostream& os);
 
-  static void setCacheAndTrackHints(RooArgList const& funcList, RooArgSet& trackNodes);
+
+  inline void setExtended(bool extended) { _extended = extended; }
 
   ClassDefOverride(RooRealSumPdf, 5) // PDF constructed from a sum of (non-pdf) functions
 };

@@ -21,17 +21,16 @@ class TLine;
 class TPaveText : public TPave, public TAttText {
 
 protected:
-   TString    fLabel;          ///< Label written at the top of the pavetext
-   Int_t      fLongest;        ///< Length of the longest line
-   Float_t    fMargin;         ///< Text margin
-   TList      *fLines;         ///< List of labels
-
+   TString    fLabel;           ///< Label written at the top of the pavetext
+   Int_t      fLongest;         ///< Length of the longest line
+   Float_t    fMargin;          ///< Text margin
+   TList      *fLines{nullptr}; ///< List of labels
 
 public:
    TPaveText();
    TPaveText(Double_t x1, Double_t y1,Double_t x2 ,Double_t y2, Option_t *option="br");
    TPaveText(const TPaveText &pavetext);
-   virtual ~TPaveText();
+   ~TPaveText() override;
    TPaveText& operator=(const TPaveText&);
 
    virtual TBox    *AddBox(Double_t x1, Double_t y1, Double_t x2, Double_t y2);
@@ -56,7 +55,7 @@ public:
    virtual void     PaintPrimitives(Int_t mode);
    void             Print(Option_t *option="") const override;
    virtual void     ReadFile(const char *filename, Option_t *option="", Int_t nlines=50, Int_t fromline=0); // *MENU*
-   virtual void     SaveLines(std::ostream &out, const char *name, Bool_t saved);
+   virtual void     SaveLines(std::ostream &out, const char *name, Bool_t);
    void             SavePrimitive(std::ostream &out, Option_t *option = "") override;
    virtual void     SetAllWith(const char *text, Option_t *option, Double_t value); // *MENU*
    virtual void     SetLabel(const char *label) {fLabel = label;} // *MENU*
@@ -67,4 +66,3 @@ public:
 };
 
 #endif
-

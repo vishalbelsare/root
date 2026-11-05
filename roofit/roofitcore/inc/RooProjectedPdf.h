@@ -24,8 +24,7 @@ public:
   RooProjectedPdf() ;
   RooProjectedPdf(const char *name, const char *title,  RooAbsReal& _intpdf, const RooArgSet& intObs);
   RooProjectedPdf(const RooProjectedPdf& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooProjectedPdf(*this,newname); }
-  inline ~RooProjectedPdf() override { }
+  TObject* clone(const char* newname=nullptr) const override { return new RooProjectedPdf(*this,newname); }
 
   // Analytical integration support
   Int_t getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& analVars, const RooArgSet* normSet, const char* rangeName=nullptr) const override ;
@@ -41,6 +40,12 @@ public:
 
   void printMetaArgs(std::ostream& os) const override ;
 
+  std::unique_ptr<RooAbsArg> compileForNormSet(RooArgSet const &normSet, RooFit::Detail::CompileContext & ctx) const override;
+
+  // Handle case of projecting an Extended pdf
+  double expectedEvents(const RooArgSet* nset) const override { return static_cast<RooAbsPdf*>(intpdf.absArg())->expectedEvents(nset); }
+  ExtendMode extendMode() const override { return static_cast<RooAbsPdf*>(intpdf.absArg())->extendMode(); }
+  
 
 protected:
 

@@ -19,9 +19,20 @@
 #include <ROOT/RResultHandle.hxx> // users of RunGraphs might rely on this transitive include
 #include <ROOT/TypeTraits.hxx>
 
+#include "RConfigure.h" // for R__HAS_ROOT7
+#ifdef R__HAS_ROOT7
+#include <ROOT/RHist.hxx>
+#include <ROOT/RHistEngine.hxx>
+#include <ROOT/RProfile.hxx>
+#endif
+
+#include <array>
+#include <chrono>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <type_traits>
 #include <utility> // std::index_sequence
 #include <vector>
@@ -61,13 +72,53 @@ auto PassAsVec(F &&f) -> PassAsVecHelper<std::make_index_sequence<N>, T, F>
    return PassAsVecHelper<std::make_index_sequence<N>, T, F>(std::forward<F>(f));
 }
 
+/**
+ * \brief Helper function to add a copy of an object to a vector of shared_ptrs, used in the implementation of
+ * VariationsFor.
+ * \tparam T An object that is used as result of a RDataFrame action, e.g. a histogram
+ * \param obj The object to be copied and wrapped by a new std::shared_ptr.
+ *
+ * The default implementation of this function template uses copy constructor, which should work for most objects types
+ * since they are copied for each slot.
+ */
+template <typename T>
+std::shared_ptr<T> CopyForVariations(const T &obj)
+{
+   return std::make_shared<T>(obj);
+}
+
+#ifdef R__HAS_ROOT7
+/// \brief Specialization of CopyForVariations for ROOT::Experimental::RHist objects, which are not copyable but
+/// clonable.
+template <typename B>
+std::shared_ptr<ROOT::Experimental::RHist<B>> CopyForVariations(const ROOT::Experimental::RHist<B> &obj)
+{
+   return std::make_shared<ROOT::Experimental::RHist<B>>(obj.Clone());
+}
+
+/// \brief Specialization of CopyForVariations for ROOT::Experimental::RHistEngine objects, which are not copyable but
+/// clonable.
+template <typename B>
+std::shared_ptr<ROOT::Experimental::RHistEngine<B>> CopyForVariations(const ROOT::Experimental::RHistEngine<B> &obj)
+{
+   return std::make_shared<ROOT::Experimental::RHistEngine<B>>(obj.Clone());
+}
+
+/// \brief Specialization of CopyForVariations for ROOT::Experimental::RProfile objects, which are not copyable but
+/// clonable.
+inline std::shared_ptr<ROOT::Experimental::RProfile> CopyForVariations(const ROOT::Experimental::RProfile &obj)
+{
+   return std::make_shared<ROOT::Experimental::RProfile>(obj.Clone());
+}
+#endif
+
 } // namespace RDF
 } // namespace Internal
 
 namespace RDF {
 namespace RDFInternal = ROOT::Internal::RDF;
 
-// clag-format off
+// clang-format off
 /// Given a callable with signature bool(T1, T2, ...) return a callable with same signature that returns the negated result
 ///
 /// The callable must have one single non-template definition of operator(). This is a limitation with respect to
@@ -157,14 +208,19 @@ RNode AsRNode(NodeType node)
 }
 
 // clang-format off
-/// Trigger the event loop of multiple RDataFrames concurrently
-/// \param[in] handles A vector of RResultHandles
+/// Run the event loops of multiple RDataFrames concurrently.
+/// \param[in] handles A vector of RResultHandles whose event loops should be run.
+/// \return The number of distinct computation graphs that have been processed.
 ///
 /// This function triggers the event loop of all computation graphs which relate to the
 /// given RResultHandles. The advantage compared to running the event loop implicitly by accessing the
 /// RResultPtr is that the event loops will run concurrently. Therefore, the overall
-/// computation of all results is generally more efficient.
+/// computation of all results can be scheduled more efficiently.
 /// It should be noted that user-defined operations (e.g., Filters and Defines) of the different RDataFrame graphs are assumed to be safe to call concurrently.
+/// RDataFrame will pass slot numbers in the range [0, NThread-1] to all helpers used in nodes such as DefineSlot. NThread is the number of threads ROOT was
+/// configured with in EnableImplicitMT().
+/// Slot numbers are unique across all graphs, so no two tasks with the same slot number will run concurrently. Note that it is not guaranteed that each slot
+/// number will be reached in every graph.
 ///
 /// ~~~{.cpp}
 /// ROOT::RDataFrame df1("tree1", "file1.root");
@@ -177,7 +233,7 @@ RNode AsRNode(NodeType node)
 /// ROOT::RDF::RunGraphs({r1, r2});
 /// ~~~
 // clang-format on
-void RunGraphs(std::vector<RResultHandle> handles);
+unsigned int RunGraphs(std::vector<RResultHandle> handles);
 
 namespace Experimental {
 
@@ -201,6 +257,8 @@ namespace Experimental {
 /// \note Currently, producing variations for the results of \ref ROOT::RDF::RInterface::Display() "Display",
 ///       \ref ROOT::RDF::RInterface::Report() "Report" and \ref ROOT::RDF::RInterface::Snapshot() "Snapshot"
 ///       actions is not supported.
+///
+/// \note The varied values are constructed by copying the value held by the RResultPtr \p resPtr.
 //
 // An overview of how systematic variations work internally. Given N variations (including the nominal):
 //
@@ -213,6 +271,10 @@ namespace Experimental {
 template <typename T>
 RResultMap<T> VariationsFor(RResultPtr<T> resPtr)
 {
+   using SnapshotResult_t = ROOT::RDF::RInterface<ROOT::Detail::RDF::RLoopManager>;
+   static_assert(!std::is_same_v<T, SnapshotResult_t>,
+                 "Snapshot with variations can only be enabled via RSnapshotOptions.");
+
    R__ASSERT(resPtr != nullptr && "Calling VariationsFor on an empty RResultPtr");
 
    // populate parts of the computation graph for which we only have "empty shells", e.g. RJittedActions and
@@ -229,10 +291,23 @@ RResultMap<T> VariationsFor(RResultPtr<T> resPtr)
    if (nVariations > 0) {
       // clone the result once for each variation
       variedResults.reserve(nVariations);
-      for (auto i = 0u; i < nVariations; ++i)
-         // implicitly assuming that T is copiable: this should be the case
-         // for all result types in use, as they are copied for each slot
-         variedResults.emplace_back(new T{*resPtr.fObjPtr});
+      for (auto i = 0u; i < nVariations; ++i){
+
+         // Make a copy of the result object for this variation
+         variedResults.push_back(ROOT::Internal::RDF::CopyForVariations(*resPtr.fObjPtr));
+
+         // Check if the result's type T inherits from TNamed
+         if constexpr (std::is_base_of<TNamed, T>::value) {
+            // Get the current variation name
+            std::string variationName = variations[i];
+            // Replace the colon with an underscore
+            std::replace(variationName.begin(), variationName.end(), ':', '_');
+            // Get a pointer to the corresponding varied result
+            auto &variedResult = variedResults.back();
+            // Set the varied result's name to NOMINALNAME_VARIATIONAME
+            variedResult->SetName((std::string(variedResult->GetName()) + "_" + variationName).c_str());
+         }
+      }
 
       std::vector<void *> typeErasedResults;
       typeErasedResults.reserve(variedResults.size());
@@ -248,6 +323,120 @@ RResultMap<T> VariationsFor(RResultPtr<T> resPtr)
                                         *resPtr.fLoopManager, std::move(nominalAction), std::move(variedAction));
 }
 
+/// \brief Add ProgressBar to a ROOT::RDF::RNode
+/// \param[in] df RDataFrame node at which ProgressBar is called.
+///
+/// The ProgressBar can be added not only at the RDataFrame head node, but also at any any computational node,
+/// such as Filter or Define.
+/// ###Example usage:
+/// ~~~{.cpp}
+/// ROOT::RDataFrame df("tree", "file.root");
+/// auto df_1 = ROOT::RDF::RNode(df.Filter("x>1"));
+/// ROOT::RDF::Experimental::AddProgressBar(df_1);
+/// ~~~
+void AddProgressBar(ROOT::RDF::RNode df);
+
+/// \brief Add ProgressBar to an RDataFrame
+/// \param[in] df RDataFrame for which ProgressBar is called.
+///
+/// This function adds a ProgressBar to display the event statistics in the terminal every
+/// \b m events and every \b n seconds, including elapsed time, currently processed file,
+/// currently processed events, the rate of event processing
+/// and an estimated remaining time (per file being processed).
+/// ProgressBar should be added after the dataframe object (df) is created first:
+/// ~~~{.cpp}
+/// ROOT::RDataFrame df("tree", "file.root");
+/// ROOT::RDF::Experimental::AddProgressBar(df);
+/// ~~~
+/// For more details see ROOT::RDF::Experimental::ProgressHelper Class.
+void AddProgressBar(ROOT::RDataFrame df);
+
+/// @brief Set the number of threads sharing one TH3 in RDataFrame.
+/// When RDF runs multi-threaded, each thread typically clones every histogram in the computation graph.
+/// If this consumes too much memory, N threads can share one clone.
+/// Higher values might slow down RDF because they lead to higher contention on the TH3Ds, but save memory.
+/// Lower values run faster with less contention at the cost of higher memory usage.
+/// @param nThread Number of threads that share a TH3D.
+void ThreadsPerTH3(unsigned int nThread = 1);
+
+/// RDF progress helper.
+/// This class provides callback functions to the RDataFrame. The event statistics
+/// (including elapsed time, currently processed file, currently processed events, the rate of event processing
+/// and an estimated remaining time (per file being processed))
+/// are recorded and printed in the terminal every m events and every n seconds.
+/// ProgressHelper::operator()(unsigned int, T&) is thread safe, and can be used as a callback in MT mode.
+/// ProgressBar should be added after creating the dataframe object (df):
+/// ~~~{.cpp}
+/// ROOT::RDataFrame df("tree", "file.root");
+/// ROOT::RDF::Experimental::AddProgressBar(df);
+/// ~~~
+/// alternatively RDataFrame can be cast to an RNode first giving it more flexibility.
+/// For example, it can be called at any computational node, such as Filter or Define, not only the head node,
+/// with no change to the ProgressBar function itself:
+/// ~~~{.cpp}
+/// ROOT::RDataFrame df("tree", "file.root");
+/// auto df_1 = ROOT::RDF::RNode(df.Filter("x>1"));
+/// ROOT::RDF::Experimental::AddProgressBar(df_1);
+/// ~~~
+class ProgressHelper {
+private:
+   std::size_t ComputeTotalEvents() const;
+   double EvtPerSec() const;
+   void PrintProgressAndStats(std::ostream &stream, std::size_t currentEventCount,
+                              std::chrono::seconds totalElapsedSeconds) const;
+   std::pair<std::size_t, std::chrono::seconds> RecordEvtCountAndTime();
+   void Update();
+
+   bool const fIsTTY;
+   bool const fUseShellColours;
+
+   std::atomic<std::size_t> fProcessedEvents{0};
+   std::size_t fLastProcessedEvents{0};
+   std::size_t const fIncrement;
+   unsigned int const fNColumns;
+   unsigned int const fTotalFiles;
+
+   std::array<double, 10> fEventsPerSecondStatistics;
+   unsigned int fEventsPerSecondStatisticsCounter{0};
+
+   std::chrono::time_point<std::chrono::system_clock> const fBeginTime = std::chrono::system_clock::now();
+   std::chrono::time_point<std::chrono::system_clock> fLastPrintTime = fBeginTime;
+   std::chrono::seconds const fPrintInterval;
+
+   // Mutex to ensure that only one thread updates the progress bar.
+   // Lock this mutex to update any of the members above:
+   std::mutex fUpdateMutex;
+
+   mutable std::mutex fSampleNameToEventEntriesMutex;          // Mutex to protect access to the below map
+   std::map<std::string, ULong64_t> fSampleNameToEventEntries; // Filename, events in the file
+
+public:
+   /// Create a progress helper.
+   /// \param increment RDF callbacks are called every `n` events. Pass this `n` here.
+   /// \param totalFiles number of files read in the RDF.
+   /// \param printInterval Update stats every `n` seconds.
+   /// \param useColors Use shell colour codes to colour the output. Automatically disabled when
+   /// we are not writing to a tty.
+   ProgressHelper(std::size_t increment, unsigned int totalFiles, unsigned int printInterval = 0,
+                  bool useColors = true);
+   ProgressHelper(ProgressHelper const &) = delete; // The mutexes and atomics won't allow copy/move
+   ProgressHelper(ProgressHelper &&) = delete;
+   ~ProgressHelper() = default;
+   ProgressHelper &operator=(ProgressHelper const &) = delete;
+   ProgressHelper &operator=(ProgressHelper &&) = delete;
+
+   void RegisterNewSample(unsigned int /*slot*/, const ROOT::RDF::RSampleInfo &id);
+
+   /// Thread-safe callback for RDataFrame.
+   /// It will record elapsed times and event statistics, and print a progress bar every n seconds (set by the
+   /// fPrintInterval). The function arguments are ignored.
+   template <typename T>
+   void operator()(unsigned int /*slot*/, T & /*value*/)
+   {
+      Update();
+   }
+   void PrintStatsFinal(std::size_t exactTotalEvents) const;
+};
 } // namespace Experimental
 } // namespace RDF
 } // namespace ROOT

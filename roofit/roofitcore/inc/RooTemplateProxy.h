@@ -21,6 +21,7 @@
 #include "RooAbsRealLValue.h"
 #include "RooAbsCategory.h"
 #include "RooMsgService.h"
+
 #include <string>
 
 /**
@@ -159,10 +160,19 @@ public:
   ///            of client-server dependencies.
   /// \param[in] valueServer Notify the owner if value changes.
   /// \param[in] shapeServer Notify the owner if shape (e.g. binning) changes.
-  /// \param[in] proxyOwnsArg Proxy will delete the payload if owning.
+  template<typename Bool = bool, typename = std::enable_if_t<std::is_same<Bool,bool>::value>>
   RooTemplateProxy(const char* theName, const char* desc, RooAbsArg* owner,
-      bool valueServer=true, bool shapeServer=false, bool proxyOwnsArg=false)
-  : RooArgProxy(theName, desc, owner, valueServer, shapeServer, proxyOwnsArg) { }
+      Bool valueServer=true, bool shapeServer=false)
+  : RooArgProxy(theName, desc, owner, valueServer, shapeServer, false) {
+    // Note for developers: the type of the first bool parameter is templated
+    // such that implicit conversion from int or pointers to bool is disabled.
+    // This is because there is another constructor with the signature
+    // `RooTemplateProxy(name, title, owner, T& ref)`. It happened already more
+    // than once that other developers accidentally used a `T*` pointer instead
+    // of a reference, in which case it resolved to this constructor via
+    // implicit conversion to bool. This is completely meaningless and should
+    // not happen.
+  }
 
   ////////////////////////////////////////////////////////////////////////////////
   /// Constructor with owner and proxied object.
@@ -173,10 +183,26 @@ public:
   /// \param[in] ref Reference to the object that the proxy should hold.
   /// \param[in] valueServer Notify the owner if value changes.
   /// \param[in] shapeServer Notify the owner if shape (e.g. binning) changes.
-  /// \param[in] proxyOwnsArg Proxy will delete the payload if owning.
   RooTemplateProxy(const char* theName, const char* desc, RooAbsArg* owner, T& ref,
-      bool valueServer=true, bool shapeServer=false, bool proxyOwnsArg=false) :
-        RooArgProxy(theName, desc, owner, const_cast<typename std::remove_const<T>::type&>(ref), valueServer, shapeServer, proxyOwnsArg) { }
+      bool valueServer=true, bool shapeServer=false) :
+        RooArgProxy(theName, desc, owner, const_cast<typename std::remove_const<T>::type&>(ref), valueServer, shapeServer, false) { }
+
+   ////////////////////////////////////////////////////////////////////////////////
+   /// Constructor with owner and proxied object, taking ownership of the proxied object.
+   ///
+   /// \param[in] theName Name of this proxy (for printing).
+   /// \param[in] desc Description what this proxy should act as.
+   /// \param[in] owner The object that owns the proxy. This is important for tracking
+   ///            of client-server dependencies.
+   /// \param[in] ptr Owning smart pointer to the object that the proxy should hold. Ownership will be transferred to the proxy.
+   /// \param[in] valueServer Notify the owner if value changes.
+   /// \param[in] shapeServer Notify the owner if shape (e.g. binning) changes.
+   RooTemplateProxy(const char *theName, const char *desc, RooAbsArg *owner, std::unique_ptr<T> ptr,
+                    bool valueServer = true, bool shapeServer = false)
+      : RooArgProxy(theName, desc, owner, *ptr, valueServer, shapeServer, true)
+   {
+      ptr.release();
+   }
 
 
   ////////////////////////////////////////////////////////////////////////////////
@@ -184,7 +210,7 @@ public:
   /// It will accept any RooTemplateProxy instance, and attempt a dynamic_cast on its payload.
   /// \param[in] theName Name of this proxy.
   /// \param[in] owner Pointer to the owner this proxy should be registered to.
-  /// \param[in] other Instance of a differen proxy whose payload should be copied.
+  /// \param[in] other Instance of a different proxy whose payload should be copied.
   /// \param[in] allowWrongTypes Instead of throwing a std::invalid_argument, only issue an
   /// error message when payload with wrong type is found. This is unsafe, but may be necessary
   /// when reading back legacy types. Defaults to false.
@@ -227,7 +253,7 @@ public:
   bool setArg(T& newRef) {
     if (_arg) {
       if (std::string(arg().GetName()) != newRef.GetName()) {
-        newRef.setAttribute(Form("ORIGNAME:%s", arg().GetName())) ;
+        newRef.setAttribute(("ORIGNAME:" + std::string(arg().GetName())).c_str()) ;
       }
       return changePointer(RooArgSet(newRef), true);
     } else {

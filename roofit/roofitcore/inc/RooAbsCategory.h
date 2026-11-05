@@ -18,17 +18,13 @@
 
 #include "RooAbsArg.h"
 
-#include <string>
-#include <map>
 #include <functional>
+#include <limits>
+#include <map>
+#include <string>
 #include <vector>
 
-#ifdef R__LESS_INCLUDES
 class RooCatType;
-#else
-#include "RooCatType.h"
-#endif
-
 class TTree;
 class RooVectorDataStore;
 class Roo1DTable;
@@ -90,7 +86,7 @@ public:
     return true ;
   }
 
-  RooAbsArg *createFundamental(const char* newname=nullptr) const override;
+  RooFit::OwningPtr<RooAbsArg> createFundamental(const char* newname=nullptr) const override;
 
   /// Iterator for category state names. Points to pairs of index and name.
   std::map<std::string, value_type>::const_iterator begin() const {
@@ -211,7 +207,6 @@ protected:
   void setCachedValue(double value, bool notifyClients = true) final;
   void attachToTree(TTree& t, Int_t bufSize=32000) override ;
   void attachToVStore(RooVectorDataStore& vstore) override ;
-  void setTreeBranchStatus(TTree& t, bool active) override ;
   void fillTreeBranch(TTree& t) override ;
 
   RooCatType* retrieveLegacyState(value_type index) const;
@@ -226,7 +221,7 @@ protected:
   static const decltype(_stateNames)::value_type& invalidCategory();
 
 private:
-  std::unique_ptr<TreeReadBuffer> _treeReadBuffer; //! A buffer for reading values from trees
+  TreeReadBuffer *_treeReadBuffer = nullptr; ///<! A buffer for reading values from trees
 
   ClassDefOverride(RooAbsCategory, 4) // Abstract discrete variable
 };

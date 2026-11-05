@@ -21,22 +21,32 @@
 
 Most general description of B decay time distribution with effects
 of CP violation, mixing and life time differences. This function can
-be analytically convolved with any RooResolutionModel implementation
+be analytically convolved with any RooResolutionModel implementation.
 **/
 
-#include "Riostream.h"
-#include "TMath.h"
 #include "RooBDecay.h"
 #include "RooRealVar.h"
 #include "RooRandom.h"
 
 #include "TError.h"
 
-using namespace std;
 
-ClassImp(RooBDecay);
-
-////////////////////////////////////////////////////////////////////////////////
+/// \brief Constructor for RooBDecay.
+///
+/// Creates an instance of RooBDecay with the specified parameters.
+///
+/// \param[in] name      The name of the PDF.
+/// \param[in] title     The title of the PDF.
+/// \param[in] t         The time variable.
+/// \param[in] tau       The average decay time parameter.
+/// \param[in] dgamma    The Delta Gamma parameter.
+/// \param[in] f0        The Cosh Coefficient.
+/// \param[in] f1        The Sinh Coefficient.
+/// \param[in] f2        The Cos Coefficient.
+/// \param[in] f3        The Sin Coefficient.
+/// \param[in] dm        The Delta Mass parameter.
+/// \param[in] model     The resolution model.
+/// \param[in] type      The decay type.
 
 RooBDecay::RooBDecay(const char *name, const char* title,
           RooRealVar& t, RooAbsReal& tau, RooAbsReal& dgamma,
@@ -100,13 +110,6 @@ RooBDecay::RooBDecay(const RooBDecay& other, const char* name) :
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///Destructor
-
-RooBDecay::~RooBDecay()
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 double RooBDecay::coefficient(Int_t basisIndex) const
 {
@@ -132,7 +135,7 @@ double RooBDecay::coefficient(Int_t basisIndex) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-RooArgSet* RooBDecay::coefVars(Int_t basisIndex) const
+RooFit::OwningPtr<RooArgSet> RooBDecay::coefVars(Int_t basisIndex) const
 {
   if(basisIndex == _basisCosh)
     {
@@ -151,7 +154,7 @@ RooArgSet* RooBDecay::coefVars(Int_t basisIndex) const
       return _f3.arg().getVariables();
     }
 
-  return 0 ;
+  return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -215,27 +218,27 @@ Int_t RooBDecay::getGenerator(const RooArgSet& directVars, RooArgSet &generateVa
 void RooBDecay::generateEvent(Int_t code)
 {
   R__ASSERT(code==1);
-  double gammamin = 1/_tau-TMath::Abs(_dgamma)/2;
-  while(1) {
+  double gammamin = 1/_tau-std::abs(_dgamma)/2;
+  while(true) {
     double t = -log(RooRandom::uniform())/gammamin;
     if (_type == Flipped || (_type == DoubleSided && RooRandom::uniform() <0.5) ) t *= -1;
     if ( t<_t.min() || t>_t.max() ) continue;
 
     double dgt = _dgamma*t/2;
     double dmt = _dm*t;
-    double ft = fabs(t);
+    double ft = std::abs(t);
     double f = exp(-ft/_tau)*(_f0*cosh(dgt)+_f1*sinh(dgt)+_f2*cos(dmt)+_f3*sin(dmt));
     if(f < 0) {
-      cout << "RooBDecay::generateEvent(" << GetName() << ") ERROR: PDF value less than zero" << endl;
+      std::cout << "RooBDecay::generateEvent(" << GetName() << ") ERROR: PDF value less than zero" << std::endl;
       ::abort();
     }
-    double w = 1.001*exp(-ft*gammamin)*(TMath::Abs(_f0)+TMath::Abs(_f1)+sqrt(_f2*_f2+_f3*_f3));
+    double w = 1.001*exp(-ft*gammamin)*(std::abs(_f0)+std::abs(_f1)+sqrt(_f2*_f2+_f3*_f3));
     if(w < f) {
-      cout << "RooBDecay::generateEvent(" << GetName() << ") ERROR: Envelope function less than p.d.f. " << endl;
-      cout << _f0 << endl;
-      cout << _f1 << endl;
-      cout << _f2 << endl;
-      cout << _f3 << endl;
+      std::cout << "RooBDecay::generateEvent(" << GetName() << ") ERROR: Envelope function less than p.d.f. " << std::endl;
+      std::cout << _f0 << std::endl;
+      std::cout << _f1 << std::endl;
+      std::cout << _f2 << std::endl;
+      std::cout << _f3 << std::endl;
       ::abort();
     }
     if(w*RooRandom::uniform() > f) continue;

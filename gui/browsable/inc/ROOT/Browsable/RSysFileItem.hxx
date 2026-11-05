@@ -12,7 +12,6 @@
 #include <ROOT/Browsable/RItem.hxx>
 
 namespace ROOT {
-namespace Experimental {
 namespace Browsable {
 
 
@@ -81,7 +80,7 @@ public:
       if (method == "size") {
          auto fb = dynamic_cast<const RSysFileItem *> (b);
          if (fb)
-            return size < fb->size;
+            return size > fb->size;
       }
 
       return GetName() < b->GetName();
@@ -89,7 +88,6 @@ public:
 };
 
 } // namespace Browsable
-} // namespace Experimental
 } // namespace ROOT
 
 

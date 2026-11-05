@@ -1,6 +1,5 @@
 /**
  \file ROOT/RDF/ActionHelpers.hxx
- \ingroup dataframe
  \author Enrico Guiraud, CERN
  \author Danilo Piparo, CERN
  \date 2016-12
@@ -19,45 +18,55 @@
 #ifndef ROOT_RDFOPERATIONS
 #define ROOT_RDFOPERATIONS
 
-#include "Compression.h"
-#include "ROOT/RStringView.hxx"
 #include "ROOT/RVec.hxx"
-#include "ROOT/TBufferMerger.hxx" // for SnapshotHelper
-#include "ROOT/RDF/RCutFlowReport.hxx"
-#include "ROOT/RDF/RSampleInfo.hxx"
 #include "ROOT/RDF/Utils.hxx"
-#include "ROOT/RSnapshotOptions.hxx"
 #include "ROOT/TypeTraits.hxx"
 #include "ROOT/RDF/RDisplay.hxx"
 #include "RtypesCore.h"
-#include "TBranch.h"
-#include "TClassEdit.h"
-#include "TClassRef.h"
-#include "TDirectory.h"
-#include "TError.h" // for R__ASSERT, Warning
-#include "TFile.h" // for SnapshotHelper
 #include "TH1.h"
+#include "TH3.h"
 #include "TGraph.h"
 #include "TGraphAsymmErrors.h"
-#include "TLeaf.h"
 #include "TObject.h"
-#include "TTree.h"
-#include "TTreeReader.h" // for SnapshotHelper
-#include "TStatistic.h"
 #include "ROOT/RDF/RActionImpl.hxx"
 #include "ROOT/RDF/RMergeableValue.hxx"
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+
+#include "RConfigure.h" // for R__HAS_ROOT7
+#ifdef R__HAS_ROOT7
+#include <ROOT/RHist.hxx>
+#include <ROOT/RHistConcurrentFiller.hxx>
+#include <ROOT/RHistEngine.hxx>
+#include <ROOT/RHistFillContext.hxx>
+#include <ROOT/RProfile.hxx>
+#include <ROOT/RProfileConcurrentFiller.hxx>
+#include <ROOT/RProfileFillContext.hxx>
+#include <ROOT/RWeight.hxx>
+#endif
 
 #include <algorithm>
-#include <functional>
+#include <array>
+#include <iterator>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility> // std::index_sequence
 #include <vector>
-#include <iomanip>
 #include <numeric> // std::accumulate in MeanHelper
+
+class TCollection;
+class TStatistic;
+class TTreeReader;
+namespace ROOT::RDF {
+class RCutFlowReport;
+} // namespace ROOT::RDF
 
 /// \cond HIDDEN_SYMBOLS
 
@@ -70,71 +79,6 @@ using namespace ROOT::RDF;
 using namespace ROOT::Detail::RDF;
 
 using Hist_t = ::TH1D;
-
-class RBranchSet {
-   std::vector<TBranch *> fBranches;
-   std::vector<std::string> fNames;
-
-public:
-   TBranch *Get(const std::string &name) const
-   {
-      auto it = std::find(fNames.begin(), fNames.end(), name);
-      if (it == fNames.end())
-         return nullptr;
-      return fBranches[std::distance(fNames.begin(), it)];
-   }
-
-   void Insert(const std::string &name, TBranch *address)
-   {
-      if (address == nullptr) {
-         throw std::logic_error("Trying to insert a null branch address.");
-      }
-      if (std::find(fBranches.begin(), fBranches.end(), address) != fBranches.end()) {
-         throw std::logic_error("Trying to insert a branch address that's already present.");
-      }
-      if (std::find(fNames.begin(), fNames.end(), name) != fNames.end()) {
-         throw std::logic_error("Trying to insert a branch name that's already present.");
-      }
-      fNames.emplace_back(name);
-      fBranches.emplace_back(address);
-   }
-
-   void Clear()
-   {
-      fBranches.clear();
-      fNames.clear();
-   }
-
-   void AssertNoNullBranchAddresses()
-   {
-      std::vector<TBranch *> branchesWithNullAddress;
-      std::copy_if(fBranches.begin(), fBranches.end(), std::back_inserter(branchesWithNullAddress),
-                   [](TBranch *b) { return b->GetAddress() == nullptr; });
-
-      if (branchesWithNullAddress.empty())
-         return;
-
-      // otherwise build error message and throw
-      std::vector<std::string> missingBranchNames;
-      std::transform(branchesWithNullAddress.begin(), branchesWithNullAddress.end(),
-                     std::back_inserter(missingBranchNames), [](TBranch *b) { return b->GetName(); });
-      std::string msg = "RDataFrame::Snapshot:";
-      if (missingBranchNames.size() == 1) {
-         msg += " branch " + missingBranchNames[0] +
-                " is needed as it provides the size for one or more branches containing dynamically sized arrays, but "
-                "it is";
-      } else {
-         msg += " branches ";
-         for (const auto &bName : missingBranchNames)
-            msg += bName + ", ";
-         msg.resize(msg.size() - 2); // remove last ", "
-         msg +=
-            " are needed as they provide the size of other branches containing dynamically sized arrays, but they are";
-      }
-      msg += " not part of the set of branches that are being written out.";
-      throw std::runtime_error(msg);
-   }
-};
 
 /// The container type for each thread's partial result in an action helper
 // We have to avoid to instantiate std::vector<bool> as that makes it impossible to return a reference to one of
@@ -171,7 +115,7 @@ public:
 };
 
 class R__CLING_PTRCHECK(off) CountHelper : public RActionImpl<CountHelper> {
-   const std::shared_ptr<ULong64_t> fResultCount;
+   std::shared_ptr<ULong64_t> fResultCount;
    Results<ULong64_t> fCounts;
 
 public:
@@ -194,27 +138,25 @@ public:
 
    std::string GetActionName() { return "Count"; }
 
-   CountHelper MakeNew(void *newResult)
+   CountHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<ULong64_t> *>(newResult);
       return CountHelper(result, fCounts.size());
    }
 };
 
-template <typename ProxiedVal_t>
-class R__CLING_PTRCHECK(off) ReportHelper : public RActionImpl<ReportHelper<ProxiedVal_t>> {
-   const std::shared_ptr<RCutFlowReport> fReport;
-   // Here we have a weak pointer since we need to keep track of the validity
-   // of the proxied node. It can happen that the user does not trigger the
-   // event loop by looking into the RResultPtr and the chain goes out of scope
-   // before the Finalize method is invoked.
-   std::weak_ptr<ProxiedVal_t> fProxiedWPtr;
+template <typename RNode_t>
+class R__CLING_PTRCHECK(off) ReportHelper : public RActionImpl<ReportHelper<RNode_t>> {
+   std::shared_ptr<RCutFlowReport> fReport;
+   /// Non-owning pointer, never null. As usual, the node is owned by its children nodes (and therefore indirectly by
+   /// the RAction corresponding to this action helper).
+   RNode_t *fNode;
    bool fReturnEmptyReport;
 
 public:
    using ColumnTypes_t = TypeList<>;
-   ReportHelper(const std::shared_ptr<RCutFlowReport> &report, const std::shared_ptr<ProxiedVal_t> &pp, bool emptyRep)
-      : fReport(report), fProxiedWPtr(pp), fReturnEmptyReport(emptyRep){};
+   ReportHelper(const std::shared_ptr<RCutFlowReport> &report, RNode_t *node, bool emptyRep)
+      : fReport(report), fNode(node), fReturnEmptyReport(emptyRep){};
    ReportHelper(ReportHelper &&) = default;
    ReportHelper(const ReportHelper &) = delete;
    void InitTask(TTreeReader *, unsigned int) {}
@@ -222,14 +164,25 @@ public:
    void Initialize() { /* noop */}
    void Finalize()
    {
-      // We need the weak_ptr in order to avoid crashes at tear down
-      if (!fReturnEmptyReport && !fProxiedWPtr.expired())
-         fProxiedWPtr.lock()->Report(*fReport);
+      if (!fReturnEmptyReport)
+         fNode->Report(*fReport);
+   }
+
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      auto cutinfo_vec = fReport->fCutInfos;
+      return std::make_unique<RMergeableReport>(*fReport, cutinfo_vec);
    }
 
    std::string GetActionName() { return "Report"; }
 
-   // TODO implement MakeNew. Requires some smartness in passing the appropriate previous node.
+   ReportHelper MakeNew(void *newResult, std::string_view variation = "nominal")
+   {
+      auto &&result = *static_cast<std::shared_ptr<RCutFlowReport> *>(newResult);
+      return ReportHelper{result,
+                          std::static_pointer_cast<RNode_t>(fNode->GetVariedFilter(std::string(variation))).get(),
+                          fReturnEmptyReport};
+   }
 };
 
 /// This helper fills TH1Ds for which no axes were specified by buffering the fill values to pick good axes limits.
@@ -247,7 +200,7 @@ class R__CLING_PTRCHECK(off) BufferedFillHelper : public RActionImpl<BufferedFil
 
    std::vector<Buf_t> fBuffers;
    std::vector<Buf_t> fWBuffers;
-   const std::shared_ptr<Hist_t> fResultHist;
+   std::shared_ptr<Hist_t> fResultHist;
    unsigned int fNSlots;
    unsigned int fBufSize;
    /// Histograms containing "snapshots" of partial results. Non-null only if a registered callback requires it.
@@ -265,7 +218,7 @@ public:
    void Exec(unsigned int slot, double v);
    void Exec(unsigned int slot, double v, double w);
 
-   template <typename T, std::enable_if_t<IsDataContainer<T>::value || std::is_same<T, std::string>::value, int> = 0>
+   template <typename T, std::enable_if_t<IsDataContainer<T>::value, int> = 0>
    void Exec(unsigned int slot, const T &vs)
    {
       auto &thisBuf = fBuffers[slot];
@@ -305,12 +258,15 @@ public:
       thisWBuf.insert(thisWBuf.end(), vs.size(), w);
    }
 
-   // ROOT-10092: Filling with a scalar as first column and a collection as second is not supported
    template <typename T, typename W, std::enable_if_t<IsDataContainer<W>::value && !IsDataContainer<T>::value, int> = 0>
-   void Exec(unsigned int, const T &, const W &)
+   void Exec(unsigned int slot, const T v, const W &ws)
    {
-      throw std::runtime_error(
-        "Cannot fill object if the type of the first column is a scalar and the one of the second a container.");
+      UpdateMinMax(slot, v);
+      auto &thisBuf = fBuffers[slot];
+      thisBuf.insert(thisBuf.end(), ws.size(), v);
+
+      auto &thisWBuf = fWBuffers[slot];
+      thisWBuf.insert(thisWBuf.end(), ws.begin(), ws.end());
    }
 
    Hist_t &PartialUpdate(unsigned int);
@@ -330,7 +286,7 @@ public:
       return std::string(fResultHist->IsA()->GetName()) + "\\n" + std::string(fResultHist->GetName());
    }
 
-   BufferedFillHelper MakeNew(void *newResult)
+   BufferedFillHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<Hist_t> *>(newResult);
       result->Reset();
@@ -339,45 +295,100 @@ public:
    }
 };
 
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<float> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<double> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<char> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<int> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<unsigned int> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<float> &, const std::vector<float> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<double> &, const std::vector<double> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<char> &, const std::vector<char> &);
-extern template void BufferedFillHelper::Exec(unsigned int, const std::vector<int> &, const std::vector<int> &);
-extern template void
-BufferedFillHelper::Exec(unsigned int, const std::vector<unsigned int> &, const std::vector<unsigned int> &);
+// class which wraps a pointer and implements a no-op increment operator
+template <typename T>
+class ScalarConstIterator {
+   const T *obj_;
+
+public:
+   using iterator_category = std::forward_iterator_tag;
+   using difference_type = std::ptrdiff_t;
+   using value_type = T;
+   using pointer = T *;
+   using reference = T &;
+   ScalarConstIterator(const T *obj) : obj_(obj) {}
+   const T &operator*() const { return *obj_; }
+   ScalarConstIterator<T> &operator++() { return *this; }
+};
+
+// return unchanged value for scalar
+template <typename T>
+auto MakeBegin(const T &val)
+{
+   if constexpr (IsDataContainer<T>::value) {
+      return std::begin(val);
+   } else {
+      return ScalarConstIterator<T>(&val);
+   }
+}
+
+// return container size for containers, and 1 for scalars
+template <typename T>
+std::size_t GetSize(const T &val)
+{
+   if constexpr (IsDataContainer<T>::value) {
+      return std::size(val);
+   } else {
+      return 1;
+   }
+}
+
+// trait class to implement looping over data containers
+template <typename Helper>
+class R__CLING_PTRCHECK(off) ExecLoopTrait {
+private:
+   template <typename... Iterators>
+   void ExecLoop(unsigned int slot, std::size_t elements, Iterators... its)
+   {
+      for (std::size_t i = 0; i < elements; i++) {
+         Exec(slot, *its...);
+         (std::advance(its, 1), ...);
+      }
+   }
+
+public:
+   template <typename... ColumnTypes>
+   void Exec(unsigned int slot, const ColumnTypes &...columnValues)
+   {
+      if constexpr (std::disjunction_v<IsDataContainer<ColumnTypes>...>) {
+         constexpr std::array<bool, sizeof...(ColumnTypes)> isContainer{IsDataContainer<ColumnTypes>::value...};
+         constexpr std::size_t firstContainerIdx = FindIdxTrue(isContainer);
+         std::array<std::size_t, sizeof...(columnValues)> sizes = {{GetSize(columnValues)...}};
+         std::size_t elements = 0;
+         for (std::size_t i = 0; i < isContainer.size(); i++) {
+            if (isContainer[i]) {
+               if (i == firstContainerIdx) {
+                  elements = sizes[i];
+               } else if (elements != sizes[i]) {
+                  throw std::runtime_error("Cannot fill values in containers of different sizes.");
+               }
+            }
+         }
+         ExecLoop(slot, elements, MakeBegin(columnValues)...);
+      } else {
+         static_cast<Helper *>(this)->ExecSingle(slot, columnValues...);
+      }
+   }
+};
+
+// Helpers for dealing with histograms and similar:
+template <typename H, typename = decltype(std::declval<H>().Reset())>
+void ResetIfPossible(H *h)
+{
+   h->Reset();
+}
+
+void ResetIfPossible(TStatistic *h);
+void ResetIfPossible(...);
+
+void UnsetDirectoryIfPossible(TH1 *h);
+void UnsetDirectoryIfPossible(...);
 
 /// The generic Fill helper: it calls Fill on per-thread objects and then Merge to produce a final result.
 /// For one-dimensional histograms, if no axes are specified, RDataFrame uses BufferedFillHelper instead.
 template <typename HIST = Hist_t>
 class R__CLING_PTRCHECK(off) FillHelper : public RActionImpl<FillHelper<HIST>> {
    std::vector<HIST *> fObjects;
-
-   template <typename H = HIST, typename = decltype(std::declval<H>().Reset())>
-   void ResetIfPossible(H *h)
-   {
-      h->Reset();
-   }
-
-   void ResetIfPossible(TStatistic *h) { *h = TStatistic(); }
-
-   // cannot safely re-initialize variations of the result, hence error out
-   void ResetIfPossible(...)
-   {
-      throw std::runtime_error(
-         "A systematic variation was requested for a custom Fill action, but the type of the object to be filled does "
-         "not implement a Reset method, so we cannot safely re-initialize variations of the result. Aborting.");
-   }
-
-   void UnsetDirectoryIfPossible(TH1 *h) {
-      h->SetDirectory(nullptr);
-   }
-
-   void UnsetDirectoryIfPossible(...) {}
 
    // Merge overload for types with Merge(TCollection*), like TH1s
    template <typename H, typename = std::enable_if_t<std::is_base_of<TObject, H>::value, int>>
@@ -406,61 +417,10 @@ class R__CLING_PTRCHECK(off) FillHelper : public RActionImpl<FillHelper<HIST>> {
                     "The type passed to Fill does not provide a Merge(TCollection*) or Merge(const std::vector&) method.");
    }
 
-   // class which wraps a pointer and implements a no-op increment operator
-   template <typename T>
-   class ScalarConstIterator {
-      const T *obj_;
-
-   public:
-      ScalarConstIterator(const T *obj) : obj_(obj) {}
-      const T &operator*() const { return *obj_; }
-      ScalarConstIterator<T> &operator++() { return *this; }
-   };
-
-   // helper functions which provide one implementation for scalar types and another for containers
-   // TODO these could probably all be replaced by inlined lambdas and/or constexpr if statements
-   // in c++17 or later
-
-   // return unchanged value for scalar
-   template <typename T, std::enable_if_t<!IsDataContainer<T>::value, int> = 0>
-   ScalarConstIterator<T> MakeBegin(const T &val)
-   {
-      return ScalarConstIterator<T>(&val);
-   }
-
-   // return iterator to beginning of container
-   template <typename T, std::enable_if_t<IsDataContainer<T>::value, int> = 0>
-   auto MakeBegin(const T &val)
-   {
-      return std::begin(val);
-   }
-
-   // return 1 for scalars
-   template <typename T, std::enable_if_t<!IsDataContainer<T>::value, int> = 0>
-   std::size_t GetSize(const T &)
-   {
-      return 1;
-   }
-
-   // return container size
-   template <typename T, std::enable_if_t<IsDataContainer<T>::value, int> = 0>
-   std::size_t GetSize(const T &val)
-   {
-#if __cplusplus >= 201703L
-      return std::size(val);
-#else
-      return val.size();
-#endif
-   }
-
    template <std::size_t ColIdx, typename End_t, typename... Its>
    void ExecLoop(unsigned int slot, End_t end, Its... its)
    {
-      auto *thisSlotH = fObjects[slot];
-      // loop increments all of the iterators while leaving scalars unmodified
-      // TODO this could be simplified with fold expressions or std::apply in C++17
-      auto nop = [](auto &&...) {};
-      for (; GetNthElement<ColIdx>(its...) != end; nop(++its...)) {
+      for (auto *thisSlotH = fObjects[slot]; GetNthElement<ColIdx>(its...) != end; (std::advance(its, 1), ...)) {
          thisSlotH->Fill(*its...);
       }
    }
@@ -482,14 +442,14 @@ public:
    void InitTask(TTreeReader *, unsigned int) {}
 
    // no container arguments
-   template <typename... ValTypes, std::enable_if_t<!Disjunction<IsDataContainer<ValTypes>...>::value, int> = 0>
+   template <typename... ValTypes, std::enable_if_t<!std::disjunction<IsDataContainer<ValTypes>...>::value, int> = 0>
    auto Exec(unsigned int slot, const ValTypes &...x) -> decltype(fObjects[slot]->Fill(x...), void())
    {
       fObjects[slot]->Fill(x...);
    }
 
    // at least one container argument
-   template <typename... Xs, std::enable_if_t<Disjunction<IsDataContainer<Xs>...>::value, int> = 0>
+   template <typename... Xs, std::enable_if_t<std::disjunction<IsDataContainer<Xs>...>::value, int> = 0>
    auto Exec(unsigned int slot, const Xs &...xs) -> decltype(fObjects[slot]->Fill(*MakeBegin(xs)...), void())
    {
       // array of bools keeping track of which inputs are containers
@@ -560,7 +520,7 @@ public:
    }
 
    template <typename H = HIST>
-   FillHelper MakeNew(void *newResult)
+   FillHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<H> *>(newResult);
       ResetIfPossible(result.get());
@@ -568,6 +528,203 @@ public:
       return FillHelper(result, fObjects.size());
    }
 };
+
+#ifdef R__HAS_ROOT7
+template <typename BinContentType, bool WithWeight = false>
+class R__CLING_PTRCHECK(off) RHistFillHelper : public RActionImpl<RHistFillHelper<BinContentType, WithWeight>>,
+                                               public ExecLoopTrait<RHistFillHelper<BinContentType, WithWeight>> {
+public:
+   using Result_t = ROOT::Experimental::RHist<BinContentType>;
+
+private:
+   std::unique_ptr<ROOT::Experimental::RHistConcurrentFiller<BinContentType>> fFiller;
+   std::vector<std::shared_ptr<ROOT::Experimental::RHistFillContext<BinContentType>>> fContexts;
+
+public:
+   RHistFillHelper(std::shared_ptr<ROOT::Experimental::RHist<BinContentType>> h, unsigned int nSlots)
+      : fFiller(new ROOT::Experimental::RHistConcurrentFiller<BinContentType>(h)), fContexts(nSlots)
+   {
+      for (unsigned int i = 0; i < nSlots; i++) {
+         fContexts[i] = fFiller->CreateFillContext();
+      }
+   }
+   RHistFillHelper(const RHistFillHelper &) = delete;
+   RHistFillHelper(RHistFillHelper &&) = default;
+   RHistFillHelper &operator=(const RHistFillHelper &) = delete;
+   RHistFillHelper &operator=(RHistFillHelper &&) = default;
+   ~RHistFillHelper() = default;
+
+   void Initialize() {}
+   void InitTask(TTreeReader *, unsigned int) {}
+
+   template <typename... ColumnTypes, const std::size_t... I>
+   void
+   ExecWithWeight(unsigned int slot, const std::tuple<const ColumnTypes &...> &columnValues, std::index_sequence<I...>)
+   {
+      // Build a tuple of const references with the actual arguments, stripping the weight and avoiding copies.
+      std::tuple<const std::tuple_element_t<I, std::tuple<ColumnTypes...>> &...> args(std::get<I>(columnValues)...);
+      ROOT::Experimental::RWeight weight(std::get<sizeof...(ColumnTypes) - 1>(columnValues));
+      fContexts[slot]->Fill(args, weight);
+   }
+
+   template <typename... ColumnTypes>
+   void ExecSingle(unsigned int slot, const ColumnTypes &...columnValues)
+   {
+      if constexpr (WithWeight) {
+         auto t = std::forward_as_tuple(columnValues...);
+         ExecWithWeight(slot, t, std::make_index_sequence<sizeof...(ColumnTypes) - 1>());
+      } else {
+         fContexts[slot]->Fill(columnValues...);
+      }
+   }
+
+   void Finalize()
+   {
+      for (auto &&context : fContexts) {
+         context->Flush();
+      }
+   }
+
+   RHistFillHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
+   {
+      auto &result = *static_cast<std::shared_ptr<Result_t> *>(newResult);
+      result->Clear();
+      return RHistFillHelper(result, fContexts.size());
+   }
+
+   std::string GetActionName() { return "Hist"; }
+};
+
+template <typename BinContentType, bool WithWeight = false>
+class R__CLING_PTRCHECK(off) RHistEngineFillHelper
+   : public RActionImpl<RHistEngineFillHelper<BinContentType, WithWeight>>,
+     public ExecLoopTrait<RHistEngineFillHelper<BinContentType, WithWeight>> {
+public:
+   using Result_t = ROOT::Experimental::RHistEngine<BinContentType>;
+
+private:
+   std::shared_ptr<Result_t> fHist;
+
+public:
+   RHistEngineFillHelper(std::shared_ptr<ROOT::Experimental::RHistEngine<BinContentType>> h) : fHist(h) {}
+   RHistEngineFillHelper(const RHistEngineFillHelper &) = delete;
+   RHistEngineFillHelper(RHistEngineFillHelper &&) = default;
+   RHistEngineFillHelper &operator=(const RHistEngineFillHelper &) = delete;
+   RHistEngineFillHelper &operator=(RHistEngineFillHelper &&) = default;
+   ~RHistEngineFillHelper() = default;
+
+   void Initialize() {}
+   void InitTask(TTreeReader *, unsigned int) {}
+
+   template <typename... ColumnTypes, const std::size_t... I>
+   void ExecWithWeight(const std::tuple<const ColumnTypes &...> &columnValues, std::index_sequence<I...>)
+   {
+      // Build a tuple of const references with the actual arguments, stripping the weight and avoiding copies.
+      std::tuple<const std::tuple_element_t<I, std::tuple<ColumnTypes...>> &...> args(std::get<I>(columnValues)...);
+      ROOT::Experimental::RWeight weight(std::get<sizeof...(ColumnTypes) - 1>(columnValues));
+      fHist->FillAtomic(args, weight);
+   }
+
+   template <typename... ColumnTypes>
+   void ExecSingle(unsigned int, const ColumnTypes &...columnValues)
+   {
+      if constexpr (WithWeight) {
+         auto t = std::forward_as_tuple(columnValues...);
+         ExecWithWeight(t, std::make_index_sequence<sizeof...(ColumnTypes) - 1>());
+      } else {
+         fHist->FillAtomic(columnValues...);
+      }
+   }
+
+   void Finalize() {}
+
+   RHistEngineFillHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
+   {
+      auto &result = *static_cast<std::shared_ptr<Result_t> *>(newResult);
+      result->Clear();
+      return RHistEngineFillHelper(result);
+   }
+
+   std::string GetActionName() { return "Hist"; }
+};
+
+template <bool WithWeight = false>
+class R__CLING_PTRCHECK(off) RProfileFillHelper : public RActionImpl<RProfileFillHelper<WithWeight>>,
+                                                  public ExecLoopTrait<RProfileFillHelper<WithWeight>> {
+public:
+   using Result_t = ROOT::Experimental::RProfile;
+
+private:
+   std::unique_ptr<ROOT::Experimental::RProfileConcurrentFiller> fFiller;
+   std::vector<std::shared_ptr<ROOT::Experimental::RProfileFillContext>> fContexts;
+
+public:
+   RProfileFillHelper(std::shared_ptr<ROOT::Experimental::RProfile> p, unsigned int nSlots)
+      : fFiller(new ROOT::Experimental::RProfileConcurrentFiller(p)), fContexts(nSlots)
+   {
+      for (unsigned int i = 0; i < nSlots; i++) {
+         fContexts[i] = fFiller->CreateFillContext();
+      }
+   }
+   RProfileFillHelper(const RProfileFillHelper &) = delete;
+   RProfileFillHelper(RProfileFillHelper &&) = default;
+   RProfileFillHelper &operator=(const RProfileFillHelper &) = delete;
+   RProfileFillHelper &operator=(RProfileFillHelper &&) = default;
+   ~RProfileFillHelper() = default;
+
+   void Initialize() {}
+   void InitTask(TTreeReader *, unsigned int) {}
+
+   template <typename... ColumnTypes, const std::size_t... I>
+   void ExecWithValueAndWeight(unsigned int slot, const std::tuple<const ColumnTypes &...> &columnValues,
+                               std::index_sequence<I...>)
+   {
+      // Build a tuple of const references with the actual arguments, stripping the value and weight and avoiding
+      // copies.
+      std::tuple<const std::tuple_element_t<I, std::tuple<ColumnTypes...>> &...> args(std::get<I>(columnValues)...);
+      const auto &value = std::get<sizeof...(ColumnTypes) - 2>(columnValues);
+      ROOT::Experimental::RWeight weight(std::get<sizeof...(ColumnTypes) - 1>(columnValues));
+      fContexts[slot]->Fill(args, value, weight);
+   }
+
+   template <typename... ColumnTypes, const std::size_t... I>
+   void
+   ExecWithValue(unsigned int slot, const std::tuple<const ColumnTypes &...> &columnValues, std::index_sequence<I...>)
+   {
+      // Build a tuple of const references with the actual arguments, stripping the value and avoiding copies.
+      std::tuple<const std::tuple_element_t<I, std::tuple<ColumnTypes...>> &...> args(std::get<I>(columnValues)...);
+      const auto &value = std::get<sizeof...(ColumnTypes) - 1>(columnValues);
+      fContexts[slot]->Fill(args, value);
+   }
+
+   template <typename... ColumnTypes>
+   void ExecSingle(unsigned int slot, const ColumnTypes &...columnValues)
+   {
+      auto t = std::forward_as_tuple(columnValues...);
+      if constexpr (WithWeight) {
+         ExecWithValueAndWeight(slot, t, std::make_index_sequence<sizeof...(ColumnTypes) - 2>());
+      } else {
+         ExecWithValue(slot, t, std::make_index_sequence<sizeof...(ColumnTypes) - 1>());
+      }
+   }
+
+   void Finalize()
+   {
+      for (auto &&context : fContexts) {
+         context->Flush();
+      }
+   }
+
+   RProfileFillHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
+   {
+      auto &result = *static_cast<std::shared_ptr<Result_t> *>(newResult);
+      result->Clear();
+      return RProfileFillHelper(result, fContexts.size());
+   }
+
+   std::string GetActionName() { return "Profile"; }
+};
+#endif
 
 class R__CLING_PTRCHECK(off) FillTGraphHelper : public ROOT::Detail::RDF::RActionImpl<FillTGraphHelper> {
 public:
@@ -580,8 +737,6 @@ public:
    FillTGraphHelper(FillTGraphHelper &&) = default;
    FillTGraphHelper(const FillTGraphHelper &) = delete;
 
-   // The last parameter is always false, as at the moment there is no way to propagate the parameter from the user to
-   // this method
    FillTGraphHelper(const std::shared_ptr<::TGraph> &g, const unsigned int nSlots) : fGraphs(nSlots, nullptr)
    {
       fGraphs[0] = g.get();
@@ -650,7 +805,7 @@ public:
 
    Result_t &PartialUpdate(unsigned int slot) { return *fGraphs[slot]; }
 
-   FillTGraphHelper MakeNew(void *newResult)
+   FillTGraphHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<TGraph> *>(newResult);
       result->Set(0);
@@ -756,11 +911,143 @@ public:
 
    Result_t &PartialUpdate(unsigned int slot) { return *fGraphAsymmErrors[slot]; }
 
-   FillTGraphAsymmErrorsHelper MakeNew(void *newResult)
+   FillTGraphAsymmErrorsHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<TGraphAsymmErrors> *>(newResult);
       result->Set(0);
       return FillTGraphAsymmErrorsHelper(result, fGraphAsymmErrors.size());
+   }
+};
+
+/// A FillHelper for classes supporting the FillThreadSafe function.
+template <typename HIST>
+class R__CLING_PTRCHECK(off) ThreadSafeFillHelper : public RActionImpl<ThreadSafeFillHelper<HIST>> {
+   std::vector<std::shared_ptr<HIST>> fObjects;
+   std::vector<std::unique_ptr<std::mutex>> fMutexPtrs;
+
+   // This overload matches if the function exists:
+   template <typename T, typename... Args>
+   auto TryCallFillThreadSafe(T &object, std::mutex &, int /*dummy*/, Args... args)
+      -> decltype(ROOT::Internal::FillThreadSafe(object, args...), void())
+   {
+      ROOT::Internal::FillThreadSafe(object, args...);
+   }
+   // This one has lower precedence because of the dummy argument, and uses a lock
+   template <typename T, typename... Args>
+   auto TryCallFillThreadSafe(T &object, std::mutex &mutex, char /*dummy*/, Args... args)
+   {
+      std::scoped_lock lock{mutex};
+      object.Fill(args...);
+   }
+
+   template <std::size_t ColIdx, typename End_t, typename... Its>
+   void ExecLoop(unsigned int slot, End_t end, Its... its)
+   {
+      const auto localSlot = slot % fObjects.size();
+      for (; GetNthElement<ColIdx>(its...) != end; (std::advance(its, 1), ...)) {
+         TryCallFillThreadSafe(*fObjects[localSlot], *fMutexPtrs[localSlot], 0, *its...);
+      }
+   }
+
+public:
+   ThreadSafeFillHelper(ThreadSafeFillHelper &&) = default;
+   ThreadSafeFillHelper(const ThreadSafeFillHelper &) = delete;
+
+   ThreadSafeFillHelper(const std::shared_ptr<HIST> &h, const unsigned int nSlots)
+   {
+      fObjects.resize(nSlots);
+      fObjects.front() = h;
+
+      std::generate(fObjects.begin() + 1, fObjects.end(), [h]() {
+         auto hist = std::make_shared<HIST>(*h);
+         UnsetDirectoryIfPossible(hist.get());
+         return hist;
+      });
+      fMutexPtrs.resize(nSlots);
+      std::generate(fMutexPtrs.begin(), fMutexPtrs.end(), []() { return std::make_unique<std::mutex>(); });
+   }
+
+   void InitTask(TTreeReader *, unsigned int) {}
+
+   // no container arguments
+   template <typename... ValTypes, std::enable_if_t<!std::disjunction<IsDataContainer<ValTypes>...>::value, int> = 0>
+   void Exec(unsigned int slot, const ValTypes &...x)
+   {
+      const auto localSlot = slot % fObjects.size();
+      TryCallFillThreadSafe(*fObjects[localSlot], *fMutexPtrs[localSlot], 0, x...);
+   }
+
+   // at least one container argument
+   template <typename... Xs, std::enable_if_t<std::disjunction<IsDataContainer<Xs>...>::value, int> = 0>
+   void Exec(unsigned int slot, const Xs &...xs)
+   {
+      // array of bools keeping track of which inputs are containers
+      constexpr std::array<bool, sizeof...(Xs)> isContainer{IsDataContainer<Xs>::value...};
+
+      // index of the first container input
+      constexpr std::size_t colidx = FindIdxTrue(isContainer);
+      // if this happens, there is a bug in the implementation
+      static_assert(colidx < sizeof...(Xs), "Error: index of collection-type argument not found.");
+
+      // get the end iterator to the first container
+      auto const xrefend = std::end(GetNthElement<colidx>(xs...));
+
+      // array of container sizes (1 for scalars)
+      std::array<std::size_t, sizeof...(xs)> sizes = {{GetSize(xs)...}};
+
+      for (std::size_t i = 0; i < sizeof...(xs); ++i) {
+         if (isContainer[i] && sizes[i] != sizes[colidx]) {
+            throw std::runtime_error("Cannot fill histogram with values in containers of different sizes.");
+         }
+      }
+
+      ExecLoop<colidx>(slot, xrefend, MakeBegin(xs)...);
+   }
+
+   template <typename T = HIST>
+   void Exec(...)
+   {
+      static_assert(sizeof(T) < 0,
+                    "When filling an object with RDataFrame (e.g. via a Fill action) the number or types of the "
+                    "columns passed did not match the signature of the object's `FillThreadSafe` method.");
+   }
+
+   void Initialize() { /* noop */ }
+
+   void Finalize()
+   {
+      if (fObjects.size() > 1) {
+         TList list;
+         for (auto it = fObjects.cbegin() + 1; it != fObjects.end(); ++it) {
+            list.Add(it->get());
+         }
+         fObjects[0]->Merge(&list);
+      }
+
+      fObjects.resize(1);
+      fMutexPtrs.clear();
+   }
+
+   // Helper function for RMergeableValue
+   std::unique_ptr<RMergeableValueBase> GetMergeableValue() const final
+   {
+      return std::make_unique<RMergeableFill<HIST>>(*fObjects[0]);
+   }
+
+   // if the fObjects vector type is derived from TObject, return the name of the object
+   template <typename T = HIST, std::enable_if_t<std::is_base_of<TObject, T>::value, int> = 0>
+   std::string GetActionName()
+   {
+      return std::string(fObjects[0]->IsA()->GetName()) + "\\n" + std::string(fObjects[0]->GetName());
+   }
+
+   template <typename H = HIST>
+   ThreadSafeFillHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
+   {
+      auto &result = *static_cast<std::shared_ptr<H> *>(newResult);
+      ResetIfPossible(result.get());
+      UnsetDirectoryIfPossible(result.get());
+      return ThreadSafeFillHelper(result, fObjects.size());
    }
 };
 
@@ -822,7 +1109,7 @@ public:
 
    std::string GetActionName() { return "Take"; }
 
-   TakeHelper MakeNew(void *newResult)
+   TakeHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<COLL> *>(newResult);
       result->clear();
@@ -875,7 +1162,7 @@ public:
 
    std::string GetActionName() { return "Take"; }
 
-   TakeHelper MakeNew(void *newResult)
+   TakeHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<std::vector<T>> *>(newResult);
       result->clear();
@@ -920,7 +1207,7 @@ public:
 
    std::string GetActionName() { return "Take"; }
 
-   TakeHelper MakeNew(void *newResult)
+   TakeHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<COLL> *>(newResult);
       result->clear();
@@ -972,7 +1259,7 @@ public:
 
    std::string GetActionName() { return "Take"; }
 
-   TakeHelper MakeNew(void *newResult)
+   TakeHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<typename decltype(fColls)::value_type *>(newResult);
       result->clear();
@@ -1007,7 +1294,7 @@ extern template class TakeHelper<double, double, std::vector<double>>;
 
 template <typename ResultType>
 class R__CLING_PTRCHECK(off) MinHelper : public RActionImpl<MinHelper<ResultType>> {
-   const std::shared_ptr<ResultType> fResultMin;
+   std::shared_ptr<ResultType> fResultMin;
    Results<ResultType> fMins;
 
 public:
@@ -1047,23 +1334,16 @@ public:
 
    std::string GetActionName() { return "Min"; }
 
-   MinHelper MakeNew(void *newResult)
+   MinHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<ResultType> *>(newResult);
       return MinHelper(result, fMins.size());
    }
 };
 
-// TODO
-// extern template void MinHelper::Exec(unsigned int, const std::vector<float> &);
-// extern template void MinHelper::Exec(unsigned int, const std::vector<double> &);
-// extern template void MinHelper::Exec(unsigned int, const std::vector<char> &);
-// extern template void MinHelper::Exec(unsigned int, const std::vector<int> &);
-// extern template void MinHelper::Exec(unsigned int, const std::vector<unsigned int> &);
-
 template <typename ResultType>
 class R__CLING_PTRCHECK(off) MaxHelper : public RActionImpl<MaxHelper<ResultType>> {
-   const std::shared_ptr<ResultType> fResultMax;
+   std::shared_ptr<ResultType> fResultMax;
    Results<ResultType> fMaxs;
 
 public:
@@ -1104,23 +1384,16 @@ public:
 
    std::string GetActionName() { return "Max"; }
 
-   MaxHelper MakeNew(void *newResult)
+   MaxHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<ResultType> *>(newResult);
       return MaxHelper(result, fMaxs.size());
    }
 };
 
-// TODO
-// extern template void MaxHelper::Exec(unsigned int, const std::vector<float> &);
-// extern template void MaxHelper::Exec(unsigned int, const std::vector<double> &);
-// extern template void MaxHelper::Exec(unsigned int, const std::vector<char> &);
-// extern template void MaxHelper::Exec(unsigned int, const std::vector<int> &);
-// extern template void MaxHelper::Exec(unsigned int, const std::vector<unsigned int> &);
-
 template <typename ResultType>
 class R__CLING_PTRCHECK(off) SumHelper : public RActionImpl<SumHelper<ResultType>> {
-   const std::shared_ptr<ResultType> fResultSum;
+   std::shared_ptr<ResultType> fResultSum;
    Results<ResultType> fSums;
    Results<ResultType> fCompensations;
 
@@ -1194,7 +1467,7 @@ public:
 
    std::string GetActionName() { return "Sum"; }
 
-   SumHelper MakeNew(void *newResult)
+   SumHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<ResultType> *>(newResult);
       *result = NeutralElement(*result, -1);
@@ -1203,7 +1476,7 @@ public:
 };
 
 class R__CLING_PTRCHECK(off) MeanHelper : public RActionImpl<MeanHelper> {
-   const std::shared_ptr<double> fResultMean;
+   std::shared_ptr<double> fResultMean;
    std::vector<ULong64_t> fCounts;
    std::vector<double> fSums;
    std::vector<double> fPartialMeans;
@@ -1245,23 +1518,17 @@ public:
 
    std::string GetActionName() { return "Mean"; }
 
-   MeanHelper MakeNew(void *newResult)
+   MeanHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<double> *>(newResult);
       return MeanHelper(result, fSums.size());
    }
 };
 
-extern template void MeanHelper::Exec(unsigned int, const std::vector<float> &);
-extern template void MeanHelper::Exec(unsigned int, const std::vector<double> &);
-extern template void MeanHelper::Exec(unsigned int, const std::vector<char> &);
-extern template void MeanHelper::Exec(unsigned int, const std::vector<int> &);
-extern template void MeanHelper::Exec(unsigned int, const std::vector<unsigned int> &);
-
 class R__CLING_PTRCHECK(off) StdDevHelper : public RActionImpl<StdDevHelper> {
    // Number of subsets of data
-   const unsigned int fNSlots;
-   const std::shared_ptr<double> fResultStdDev;
+   unsigned int fNSlots;
+   std::shared_ptr<double> fResultStdDev;
    // Number of element for each slot
    std::vector<ULong64_t> fCounts;
    // Mean of each slot
@@ -1299,25 +1566,54 @@ public:
 
    std::string GetActionName() { return "StdDev"; }
 
-   StdDevHelper MakeNew(void *newResult)
+   StdDevHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<double> *>(newResult);
       return StdDevHelper(result, fCounts.size());
    }
 };
 
-extern template void StdDevHelper::Exec(unsigned int, const std::vector<float> &);
-extern template void StdDevHelper::Exec(unsigned int, const std::vector<double> &);
-extern template void StdDevHelper::Exec(unsigned int, const std::vector<char> &);
-extern template void StdDevHelper::Exec(unsigned int, const std::vector<int> &);
-extern template void StdDevHelper::Exec(unsigned int, const std::vector<unsigned int> &);
+class R__CLING_PTRCHECK(off) MedianHelper : public RActionImpl<MedianHelper> {
+   std::shared_ptr<double> fResult;
+   std::vector<std::vector<double>> fBuffers;
+
+public:
+   MedianHelper(const std::shared_ptr<double> &meanVPtr, const unsigned int nSlots);
+   MedianHelper(MedianHelper &&) = default;
+   MedianHelper &operator=(MedianHelper &&) = default;
+   MedianHelper(const MedianHelper &) = delete;
+   MedianHelper &operator=(const MedianHelper &other) = delete;
+
+   void InitTask(TTreeReader *, unsigned int) {}
+   void Exec(unsigned int slot, double v);
+
+   template <typename T, std::enable_if_t<IsDataContainer<T>::value, int> = 0>
+   void Exec(unsigned int slot, const T &vs)
+   {
+      fBuffers[slot].insert(fBuffers[slot].end(), std::begin(vs), std::end(vs));
+   }
+
+   void Initialize() { /* noop */ }
+
+   void Finalize();
+
+   std::string GetActionName() { return "Median"; }
+
+   MedianHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
+   {
+      auto &result = *static_cast<std::shared_ptr<double> *>(newResult);
+      return MedianHelper(result, fBuffers.size());
+   }
+
+   ~MedianHelper() = default;
+};
 
 template <typename PrevNodeType>
 class R__CLING_PTRCHECK(off) DisplayHelper : public RActionImpl<DisplayHelper<PrevNodeType>> {
 private:
    using Display_t = ROOT::RDF::RDisplay;
-   const std::shared_ptr<Display_t> fDisplayerHelper;
-   const std::shared_ptr<PrevNodeType> fPrevNode;
+   std::shared_ptr<Display_t> fDisplayerHelper;
+   std::shared_ptr<PrevNodeType> fPrevNode;
    size_t fEntriesToProcess;
 
 public:
@@ -1354,469 +1650,13 @@ public:
    std::string GetActionName() { return "Display"; }
 };
 
-template <typename T>
-void *GetData(ROOT::VecOps::RVec<T> &v)
-{
-   return v.data();
-}
-
-template <typename T>
-void *GetData(T & /*v*/)
-{
-   return nullptr;
-}
-
-template <typename T>
-void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &inName, const std::string &name,
-                       TBranch *&branch, void *&branchAddress, T *address, RBranchSet &outputBranches,
-                       bool /*isDefine*/)
-{
-   static TClassRef TBOClRef("TBranchObject");
-
-   TBranch *inputBranch = nullptr;
-   if (inputTree) {
-      inputBranch = inputTree->GetBranch(inName.c_str());
-      if (!inputBranch) // try harder
-         inputBranch = inputTree->FindBranch(inName.c_str());
-   }
-
-   auto *outputBranch = outputBranches.Get(name);
-   if (outputBranch) {
-      // the output branch was already created, we just need to (re)set its address
-      if (inputBranch && inputBranch->IsA() == TBOClRef) {
-         outputBranch->SetAddress(reinterpret_cast<T **>(inputBranch->GetAddress()));
-      } else if (outputBranch->IsA() != TBranch::Class()) {
-         branchAddress = address;
-         outputBranch->SetAddress(&branchAddress);
-      } else {
-         outputBranch->SetAddress(address);
-         branchAddress = address;
-      }
-      return;
-   }
-
-   if (inputBranch) {
-      // Respect the original bufsize and splitlevel arguments
-      // In particular, by keeping splitlevel equal to 0 if this was the case for `inputBranch`, we avoid
-      // writing garbage when unsplit objects cannot be written as split objects (e.g. in case of a polymorphic
-      // TObject branch, see https://bit.ly/2EjLMId ).
-      const auto bufSize = inputBranch->GetBasketSize();
-      const auto splitLevel = inputBranch->GetSplitLevel();
-
-      if (inputBranch->IsA() == TBOClRef) {
-         // Need to pass a pointer to pointer
-         outputBranch =
-            outputTree.Branch(name.c_str(), reinterpret_cast<T **>(inputBranch->GetAddress()), bufSize, splitLevel);
-      } else {
-         outputBranch = outputTree.Branch(name.c_str(), address, bufSize, splitLevel);
-      }
-   } else {
-      outputBranch = outputTree.Branch(name.c_str(), address);
-   }
-   outputBranches.Insert(name, outputBranch);
-   // This is not an array branch, so we don't register the address of the output branch here
-   branch = nullptr;
-   branchAddress = nullptr;
-}
-
-/// Helper function for SnapshotHelper and SnapshotHelperMT. It creates new branches for the output TTree of a Snapshot.
-/// This overload is called for columns of type `RVec<T>`. For RDF, these can represent:
-/// 1. c-style arrays in ROOT files, so we are sure that there are input trees to which we can ask the correct branch
-/// title
-/// 2. RVecs coming from a custom column or the input file/data-source
-/// 3. vectors coming from ROOT files that are being read as RVecs
-/// 4. TClonesArray
-///
-/// In case of 1., we keep aside the pointer to the branch and the pointer to the input value (in `branch` and
-/// `branchAddress`) so we can intercept changes in the address of the input branch and tell the output branch.
-template <typename T>
-void SetBranchesHelper(TTree *inputTree, TTree &outputTree, const std::string &inName, const std::string &outName,
-                       TBranch *&branch, void *&branchAddress, RVec<T> *ab, RBranchSet &outputBranches, bool isDefine)
-{
-   TBranch *inputBranch = nullptr;
-   if (inputTree) {
-      inputBranch = inputTree->GetBranch(inName.c_str());
-      if (!inputBranch) // try harder
-         inputBranch = inputTree->FindBranch(inName.c_str());
-   }
-   auto *outputBranch = outputBranches.Get(outName);
-
-   // if no backing input branch, we must write out an RVec
-   bool mustWriteRVec = (inputBranch == nullptr || isDefine);
-   // otherwise, if input branch is TClonesArray, must write out an RVec
-   if (!mustWriteRVec && std::string_view(inputBranch->GetClassName()) == "TClonesArray") {
-      mustWriteRVec = true;
-      Warning("Snapshot",
-              "Branch \"%s\" contains TClonesArrays but the type specified to Snapshot was RVec<T>. The branch will "
-              "be written out as a RVec instead of a TClonesArray. Specify that the type of the branch is "
-              "TClonesArray as a Snapshot template parameter to write out a TClonesArray instead.",
-              inName.c_str());
-   }
-   // otherwise, if input branch is a std::vector or RVec, must write out an RVec
-   if (!mustWriteRVec) {
-      const auto STLKind = TClassEdit::IsSTLCont(inputBranch->GetClassName());
-      if (STLKind == ROOT::ESTLType::kSTLvector || STLKind == ROOT::ESTLType::kROOTRVec)
-         mustWriteRVec = true;
-   }
-
-   if (mustWriteRVec) {
-      // Treat:
-      // 2. RVec coming from a custom column or a source
-      // 3. RVec coming from a column on disk of type vector (the RVec is adopting the data of that vector)
-      // 4. TClonesArray written out as RVec<T>
-      if (outputBranch) {
-         // needs to be SetObject (not SetAddress) to mimic what happens when this TBranchElement is constructed
-         outputBranch->SetObject(ab);
-      } else {
-         auto *b = outputTree.Branch(outName.c_str(), ab);
-         outputBranches.Insert(outName, b);
-      }
-      return;
-   }
-
-   // else this must be a C-array, aka case 1.
-   auto dataPtr = ab->data();
-
-   if (outputBranch) {
-      if (outputBranch->IsA() != TBranch::Class()) {
-         branchAddress = dataPtr;
-         outputBranch->SetAddress(&branchAddress);
-      } else {
-         outputBranch->SetAddress(dataPtr);
-      }
-   } else {
-      // must construct the leaflist for the output branch and create the branch in the output tree
-      auto *const leaf = static_cast<TLeaf *>(inputBranch->GetListOfLeaves()->UncheckedAt(0));
-      const auto bname = leaf->GetName();
-      auto *sizeLeaf = leaf->GetLeafCount();
-      const auto sizeLeafName = sizeLeaf ? std::string(sizeLeaf->GetName()) : std::to_string(leaf->GetLenStatic());
-
-      if (sizeLeaf && !outputBranches.Get(sizeLeafName)) {
-         // The output array branch `bname` has dynamic size stored in leaf `sizeLeafName`, but that leaf has not been
-         // added to the output tree yet. However, the size leaf has to be available for the creation of the array
-         // branch to be successful. So we create the size leaf here.
-         const auto sizeTypeStr = TypeName2ROOTTypeName(sizeLeaf->GetTypeName());
-         const auto sizeBufSize = sizeLeaf->GetBranch()->GetBasketSize();
-         // The null branch address is a placeholder. It will be set when SetBranchesHelper is called for `sizeLeafName`
-         auto *sizeBranch = outputTree.Branch(sizeLeafName.c_str(), (void *)nullptr,
-                                              (sizeLeafName + '/' + sizeTypeStr).c_str(), sizeBufSize);
-         outputBranches.Insert(sizeLeafName, sizeBranch);
-      }
-
-      const auto btype = leaf->GetTypeName();
-      const auto rootbtype = TypeName2ROOTTypeName(btype);
-      if (rootbtype == ' ') {
-         Warning("Snapshot",
-                 "RDataFrame::Snapshot: could not correctly construct a leaflist for C-style array in column %s. This "
-                 "column will not be written out.",
-                 bname);
-      } else {
-         const auto leaflist = std::string(bname) + "[" + sizeLeafName + "]/" + rootbtype;
-         outputBranch = outputTree.Branch(outName.c_str(), dataPtr, leaflist.c_str());
-         outputBranch->SetTitle(inputBranch->GetTitle());
-         outputBranches.Insert(outName, outputBranch);
-         branch = outputBranch;
-         branchAddress = ab->data();
-      }
-   }
-}
-
-void ValidateSnapshotOutput(const RSnapshotOptions &opts, const std::string &treeName, const std::string &fileName);
-
-/// Helper object for a single-thread Snapshot action
-template <typename... ColTypes>
-class R__CLING_PTRCHECK(off) SnapshotHelper : public RActionImpl<SnapshotHelper<ColTypes...>> {
-   const std::string fFileName;
-   const std::string fDirName;
-   const std::string fTreeName;
-   const RSnapshotOptions fOptions;
-   std::unique_ptr<TFile> fOutputFile;
-   std::unique_ptr<TTree> fOutputTree; // must be a ptr because TTrees are not copy/move constructible
-   bool fBranchAddressesNeedReset{true};
-   const ColumnNames_t fInputBranchNames; // This contains the resolved aliases
-   const ColumnNames_t fOutputBranchNames;
-   TTree *fInputTree = nullptr; // Current input tree. Set at initialization time (`InitTask`)
-   // TODO we might be able to unify fBranches, fBranchAddresses and fOutputBranches
-   std::vector<TBranch *> fBranches; // Addresses of branches in output, non-null only for the ones holding C arrays
-   std::vector<void *> fBranchAddresses; // Addresses of objects associated to output branches
-   RBranchSet fOutputBranches;
-   std::vector<bool> fIsDefine;
-
-public:
-   using ColumnTypes_t = TypeList<ColTypes...>;
-   SnapshotHelper(std::string_view filename, std::string_view dirname, std::string_view treename,
-                  const ColumnNames_t &vbnames, const ColumnNames_t &bnames, const RSnapshotOptions &options,
-                  std::vector<bool> &&isDefine)
-      : fFileName(filename), fDirName(dirname), fTreeName(treename), fOptions(options), fInputBranchNames(vbnames),
-        fOutputBranchNames(ReplaceDotWithUnderscore(bnames)), fBranches(vbnames.size(), nullptr),
-        fBranchAddresses(vbnames.size(), nullptr), fIsDefine(std::move(isDefine))
-   {
-      ValidateSnapshotOutput(fOptions, fTreeName, fFileName);
-   }
-
-   SnapshotHelper(const SnapshotHelper &) = delete;
-   SnapshotHelper(SnapshotHelper &&) = default;
-
-   void InitTask(TTreeReader *r, unsigned int /* slot */)
-   {
-      if (r)
-         fInputTree = r->GetTree();
-      fBranchAddressesNeedReset = true;
-   }
-
-   void Exec(unsigned int /* slot */, ColTypes &... values)
-   {
-      using ind_t = std::index_sequence_for<ColTypes...>;
-      if (!fBranchAddressesNeedReset) {
-         UpdateCArraysPtrs(values..., ind_t{});
-      } else {
-         SetBranches(values..., ind_t{});
-         fBranchAddressesNeedReset = false;
-      }
-      fOutputTree->Fill();
-   }
-
-   template <std::size_t... S>
-   void UpdateCArraysPtrs(ColTypes &... values, std::index_sequence<S...> /*dummy*/)
-   {
-      // This code deals with branches which hold C arrays of variable size. It can happen that the buffers
-      // associated to those is re-allocated. As a result the value of the pointer can change therewith
-      // leaving associated to the branch of the output tree an invalid pointer.
-      // With this code, we set the value of the pointer in the output branch anew when needed.
-      // Nota bene: the extra ",0" after the invocation of SetAddress, is because that method returns void and
-      // we need an int for the expander list.
-      int expander[] = {(fBranches[S] && fBranchAddresses[S] != GetData(values)
-                         ? fBranches[S]->SetAddress(GetData(values)),
-                         fBranchAddresses[S] = GetData(values), 0 : 0, 0)...,
-                        0};
-      (void)expander; // avoid unused variable warnings for older compilers such as gcc 4.9
-   }
-
-   template <std::size_t... S>
-   void SetBranches(ColTypes &... values, std::index_sequence<S...> /*dummy*/)
-   {
-      // create branches in output tree
-      int expander[] = {(SetBranchesHelper(fInputTree, *fOutputTree, fInputBranchNames[S], fOutputBranchNames[S],
-                                           fBranches[S], fBranchAddresses[S], &values, fOutputBranches, fIsDefine[S]),
-                         0)...,
-                        0};
-      fOutputBranches.AssertNoNullBranchAddresses();
-      (void)expander; // avoid unused variable warnings for older compilers such as gcc 4.9
-   }
-
-   void Initialize()
-   {
-      fOutputFile.reset(
-         TFile::Open(fFileName.c_str(), fOptions.fMode.c_str(), /*ftitle=*/"",
-                     ROOT::CompressionSettings(fOptions.fCompressionAlgorithm, fOptions.fCompressionLevel)));
-      if(!fOutputFile)
-         throw std::runtime_error("Snapshot: could not create output file " + fFileName);
-
-      TDirectory *outputDir = fOutputFile.get();
-      if (!fDirName.empty()) {
-         TString checkupdate = fOptions.fMode;
-         checkupdate.ToLower();
-         if (checkupdate == "update")
-            outputDir = fOutputFile->mkdir(fDirName.c_str(), "", true);  // do not overwrite existing directory
-         else
-            outputDir = fOutputFile->mkdir(fDirName.c_str());
-      }
-
-      fOutputTree =
-         std::make_unique<TTree>(fTreeName.c_str(), fTreeName.c_str(), fOptions.fSplitLevel, /*dir=*/outputDir);
-
-      if (fOptions.fAutoFlush)
-         fOutputTree->SetAutoFlush(fOptions.fAutoFlush);
-   }
-
-   void Finalize()
-   {
-      assert(fOutputTree != nullptr);
-      assert(fOutputFile != nullptr);
-
-      // use AutoSave to flush TTree contents because TTree::Write writes in gDirectory, not in fDirectory
-      fOutputTree->AutoSave("flushbaskets");
-      // must destroy the TTree first, otherwise TFile will delete it too leading to a double delete
-      fOutputTree.reset();
-      fOutputFile->Close();
-   }
-
-   std::string GetActionName() { return "Snapshot"; }
-
-   ROOT::RDF::SampleCallback_t GetSampleCallback() final
-   {
-      return [this](unsigned int, const RSampleInfo &) mutable { fBranchAddressesNeedReset = true; };
-   }
-};
-
-/// Helper object for a multi-thread Snapshot action
-template <typename... ColTypes>
-class R__CLING_PTRCHECK(off) SnapshotHelperMT : public RActionImpl<SnapshotHelperMT<ColTypes...>> {
-   const unsigned int fNSlots;
-   std::unique_ptr<ROOT::TBufferMerger> fMerger; // must use a ptr because TBufferMerger is not movable
-   std::vector<std::shared_ptr<ROOT::TBufferMergerFile>> fOutputFiles;
-   std::vector<std::unique_ptr<TTree>> fOutputTrees;
-   std::vector<int> fBranchAddressesNeedReset; // vector<bool> does not allow concurrent writing of different elements
-   const std::string fFileName;           // name of the output file name
-   const std::string fDirName;            // name of TFile subdirectory in which output must be written (possibly empty)
-   const std::string fTreeName;           // name of output tree
-   const RSnapshotOptions fOptions;       // struct holding options to pass down to TFile and TTree in this action
-   const ColumnNames_t fInputBranchNames; // This contains the resolved aliases
-   const ColumnNames_t fOutputBranchNames;
-   std::vector<TTree *> fInputTrees; // Current input trees. Set at initialization time (`InitTask`)
-   // Addresses of branches in output per slot, non-null only for the ones holding C arrays
-   std::vector<std::vector<TBranch *>> fBranches;
-   // Addresses associated to output branches per slot, non-null only for the ones holding C arrays
-   std::vector<std::vector<void *>> fBranchAddresses;
-   std::vector<RBranchSet> fOutputBranches;
-   std::vector<bool> fIsDefine;
-
-public:
-   using ColumnTypes_t = TypeList<ColTypes...>;
-   SnapshotHelperMT(const unsigned int nSlots, std::string_view filename, std::string_view dirname,
-                    std::string_view treename, const ColumnNames_t &vbnames, const ColumnNames_t &bnames,
-                    const RSnapshotOptions &options, std::vector<bool> &&isDefine)
-      : fNSlots(nSlots), fOutputFiles(fNSlots), fOutputTrees(fNSlots), fBranchAddressesNeedReset(fNSlots, 1),
-        fFileName(filename), fDirName(dirname), fTreeName(treename), fOptions(options), fInputBranchNames(vbnames),
-        fOutputBranchNames(ReplaceDotWithUnderscore(bnames)), fInputTrees(fNSlots),
-        fBranches(fNSlots, std::vector<TBranch *>(vbnames.size(), nullptr)),
-        fBranchAddresses(fNSlots, std::vector<void *>(vbnames.size(), nullptr)), fOutputBranches(fNSlots),
-        fIsDefine(std::move(isDefine))
-   {
-      ValidateSnapshotOutput(fOptions, fTreeName, fFileName);
-   }
-   SnapshotHelperMT(const SnapshotHelperMT &) = delete;
-   SnapshotHelperMT(SnapshotHelperMT &&) = default;
-
-   void InitTask(TTreeReader *r, unsigned int slot)
-   {
-      ::TDirectory::TContext c; // do not let tasks change the thread-local gDirectory
-      if (!fOutputFiles[slot]) {
-         // first time this thread executes something, let's create a TBufferMerger output directory
-         fOutputFiles[slot] = fMerger->GetFile();
-      }
-      TDirectory *treeDirectory = fOutputFiles[slot].get();
-      if (!fDirName.empty()) {
-         // call returnExistingDirectory=true since MT can end up making this call multiple times
-         treeDirectory = fOutputFiles[slot]->mkdir(fDirName.c_str(), "", true);
-      }
-      // re-create output tree as we need to create its branches again, with new input variables
-      // TODO we could instead create the output tree and its branches, change addresses of input variables in each task
-      fOutputTrees[slot] =
-         std::make_unique<TTree>(fTreeName.c_str(), fTreeName.c_str(), fOptions.fSplitLevel, /*dir=*/treeDirectory);
-      fOutputTrees[slot]->SetBit(TTree::kEntriesReshuffled);
-      // TODO can be removed when RDF supports interleaved TBB task execution properly, see ROOT-10269
-      fOutputTrees[slot]->SetImplicitMT(false);
-      if (fOptions.fAutoFlush)
-         fOutputTrees[slot]->SetAutoFlush(fOptions.fAutoFlush);
-      if (r) {
-         // not an empty-source RDF
-         fInputTrees[slot] = r->GetTree();
-      }
-      fBranchAddressesNeedReset[slot] = 1; // reset first event flag for this slot
-   }
-
-   void FinalizeTask(unsigned int slot)
-   {
-      if (fOutputTrees[slot]->GetEntries() > 0)
-         fOutputFiles[slot]->Write();
-      // clear now to avoid concurrent destruction of output trees and input tree (which has them listed as fClones)
-      fOutputTrees[slot].reset(nullptr);
-      fOutputBranches[slot].Clear();
-   }
-
-   void Exec(unsigned int slot, ColTypes &... values)
-   {
-      using ind_t = std::index_sequence_for<ColTypes...>;
-      if (fBranchAddressesNeedReset[slot] == 0) {
-         UpdateCArraysPtrs(slot, values..., ind_t{});
-      } else {
-         SetBranches(slot, values..., ind_t{});
-         fBranchAddressesNeedReset[slot] = 0;
-      }
-      fOutputTrees[slot]->Fill();
-      auto entries = fOutputTrees[slot]->GetEntries();
-      auto autoFlush = fOutputTrees[slot]->GetAutoFlush();
-      if ((autoFlush > 0) && (entries % autoFlush == 0))
-         fOutputFiles[slot]->Write();
-   }
-
-   template <std::size_t... S>
-   void UpdateCArraysPtrs(unsigned int slot, ColTypes &... values, std::index_sequence<S...> /*dummy*/)
-   {
-      // This code deals with branches which hold C arrays of variable size. It can happen that the buffers
-      // associated to those is re-allocated. As a result the value of the pointer can change therewith
-      // leaving associated to the branch of the output tree an invalid pointer.
-      // With this code, we set the value of the pointer in the output branch anew when needed.
-      // Nota bene: the extra ",0" after the invocation of SetAddress, is because that method returns void and
-      // we need an int for the expander list.
-      int expander[] = {(fBranches[slot][S] && fBranchAddresses[slot][S] != GetData(values)
-                         ? fBranches[slot][S]->SetAddress(GetData(values)),
-                         fBranchAddresses[slot][S] = GetData(values), 0 : 0, 0)...,
-                        0};
-      (void)expander; // avoid unused parameter warnings (gcc 12.1)
-   }
-
-   template <std::size_t... S>
-   void SetBranches(unsigned int slot, ColTypes &... values, std::index_sequence<S...> /*dummy*/)
-   {
-      // hack to call TTree::Branch on all variadic template arguments
-      int expander[] = {(SetBranchesHelper(fInputTrees[slot], *fOutputTrees[slot], fInputBranchNames[S],
-                                           fOutputBranchNames[S], fBranches[slot][S], fBranchAddresses[slot][S],
-                                           &values, fOutputBranches[slot], fIsDefine[S]),
-                         0)...,
-                        0};
-      fOutputBranches[slot].AssertNoNullBranchAddresses();
-      (void)expander; // avoid unused parameter warnings (gcc 12.1)
-   }
-
-   void Initialize()
-   {
-      const auto cs = ROOT::CompressionSettings(fOptions.fCompressionAlgorithm, fOptions.fCompressionLevel);
-      auto out_file = TFile::Open(fFileName.c_str(), fOptions.fMode.c_str(), /*ftitle=*/fFileName.c_str(), cs);
-      if(!out_file)
-         throw std::runtime_error("Snapshot: could not create output file " + fFileName);
-      fMerger = std::make_unique<ROOT::TBufferMerger>(std::unique_ptr<TFile>(out_file));
-   }
-
-   void Finalize()
-   {
-      assert(std::any_of(fOutputFiles.begin(), fOutputFiles.end(), [](const auto &ptr) { return ptr != nullptr; }));
-
-      auto fileWritten = false;
-      for (auto &file : fOutputFiles) {
-         if (file) {
-            file->Write();
-            file->Close();
-            fileWritten = true;
-         }
-      }
-
-      if (!fileWritten) {
-         Warning("Snapshot",
-                 "No input entries (input TTree was empty or no entry passed the Filters). Output TTree is empty.");
-      }
-
-      // flush all buffers to disk by destroying the TBufferMerger
-      fOutputFiles.clear();
-      fMerger.reset();
-   }
-
-   std::string GetActionName() { return "Snapshot"; }
-
-   ROOT::RDF::SampleCallback_t GetSampleCallback() final
-   {
-      return [this](unsigned int slot, const RSampleInfo &) mutable { fBranchAddressesNeedReset[slot] = 1; };
-   }
-};
-
 template <typename Acc, typename Merge, typename R, typename T, typename U,
           bool MustCopyAssign = std::is_same<R, U>::value>
 class R__CLING_PTRCHECK(off) AggregateHelper
    : public RActionImpl<AggregateHelper<Acc, Merge, R, T, U, MustCopyAssign>> {
    Acc fAggregate;
    Merge fMerge;
-   const std::shared_ptr<U> fResult;
+   std::shared_ptr<U> fResult;
    Results<U> fAggregators;
 
 public:
@@ -1871,7 +1711,7 @@ public:
 
    std::string GetActionName() { return "Aggregate"; }
 
-   AggregateHelper MakeNew(void *newResult)
+   AggregateHelper MakeNew(void *newResult, std::string_view /*variation*/ = "nominal")
    {
       auto &result = *static_cast<std::shared_ptr<U> *>(newResult);
       return AggregateHelper(fAggregate, fMerge, result, fAggregators.size());

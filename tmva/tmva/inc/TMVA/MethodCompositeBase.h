@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MethodCompositeBase                                                   *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Virtual base class for all MVA method                                     *
@@ -25,7 +25,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_MethodCompositeBase
@@ -64,29 +64,29 @@ namespace TMVA {
       using MethodBase::ReadWeightsFromStream;
 
       // write weights to file
-      void AddWeightsXMLTo( void* parent ) const;
-      void ReadWeightsFromXML( void* wghtnode );
+      void AddWeightsXMLTo( void* parent ) const override;
+      void ReadWeightsFromXML( void* wghtnode ) override;
 
       // calculate the MVA value combining all classifiers according to their fMethodWeight
-      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr );
+      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr ) override;
 
       using MethodBase::GetMvaValue;
 
       // read weights from file
-      void ReadWeightsFromStream( std::istream& istr );
+      void ReadWeightsFromStream( std::istream& istr ) override;
 
       // performs classifier training
-      virtual void Train() = 0;
+      void Train() override = 0;
 
       // create ranking
-      virtual const Ranking* CreateRanking() = 0;
+      const Ranking* CreateRanking() override = 0;
 
       virtual ~MethodCompositeBase( void );
 
    protected:
 
-      void DeclareOptions() = 0;
-      void ProcessOptions() = 0;
+      void DeclareOptions() override = 0;
+      void ProcessOptions() override = 0;
 
       IMethod* GetMethod( const TString& title ) const;  ///< accessor by name
 
@@ -111,7 +111,7 @@ namespace TMVA {
       //the weight of every classifier used in the GetMVA method
       std::vector<Double_t>      fMethodWeight;
 
-      ClassDef(MethodCompositeBase,0);
+      ClassDefOverride(MethodCompositeBase,0);
 
    };
 }

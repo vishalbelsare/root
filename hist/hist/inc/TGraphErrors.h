@@ -30,6 +30,7 @@ protected:
    Double_t    *fEY{nullptr};    ///<[fNpoints] array of Y errors
 
    void       SwapPoints(Int_t pos1, Int_t pos2) override;
+   void       UpdateArrays(const std::vector<Int_t> &sorting_indices, Int_t numSortedPoints, Int_t low) override;
 
    Double_t** Allocate(Int_t size) override;
    void       CopyAndRelease(Double_t **newarrays,
@@ -54,6 +55,7 @@ public:
    TGraphErrors(const TH1 *h);
    TGraphErrors(const char *filename, const char *format="%lg %lg %lg %lg", Option_t *option="");
    ~TGraphErrors() override;
+   virtual void AddPointError(Double_t x, Double_t y, Double_t ex = 0., Double_t ey = 0.);
    void    Apply(TF1 *f) override;
    virtual void    ApplyX(TF1 *f);
    static Int_t    CalculateScanfFields(const char *fmt);

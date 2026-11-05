@@ -20,15 +20,12 @@
 \ingroup Roofitcore
 
 
-RooFracRemainder calculates the remainder fraction of a sum of RooAbsReal
+Calculates the remainder fraction of a sum of RooAbsReal
 fraction, i.e (1 - sum_i a_i). This class is used by RooSimWSTool to
 as specialization of the remainder fraction term of a parameter with
 a constrained split
 **/
 
-
-#include "Riostream.h"
-#include <math.h>
 
 #include "RooFracRemainder.h"
 #include "RooAbsReal.h"
@@ -37,10 +34,9 @@ a constrained split
 #include "RooArgSet.h"
 #include "RooMsgService.h"
 
-using namespace std;
+#include <ostream>
 
-ClassImp(RooFracRemainder);
-
+using std::endl;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor with given set of input fractions. All arguments in sumSet must be of type RooAbsReal.
@@ -52,7 +48,7 @@ RooFracRemainder::RooFracRemainder(const char* name, const char* title, const Ro
   for(RooAbsArg * comp : sumSet) {
     if (!dynamic_cast<RooAbsReal*>(comp)) {
       coutE(InputArguments) << "RooFracRemainder::ctor(" << GetName() << ") ERROR: component " << comp->GetName()
-             << " is not of type RooAbsReal" << endl ;
+             << " is not of type RooAbsReal" << std::endl ;
       RooErrorHandler::softAbort() ;
     }
     _set1.add(*comp) ;

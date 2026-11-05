@@ -28,7 +28,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(MathMore
     Math/GSLSimAnMinimizer.h
     Math/InterpolationTypes.h
     Math/Interpolator.h
-    Math/KelvinFunctions.h
     Math/MCParameters.h
     Math/PdfFuncMathMore.h
     Math/Polynomial.h
@@ -62,7 +61,6 @@ SOURCES
     src/GSLSimAnMinimizer.cxx
     src/GSLSimAnnealing.cxx
     src/Interpolator.cxx
-    src/KelvinFunctions.cxx
     src/MCParameters.cxx
     src/MultiNumGradFunction.cxx
     src/PdfFuncMathMore.cxx
@@ -81,11 +79,8 @@ SOURCES
     Math/LinkDef.h
   DEPENDENCIES
     MathCore
-  BUILTINS
-    GSL
 )
 
-target_include_directories(MathMore SYSTEM PRIVATE ${GSL_INCLUDE_DIR})
-target_link_libraries(MathMore PRIVATE ${GSL_LIBRARIES})
+target_link_libraries(MathMore PRIVATE GSL::gsl GSL::gslcblas)
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

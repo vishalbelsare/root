@@ -19,7 +19,7 @@
 \class RooExpensiveObjectCache
 \ingroup Roofitcore
 
-RooExpensiveObjectCache is a singleton class that serves as repository
+Singleton class that serves as repository
 for objects that are expensive to calculate. Owners of such objects
 can registers these here with associated parameter values for which
 the object is valid, so that other instances can, at a later moment
@@ -35,8 +35,6 @@ retrieve these precalculated objects.
 #include "RooMsgService.h"
 #include <iostream>
 
-ClassImp(RooExpensiveObjectCache);
-ClassImp(RooExpensiveObjectCache::ExpensiveObject);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,8 +42,8 @@ ClassImp(RooExpensiveObjectCache::ExpensiveObject);
 
 RooExpensiveObjectCache::~RooExpensiveObjectCache()
 {
-  for (std::map<TString,ExpensiveObject*>::iterator iter = _map.begin() ; iter!=_map.end() ; ++iter) {
-    delete iter->second ;
+  for (auto& item : _map) {
+    delete item.second;
   }
 }
 
@@ -96,7 +94,7 @@ const TObject* RooExpensiveObjectCache::retrieveObject(const char* name, TClass*
 
   // If no cache element found, return 0 ;
   if (!eo) {
-    return 0 ;
+    return nullptr ;
   }
 
   // If parameters also match, return payload ;
@@ -104,7 +102,7 @@ const TObject* RooExpensiveObjectCache::retrieveObject(const char* name, TClass*
     return eo->payload() ;
   }
 
-  return 0 ;
+  return nullptr ;
 }
 
 
@@ -119,7 +117,7 @@ const TObject* RooExpensiveObjectCache::getObj(Int_t uid)
       return iter->second->payload() ;
     }
   }
-  return 0 ;
+  return nullptr ;
 }
 
 
@@ -172,15 +170,13 @@ void RooExpensiveObjectCache::clearAll()
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Construct ExpensiveObject oject for inPayLoad and store reference values
+/// Construct ExpensiveObject object for inPayLoad and store reference values
 /// for all RooAbsReal and RooAbsCategory parameters in params.
 
-RooExpensiveObjectCache::ExpensiveObject::ExpensiveObject(Int_t uidIn, const char* inOwnerName, TObject& inPayload, RooArgSet const& params)
+RooExpensiveObjectCache::ExpensiveObject::ExpensiveObject(Int_t uidIn, const char *inOwnerName, TObject &inPayload,
+                                                          RooArgSet const &params)
+   : _uid(uidIn), _payload(&inPayload), _ownerName(inOwnerName)
 {
-  _uid = uidIn ;
-  _ownerName = inOwnerName;
-
-  _payload = &inPayload ;
 
   for(RooAbsArg * arg : params) {
     RooAbsReal* real = dynamic_cast<RooAbsReal*>(arg) ;
@@ -202,13 +198,13 @@ RooExpensiveObjectCache::ExpensiveObject::ExpensiveObject(Int_t uidIn, const cha
 
 ////////////////////////////////////////////////////////////////////////////////
 
-RooExpensiveObjectCache::ExpensiveObject::ExpensiveObject(Int_t uidIn, const ExpensiveObject& other) :
-  _uid(uidIn),
-  _realRefParams(other._realRefParams),
-  _catRefParams(other._catRefParams),
-  _ownerName(other._ownerName)
+RooExpensiveObjectCache::ExpensiveObject::ExpensiveObject(Int_t uidIn, const ExpensiveObject &other)
+   : _uid(uidIn),
+     _payload(other._payload->Clone()),
+     _realRefParams(other._realRefParams),
+     _catRefParams(other._catRefParams),
+     _ownerName(other._ownerName)
 {
-  _payload = other._payload->Clone() ;
 }
 
 
@@ -237,7 +233,7 @@ bool RooExpensiveObjectCache::ExpensiveObject::matches(TClass* tc, const RooArgS
   for(RooAbsArg * arg : params) {
     RooAbsReal* real = dynamic_cast<RooAbsReal*>(arg) ;
     if (real) {
-      if (fabs(real->getVal()-_realRefParams[real->GetName()])>1e-12) {
+      if (std::abs(real->getVal()-_realRefParams[real->GetName()])>1e-12) {
    return false ;
       }
     } else {
@@ -273,7 +269,7 @@ void RooExpensiveObjectCache::print() const
 void RooExpensiveObjectCache::ExpensiveObject::print() const
 {
   std::cout << _payload->ClassName() << "::" << _payload->GetName() ;
-  if (_realRefParams.size()>0 || _catRefParams.size()>0) {
+  if (!_realRefParams.empty() || !_catRefParams.empty()) {
     std::cout << " parameters=( " ;
     auto iter = _realRefParams.begin() ;
     while(iter!=_realRefParams.end()) {

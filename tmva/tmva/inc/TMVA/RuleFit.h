@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : RuleFit                                                               *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      A class implementing various fits of rule ensembles                       *
@@ -21,7 +21,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_RuleFit
@@ -170,7 +170,7 @@ namespace TMVA {
       const MethodBase                   *fMethodBase;      ///< pointer the method base which initialized this RuleFit instance
       Bool_t                              fVisHistsUseImp;  ///< if true, use importance as weight; else coef in vis hists
 
-      mutable MsgLogger*                  fLogger;   ///< message logger
+      mutable MsgLogger*                  fLogger;   ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
 
       static const Int_t randSEED = 0; // set to 1 for debugging purposes or to zero for random seeds

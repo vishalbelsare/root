@@ -41,3 +41,8 @@ ROOT_STANDARD_LIBRARY_PACKAGE(TreeViewer
     Gui
     TreePlayer
 )
+if(ROOT_NEED_STDCXXFS)
+  target_link_libraries(TreeViewer PUBLIC stdc++fs)
+endif()
+# Suppress deprecation warnings across compilation units and during dictionary generation, remove with HelpTextTV.h
+target_compile_definitions(TreeViewer PRIVATE ROOT_HelpTextTV_cxx)

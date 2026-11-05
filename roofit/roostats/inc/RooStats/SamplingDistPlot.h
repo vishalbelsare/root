@@ -20,6 +20,7 @@
 #include "TLegend.h"
 #include "TList.h"
 
+#include <limits>
 #include <vector>
 
 #include "RooStats/SamplingDistribution.h"
@@ -59,15 +60,15 @@ namespace RooStats {
     /// Applies a predefined style if fApplyStyle is true (default).
     void ApplyDefaultStyle(void);
 
-    void SetLineColor(Color_t color, const SamplingDistribution *samplDist = nullptr);
-    void SetLineWidth(Width_t lwidth, const SamplingDistribution *samplDist = nullptr);
-    void SetLineStyle(Style_t style, const SamplingDistribution *samplDist = nullptr);
+    void SetLineColor(Color_t color, const SamplingDistribution *sampleDist = nullptr);
+    void SetLineWidth(Width_t lwidth, const SamplingDistribution *sampleDist = nullptr);
+    void SetLineStyle(Style_t style, const SamplingDistribution *sampleDist = nullptr);
 
-    void SetMarkerColor(Color_t color, const SamplingDistribution *samplDist = nullptr);
-    void SetMarkerStyle(Style_t style, const SamplingDistribution *samplDist = nullptr);
-    void SetMarkerSize(Size_t size, const SamplingDistribution *samplDist = nullptr);
+    void SetMarkerColor(Color_t color, const SamplingDistribution *sampleDist = nullptr);
+    void SetMarkerStyle(Style_t style, const SamplingDistribution *sampleDist = nullptr);
+    void SetMarkerSize(Size_t size, const SamplingDistribution *sampleDist = nullptr);
 
-    void RebinDistribution(Int_t rebinFactor, const SamplingDistribution *samplDist = nullptr);
+    void RebinDistribution(Int_t rebinFactor, const SamplingDistribution *sampleDist = nullptr);
 
     void SetAxisTitle(char *varName) { fVarName = TString(varName); }
 
@@ -79,8 +80,8 @@ namespace RooStats {
     /// Intended use: Access to member functions of TH1F like GetMean(),
     /// GetRMS() etc.
     /// The return objects is managed by  SamplingDistPlot
-    TH1F* GetTH1F(const SamplingDistribution *samplDist = nullptr);
-    TH1 * GetHistogram(const SamplingDistribution *samplDist = nullptr) { return GetTH1F(samplDist); }
+    TH1F* GetTH1F(const SamplingDistribution *sampleDist = nullptr);
+    TH1 * GetHistogram(const SamplingDistribution *sampleDist = nullptr) { return GetTH1F(sampleDist); }
 
     /// return plotter class used to draw the sampling distribution histograms
     /// object is managed by SamplingDistPlot
@@ -103,29 +104,32 @@ namespace RooStats {
     std::vector<double> fSamplingDistr;
     std::vector<double> fSampleWeights;
 
-    bool fIsWeighted;
+    bool fIsWeighted = false;
 
     Int_t fBins;
-    Int_t fMarkerType;
-    Int_t fColor;
+    Int_t fMarkerType = 20;
+    Int_t fColor = 1;
 
     TString fVarName;
 
   protected:
 
-    TH1F* fHist;
-    TLegend *fLegend;
+    TH1F* fHist = nullptr;
+    TLegend *fLegend = nullptr;
 
     TList fItems;       ///< holds TH1Fs only
     TList fOtherItems;  ///< other objects to be drawn like TLine etc.
-    RooPlot* fRooPlot;
-    bool fLogXaxis;
-    bool fLogYaxis;
+    RooPlot* fRooPlot = nullptr;
+    bool fLogXaxis = false;
+    bool fLogYaxis = false;
 
-    double fXMin, fXMax, fYMin, fYMax;
+    double fXMin = std::numeric_limits<float>::quiet_NaN();
+    double fXMax = std::numeric_limits<float>::quiet_NaN();
+    double fYMin = std::numeric_limits<float>::quiet_NaN();
+    double fYMax = std::numeric_limits<float>::quiet_NaN();
 
-    bool fApplyStyle;
-    Style_t fFillStyle;
+    bool fApplyStyle = true;
+    Style_t fFillStyle = 3004;
 
     void SetSampleWeights(const SamplingDistribution *samplingDist);
 

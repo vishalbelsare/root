@@ -11,7 +11,7 @@
 ################################################################################
 
 
-from ._utils import _kwargs_to_roocmdargs, cpp_signature, _dict_to_std_map
+from ._utils import _dict_to_flat_map, _kwargs_to_roocmdargs, cpp_signature
 
 
 class RooSimultaneous(object):
@@ -27,6 +27,8 @@ class RooSimultaneous(object):
     \endcode
     """
 
+    __cpp_name__ = 'RooSimultaneous'
+
     @cpp_signature(
         "RooSimultaneous(const char *name, const char *title,"
         "                std::map<std::string,RooAbsPdf*> pdfMap, RooAbsCategoryLValue& inIndexCat) ;"
@@ -37,16 +39,16 @@ class RooSimultaneous(object):
         """
         if len(args) >= 3 and isinstance(args[2], dict):
             args = list(args)
-            args[2] = _dict_to_std_map(args[2], {"std::string": "RooAbsPdf*"})
+            args[2] = _dict_to_flat_map(args[2], {"std::string": "RooAbsPdf*"})
         self._init(*args)
 
     @cpp_signature(
         "RooPlot *RooSimultaneous::plotOn(RooPlot* frame,"
-        "    const RooCmdArg& arg1            , const RooCmdArg& arg2=RooCmdArg(),"
-        "    const RooCmdArg& arg3=RooCmdArg(), const RooCmdArg& arg4=RooCmdArg(),"
-        "    const RooCmdArg& arg5=RooCmdArg(), const RooCmdArg& arg6=RooCmdArg(),"
-        "    const RooCmdArg& arg7=RooCmdArg(), const RooCmdArg& arg8=RooCmdArg(),"
-        "    const RooCmdArg& arg9=RooCmdArg(), const RooCmdArg& arg10=RooCmdArg()) const;"
+        "    const RooCmdArg& arg1            , const RooCmdArg& arg2={},"
+        "    const RooCmdArg& arg3={}, const RooCmdArg& arg4={},"
+        "    const RooCmdArg& arg5={}, const RooCmdArg& arg6={},"
+        "    const RooCmdArg& arg7={}, const RooCmdArg& arg8={},"
+        "    const RooCmdArg& arg9={}, const RooCmdArg& arg10={}) const;"
     )
     def plotOn(self, *args, **kwargs):
         r"""The RooSimultaneous::plotOn() function is pythonized with the command argument pythonization.

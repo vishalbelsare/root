@@ -80,7 +80,7 @@ private:
 
 public:
    REveDataItemList(const std::string& n = "Items", const std::string& t = "");
-   virtual ~REveDataItemList() {}
+   ~REveDataItemList() override {}
    Int_t WriteCoreJson(nlohmann::json &cj, Int_t rnr_offset) override;
 
    virtual void ItemChanged(REveDataItem *item);
@@ -116,6 +116,7 @@ class REveDataCollection : public REveElement
 {
 private:
    REveDataItemList* fItemList{nullptr};
+   int      fLayer{0};
 
 public:
    typedef std::vector<int> Ids_t;
@@ -127,19 +128,22 @@ public:
    std::function<bool(void *)> fFilterFoo = [](void *) { return true; };
 
    REveDataCollection(const std::string& n = "REveDataCollection", const std::string& t = "");
-   virtual ~REveDataCollection() {}
+   ~REveDataCollection() override {}
 
    void ReserveItems(Int_t items_size) { fItemList->fItems.reserve(items_size); }
    void AddItem(void *data_ptr, const std::string& n, const std::string& t);
-   void ClearItems() { fItemList->fItems.clear(); }
+   void ClearItems();
 
    Bool_t SingleRnrState() const override { return kTRUE; }
    Bool_t SetRnrState(Bool_t) override;
 
 
    TClass *GetItemClass() const { return fItemClass; }
-   void SetItemClass(TClass *cls) { fItemClass = cls;
-  }
+   void SetItemClass(TClass *cls) { fItemClass = cls;}
+
+   int GetLayer() const { return fLayer; }
+   void SetLayer(int i) { fLayer = i; }
+
    REveDataItemList* GetItemList() {return fItemList;}
 
    void SetFilterExpr(const char* filter);

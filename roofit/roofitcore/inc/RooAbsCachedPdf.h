@@ -57,6 +57,7 @@ public:
   Int_t getAnalyticalIntegralWN(RooArgSet& allVars, RooArgSet& analVars, const RooArgSet* normSet, const char* rangeName=nullptr) const override ;
   double analyticalIntegralWN(Int_t code, const RooArgSet* normSet, const char* rangeName=nullptr) const override ;
 
+  std::unique_ptr<RooAbsArg> compileForNormSet(RooArgSet const &normSet, RooFit::Detail::CompileContext & ctx) const override;
 
   class PdfCacheElem : public RooAbsCacheElement {
   public:
@@ -70,6 +71,7 @@ public:
     RooDataHist* hist() { return _hist.get() ; }
     const RooArgSet& nset() { return _nset ; }
     RooChangeTracker* paramTracker() { return _paramTracker.get() ; }
+    void setUnitNorm() { pdf()->setUnitNorm(true); }
 
   private:
     // Payload
@@ -81,9 +83,11 @@ public:
 
   } ;
 
+  using CacheElem = PdfCacheElem;
+
   protected:
 
-  void computeBatch(cudaStream_t*, double* output, size_t size, RooFit::Detail::DataMap const&) const override;
+  void doEval(RooFit::EvalContext &) const override;
 
   PdfCacheElem* getCache(const RooArgSet* nset, bool recalculate=true) const ;
 
@@ -99,12 +103,12 @@ public:
     return new PdfCacheElem(*this,nset) ;
   }
   virtual const char* inputBaseName() const = 0 ;
-  virtual RooArgSet* actualObservables(const RooArgSet& nset) const = 0 ;
-  virtual RooArgSet* actualParameters(const RooArgSet& nset) const = 0 ;
+  virtual RooFit::OwningPtr<RooArgSet> actualObservables(const RooArgSet& nset) const = 0 ;
+  virtual RooFit::OwningPtr<RooArgSet> actualParameters(const RooArgSet& nset) const = 0 ;
   virtual RooAbsArg& pdfObservable(RooAbsArg& histObservable) const { return histObservable ; }
   virtual void fillCacheObject(PdfCacheElem& cache) const = 0 ;
 
-  mutable RooObjCacheManager _cacheMgr ; //! The cache manager
+  mutable RooObjCacheManager _cacheMgr ; ///<! The cache manager
   Int_t _ipOrder ; // Interpolation order for cache histograms
 
   std::string cacheNameSuffix(const RooArgSet& nset) const ;
@@ -129,6 +133,14 @@ public:
 private:
 
   bool _disableCache = false; ///< Flag to run object in passthrough (= non-caching mode)
+
+  /// Pinned at compileForNormSet() time on the cloned cache pdf, so that
+  /// doEval() looks up the same _cacheMgr slot that getAnalyticalIntegralWN()
+  /// populates while the surrounding RooNormalizedPdf is being constructed.
+  /// Without this, the two paths used different (or null) keys and the cache
+  /// was rebuilt on the first Evaluator step of every fit.
+  mutable RooArgSet _compiledNormSet;       ///<! stable normalization set for the compiled clone
+  mutable bool _hasCompiledNormSet = false; ///<! whether _compiledNormSet has been populated
 
   ClassDefOverride(RooAbsCachedPdf,2) // Abstract base class for cached p.d.f.s
 };

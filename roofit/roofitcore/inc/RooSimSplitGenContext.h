@@ -48,13 +48,13 @@ protected:
   RooSimSplitGenContext(const RooSimSplitGenContext& other) ;
 
   RooAbsCategoryLValue* _idxCat ;           ///< Clone of index category
-  RooArgSet*            _idxCatSet ;        ///< Owner of index category components
+  RooArgSet             _idxCatSet ;        ///< Owner of index category components
   const RooSimultaneous *_pdf ;             ///< Original PDF
   std::vector<RooAbsGenContext*> _gcList ;  ///< List of component generator contexts
   std::vector<int>               _gcIndex ; ///< Index value corresponding to component
   TString _idxCatName ;                     ///< Name of index category
   Int_t _numPdf ;                           ///< Number of generated PDFs
-  double* _fracThresh ;                   ///< fraction thresholds
+  bool _expectedData = false;               ///< Asimov?
 
   RooArgSet _allVarsPdf ; ///< All pdf variables
 

@@ -30,17 +30,16 @@ See TTree::AddFriend for more information.
 #include "TROOT.h"
 #include "TChain.h"
 
-ClassImp(TFriendElement);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor for a friend element.
 
 TFriendElement::TFriendElement() : TNamed()
 {
-   fFile       = 0;
-   fTree       = 0;
-   fOwnFile    = kFALSE;
-   fParentTree = 0;
+   fFile       = nullptr;
+   fTree       = nullptr;
+   fOwnFile    = false;
+   fParentTree = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,15 +51,18 @@ TFriendElement::TFriendElement() : TNamed()
 TFriendElement::TFriendElement(TTree *tree, const char *treename, const char *filename)
     :TNamed(treename,filename)
 {
-   fFile       = 0;
-   fTree       = 0;
-   fOwnFile    = kTRUE;
+   fFile       = nullptr;
+   fTree       = nullptr;
+   fOwnFile    = true;
    fParentTree = tree;
    fTreeName   = treename;
    if (treename && strchr(treename,'=')) {
       char *temp = Compress(treename);
       char *equal = strchr(temp,'=');
-      if (!equal) return;;
+      if (!equal) {
+         delete [] temp;
+         return;
+      }
       *equal=0;
       fTreeName = equal+1;
       SetName(temp);
@@ -81,8 +83,8 @@ TFriendElement::TFriendElement(TTree *tree, const char *treename, TFile *file)
     :TNamed(treename,file?file->GetName():"")
 {
    fFile       = file;
-   fTree       = 0;
-   fOwnFile    = kFALSE;
+   fTree       = nullptr;
+   fOwnFile    = false;
    fParentTree = tree;
    fTreeName   = treename;
    if (fParentTree && fParentTree->GetDirectory()
@@ -94,7 +96,10 @@ TFriendElement::TFriendElement(TTree *tree, const char *treename, TFile *file)
    if (treename && strchr(treename,'=')) {
       char *temp = Compress(treename);
       char *equal = strchr(temp,'=');
-      if (!equal) return;;
+      if (!equal) {
+         delete [] temp;
+         return;
+      }
       *equal=0;
       fTreeName = equal+1;
       SetName(temp);
@@ -119,8 +124,8 @@ TFriendElement::TFriendElement(TTree *tree, TTree* friendtree, const char *alias
 {
    fTree       = friendtree;
    fTreeName   = "";
-   fFile       = 0;
-   fOwnFile    = kFALSE;
+   fFile       = nullptr;
+   fOwnFile    = false;
    fParentTree = tree;
    if (fTree) {
       fTreeName   = fTree->GetName();
@@ -174,9 +179,9 @@ TTree *TFriendElement::DisConnect()
    if (fTree)
       fTree->RemoveExternalFriend(this);
    if (fOwnFile) delete fFile;
-   fFile = 0;
-   fTree = 0;
-   return 0;
+   fFile = nullptr;
+   fTree = nullptr;
+   return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -189,18 +194,18 @@ TFile *TFriendElement::GetFile()
    if (strlen(GetTitle())) {
       TDirectory::TContext ctxt;
       fFile = TFile::Open(GetTitle());
-      fOwnFile = kTRUE;
+      fOwnFile = true;
    } else {
       TDirectory *dir = fParentTree->GetDirectory();
       if (dir) {
          fFile = dir->GetFile();
-         fOwnFile = kFALSE;
+         fOwnFile = false;
       }
    }
    if (fFile && fFile->IsZombie()) {
       MakeZombie();
       delete fFile;
-      fFile = 0;
+      fFile = nullptr;
    }
    return fFile;
 }

@@ -169,7 +169,7 @@ bool Popen(const std::string& Cmd, llvm::SmallVectorImpl<char>& Buf, bool RdE) {
 }
 
 bool GetSystemLibraryPaths(llvm::SmallVectorImpl<std::string>& Paths) {
-#if defined(__APPLE__) || defined(__CYGWIN__)
+#if defined(__APPLE__) || defined(__CYGWIN__) || defined(R__FBSD)
   Paths.push_back("/usr/local/lib/");
   Paths.push_back("/usr/X11R6/lib/");
   Paths.push_back("/usr/lib/");
@@ -182,6 +182,19 @@ bool GetSystemLibraryPaths(llvm::SmallVectorImpl<std::string>& Paths) {
   Paths.push_back("/lib64/");
  #endif
 #else
+  // Power-user mode: See if the result of this query is cached/provided in env
+  // variable to avoid sys-calls and spawning processes
+  auto ldsyspath = std::getenv("CLING_LDSYSPATH");
+  if (ldsyspath != nullptr) {
+    std::string SysPath(ldsyspath);
+    llvm::SmallVector<llvm::StringRef, 10> CurPaths;
+    SplitPaths(SysPath, CurPaths);
+    for (const auto& Path : CurPaths) {
+      Paths.push_back(Path.str());
+    }
+    return true;
+  }
+
   llvm::SmallString<1024> Buf;
   platform::Popen("LD_DEBUG=libs LD_PRELOAD=DOESNOTEXIST ls", Buf, true);
   const llvm::StringRef Result = Buf.str();
@@ -195,7 +208,7 @@ bool GetSystemLibraryPaths(llvm::SmallVectorImpl<std::string>& Paths) {
       From += 12;
       while (To > From && isspace(Result[To - 1]))
         --To;
-      std::string SysPath = Result.substr(From, To - From);
+      std::string SysPath = Result.substr(From, To-From).str();
       SysPath.erase(std::remove_if(SysPath.begin(), SysPath.end(), isspace),
                     SysPath.end());
 

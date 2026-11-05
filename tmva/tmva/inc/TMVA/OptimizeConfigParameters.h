@@ -2,7 +2,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : OptimizeConfigParameters                                              *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description: The OptimizeConfigParameters takes care of "scanning/fitting"     *
  *              different tuning parameters in order to find the best set of      *
@@ -65,7 +65,7 @@ namespace TMVA {
       void optimizeScan();
       void optimizeFit();
 
-      Double_t EstimatorFunction( std::vector<Double_t> & );
+      Double_t EstimatorFunction( std::vector<Double_t> & ) override;
 
       Double_t GetFOM();
 
@@ -94,10 +94,10 @@ namespace TMVA {
 
       Bool_t           fNotDoneYet; ///<flat to indicate of Method Transformations have been obtained yet or not (normally done in MethodBase::TrainMethod)
 
-      mutable MsgLogger*         fLogger;   ///< message logger
+      mutable MsgLogger*         fLogger;   ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
 
-      ClassDef(OptimizeConfigParameters,0); // Interface to different separation criteria used in training algorithms
+      ClassDefOverride(OptimizeConfigParameters,0); // Interface to different separation criteria used in training algorithms
    };
 } // namespace TMVA
 

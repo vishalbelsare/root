@@ -1,12 +1,12 @@
- /*****************************************************************************
-  * Project: RooFit                                                           *
-  * @(#)root/roofit:$Id$ *
-  *                                                                           *
-  * RooFit Lognormal PDF                                                      *
-  *                                                                           *
-  * Author: Gregory Schott and Stefan Schmitz                                 *
-  *                                                                           *
-  *****************************************************************************/
+/*****************************************************************************
+ * Project: RooFit                                                           *
+ * @(#)root/roofit:$Id$ *
+ *                                                                           *
+ * RooFit Lognormal PDF                                                      *
+ *                                                                           *
+ * Author: Gregory Schott and Stefan Schmitz                                 *
+ *                                                                           *
+ *****************************************************************************/
 
 /** \class RooLognormal
     \ingroup Roofit
@@ -16,8 +16,8 @@ RooFit Lognormal PDF. The two parameters are:
   - `k = exp(sigma)`: sigma is called the shape parameter in the TMath parameterization
 
 \f[
-  \mathrm{RooLognormal}(x \, | \, m_0, k) = \frac{1}{\sqrt{2\pi \cdot \ln(k) \cdot x}} \cdot \exp\left( \frac{-\ln^2(\frac{x}{m_0})}{2 \ln^2(k)} \right)
-\f]
+  \mathrm{RooLognormal}(x \, | \, m_0, k) = \frac{1}{\sqrt{2\pi \cdot \ln(k) \cdot x}} \cdot \exp\left(
+\frac{-\ln^2(\frac{x}{m_0})}{2 \ln^2(k)} \right) \f]
 
 The parameterization here is physics driven and differs from the ROOT::Math::lognormal_pdf() in `x,m,s,x0` with:
   - `m = log(m0)`
@@ -27,39 +27,42 @@ The parameterization here is physics driven and differs from the ROOT::Math::log
 
 #include "RooLognormal.h"
 #include "RooRandom.h"
-#include "RooMath.h"
 #include "RooHelpers.h"
 #include "RooBatchCompute.h"
 
 #include <Math/PdfFuncMathCore.h>
 
-ClassImp(RooLognormal);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-RooLognormal::RooLognormal(const char *name, const char *title,
-          RooAbsReal& _x, RooAbsReal& _m0,
-          RooAbsReal& _k) :
-  RooAbsPdf(name,title),
-  x("x","Observable",this,_x),
-  m0("m0","m0",this,_m0),
-  k("k","k",this,_k)
+RooLognormal::RooLognormal(const char *name, const char *title, RooAbsReal &_x, RooAbsReal &_m0, RooAbsReal &_k,
+                           bool useStandardParametrization)
+   : RooAbsPdf{name, title},
+     x{"x", "Observable", this, _x},
+     m0{"m0", "m0", this, _m0},
+     k{"k", "k", this, _k},
+     _useStandardParametrization{useStandardParametrization}
 {
-    RooHelpers::checkRangeOfParameters(this, {&_x, &_m0, &_k}, 0.);
+   RooHelpers::checkRangeOfParameters(this, {&_x, &_m0, &_k}, 0.);
 
-    auto par = dynamic_cast<const RooAbsRealLValue*>(&_k);
-    if (par && par->getMin()<=1 && par->getMax()>=1 ) {
+   auto par = dynamic_cast<const RooAbsRealLValue *>(&_k);
+   const double unsafeValue = useStandardParametrization ? 0.0 : 1.0;
+   if (par && par->getMin() <= unsafeValue && par->getMax() >= unsafeValue) {
       coutE(InputArguments) << "The parameter '" << par->GetName() << "' with range [" << par->getMin("") << ", "
-          << par->getMax() << "] of the " << this->ClassName() << " '" << this->GetName()
-          << "' can reach the unsafe value 1.0 " << ". Advise to limit its range." << std::endl;
-    }
+                            << par->getMax() << "] of the " << this->ClassName() << " '" << this->GetName()
+                            << "' can reach the unsafe value " << unsafeValue << " "
+                            << ". Advise to limit its range." << std::endl;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-RooLognormal::RooLognormal(const RooLognormal& other, const char* name) :
-  RooAbsPdf(other,name), x("x",this,other.x), m0("m0",this,other.m0),
-  k("k",this,other.k)
+RooLognormal::RooLognormal(const RooLognormal &other, const char *name)
+   : RooAbsPdf(other, name),
+     x("x", this, other.x),
+     m0("m0", this, other.m0),
+     k{"k", this, other.k},
+     _useStandardParametrization{other._useStandardParametrization}
 {
 }
 
@@ -71,66 +74,64 @@ RooLognormal::RooLognormal(const RooLognormal& other, const char* name) :
 
 double RooLognormal::evaluate() const
 {
-  double ln_k = TMath::Abs(TMath::Log(k));
-  double ln_m0 = TMath::Log(m0);
+   const double ln_k = std::abs(_useStandardParametrization ? k : std::log(k));
+   const double ln_m0 = _useStandardParametrization ? m0 : std::log(m0);
 
-  double ret = ROOT::Math::lognormal_pdf(x,ln_m0,ln_k);
-  return ret ;
+   return ROOT::Math::lognormal_pdf(x, ln_m0, ln_k);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute multiple values of Lognormal distribution.
-void RooLognormal::computeBatch(cudaStream_t* stream, double* output, size_t nEvents, RooFit::Detail::DataMap const& dataMap) const
+void RooLognormal::doEval(RooFit::EvalContext &ctx) const
 {
-  auto dispatch = stream ? RooBatchCompute::dispatchCUDA : RooBatchCompute::dispatchCPU;
-  dispatch->compute(stream, RooBatchCompute::Lognormal, output, nEvents,
-          {dataMap.at(x), dataMap.at(m0), dataMap.at(k)});
+   auto computer = _useStandardParametrization ? RooBatchCompute::LognormalStandard : RooBatchCompute::Lognormal;
+   RooBatchCompute::compute(ctx.config(this), computer, ctx.output(),
+                            {ctx.at(x), ctx.at(m0), ctx.at(k)});
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Int_t RooLognormal::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* /*rangeName*/) const
+Int_t RooLognormal::getAnalyticalIntegral(RooArgSet &allVars, RooArgSet &analVars, const char * /*rangeName*/) const
 {
-  if (matchArgs(allVars,analVars,x)) return 1 ;
-  return 0 ;
+   return matchArgs(allVars, analVars, x) ? 1 : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-double RooLognormal::analyticalIntegral(Int_t code, const char* rangeName) const
+double RooLognormal::analyticalIntegral(Int_t /*code*/, const char *rangeName) const
 {
-  R__ASSERT(code==1) ;
+   static const double root2 = std::sqrt(2.);
 
-  static const double root2 = sqrt(2.) ;
-
-  double ln_k = TMath::Abs(TMath::Log(k));
-  double ret = 0.5*( RooMath::erf( TMath::Log(x.max(rangeName)/m0)/(root2*ln_k) ) - RooMath::erf( TMath::Log(x.min(rangeName)/m0)/(root2*ln_k) ) ) ;
-
-  return ret ;
+   double ln_k = std::abs(_useStandardParametrization ? k : std::log(k));
+   const double xMin = std::max(x.min(rangeName), 0.);
+   const double xMax = x.max(rangeName);
+   double scaledMax = _useStandardParametrization ? std::log(xMax) - m0 : std::log(xMax / m0);
+   double scaledMin = _useStandardParametrization ? std::log(xMin) - m0 : std::log(xMin / m0);
+   return 0.5 * (std::erf(scaledMax / (root2 * ln_k)) - std::erf(scaledMin / (root2 * ln_k)));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Int_t RooLognormal::getGenerator(const RooArgSet& directVars, RooArgSet &generateVars, bool /*staticInitOK*/) const
+Int_t RooLognormal::getGenerator(const RooArgSet &directVars, RooArgSet &generateVars, bool /*staticInitOK*/) const
 {
-  if (matchArgs(directVars,generateVars,x)) return 1 ;
-  return 0 ;
+   return matchArgs(directVars, generateVars, x) ? 1 : 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RooLognormal::generateEvent(Int_t code)
+void RooLognormal::generateEvent(Int_t /*code*/)
 {
-  R__ASSERT(code==1) ;
+   const double ln_k = std::abs(_useStandardParametrization ? k : std::log(k));
+   const double ln_m0 = _useStandardParametrization ? m0 : std::log(m0);
 
-  double xgen ;
-  while(1) {
-    xgen = TMath::Exp(RooRandom::randomGenerator()->Gaus(TMath::Log(m0),TMath::Log(k)));
-    if (xgen<=x.max() && xgen>=x.min()) {
-      x = xgen ;
-      break;
-    }
-  }
+   double xgen;
+   while (true) {
+      xgen = std::exp(RooRandom::randomGenerator()->Gaus(ln_m0, ln_k));
+      if (xgen <= x.max() && xgen >= x.min()) {
+         x = xgen;
+         break;
+      }
+   }
 
-  return;
+   return;
 }

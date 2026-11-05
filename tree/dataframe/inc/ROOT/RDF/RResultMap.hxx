@@ -52,10 +52,45 @@ MakeResultMap(std::shared_ptr<T> nominalResult, std::vector<std::shared_ptr<T>> 
    return ROOT::RDF::Experimental::RResultMap<T>(std::move(nominalResult), std::move(variedResults), std::move(keys),
                                                  lm, std::move(nominalAction), std::move(variedAction));
 }
+
+/**
+ * \brief Clones an RResultMap and its corresponding RVariedAction
+ *
+ * \tparam T The type of the results held by the map.
+ * \param inmap The map.
+ * \return ROOT::RDF::Experimental::RResultMap<T> A new map with the cloned variations.
+ */
+template <typename T>
+ROOT::RDF::Experimental::RResultMap<T> CloneResultAndAction(const ROOT::RDF::Experimental::RResultMap<T> &inmap)
+{
+   std::shared_ptr<T> nominalResult{inmap.fMap.at("nominal")};
+   auto nominalAction{inmap.fNominalAction->CloneAction(reinterpret_cast<void *>(&nominalResult))};
+
+   std::size_t nVariations{inmap.fMap.size() - 1};
+   std::vector<std::shared_ptr<T>> variedResults;
+   variedResults.reserve(nVariations);
+   for (auto i = 0u; i < nVariations; ++i)
+      variedResults.emplace_back(new T{*nominalResult});
+
+   std::vector<void *> typeErasedResults;
+   typeErasedResults.reserve(nVariations);
+   for (auto &res : variedResults)
+      typeErasedResults.push_back(&res);
+   auto variedAction{inmap.fVariedAction->CloneAction(reinterpret_cast<void *>(&typeErasedResults))};
+
+   std::vector<std::string> variationNames{inmap.fKeys};
+   Erase<std::string>("nominal", variationNames);
+
+   return ROOT::RDF::Experimental::RResultMap<T>(std::move(nominalResult), std::move(variedResults),
+                                                 std::move(variationNames), *(inmap.fLoopManager),
+                                                 std::move(nominalAction), std::move(variedAction));
+}
 } // namespace RDF
 } // namespace Internal
 
 namespace RDF {
+
+class RResultHandle;
 
 namespace Experimental {
 
@@ -75,15 +110,17 @@ class RResultMap {
                                          std::shared_ptr<ROOT::Internal::RDF::RActionBase> nominalAction,
                                          std::shared_ptr<ROOT::Internal::RDF::RActionBase> variedAction);
 
+   friend RResultMap ROOT::Internal::RDF::CloneResultAndAction<T>(const RResultMap<T> &inmap);
    friend std::unique_ptr<ROOT::Detail::RDF::RMergeableVariations<T>>
    ROOT::Detail::RDF::GetMergeableValue<T>(RResultMap<T> &rmap);
+   friend class ::ROOT::RDF::RResultHandle;
 
    // The preconditions are that results and keys have the same size, are ordered the same way, and keys are unique.
    RResultMap(std::shared_ptr<T> &&nominalResult, std::vector<std::shared_ptr<T>> &&variedResults,
               std::vector<std::string> &&keys, ROOT::Detail::RDF::RLoopManager &lm,
               std::shared_ptr<ROOT::Internal::RDF::RActionBase> nominalAction,
               std::shared_ptr<ROOT::Internal::RDF::RActionBase> variedAction)
-      : fKeys{ROOT::Internal::RDF::Union({"nominal"}, keys)}, fLoopManager(&lm),
+      : fKeys{ROOT::Internal::RDF::Union({std::string("nominal")}, keys)}, fLoopManager(&lm),
         fNominalAction(std::move(nominalAction)), fVariedAction(std::move(variedAction))
    {
       R__ASSERT(variedResults.size() == keys.size() && "Keys and values have different sizes!");
@@ -174,17 +211,16 @@ template <typename T>
 std::unique_ptr<RMergeableVariations<T>> GetMergeableValue(ROOT::RDF::Experimental::RResultMap<T> &rmap)
 {
    rmap.RunEventLoopIfNeeded();
-
-   std::unique_ptr<RMergeableVariationsBase> mVariationsBase;
    if (rmap.fVariedAction != nullptr) {
-      auto mValueBase = rmap.fVariedAction->GetMergeableValue();
-      mVariationsBase.reset(static_cast<RMergeableVariationsBase *>(mValueBase.release())); // downcast unique_ptr
+      std::unique_ptr<RMergeableVariationsBase> mVariationsBase{
+         static_cast<RMergeableVariationsBase *>(rmap.fVariedAction->GetMergeableValue().release())};
+      mVariationsBase->AddNominal(rmap.fNominalAction->GetMergeableValue());
+      return std::make_unique<RMergeableVariations<T>>(std::move(*mVariationsBase));
    } else {
-      mVariationsBase = std::unique_ptr<RMergeableVariationsBase>({}, {});
+      auto ret = std::make_unique<RMergeableVariations<T>>();
+      ret->AddNominal(rmap.fNominalAction->GetMergeableValue());
+      return ret;
    }
-   mVariationsBase->AddNominal(rmap.fNominalAction->GetMergeableValue());
-
-   return std::make_unique<RMergeableVariations<T>>(std::move(*mVariationsBase));
 }
 } // namespace RDF
 } // namespace Detail

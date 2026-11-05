@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : KDEKernel                                                             *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      The Probability Density Functions (PDFs) used for the Likelihood analysis *
@@ -23,7 +23,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_KDEKernel
@@ -85,7 +85,7 @@ namespace TMVA {
       Bool_t        fHiddenIteration;   ///< Defines if whats currently running is the
       // (first) hidden iteration when doing adaptive KDE
 
-      mutable MsgLogger* fLogger;       ///< message logger
+      mutable MsgLogger* fLogger;       ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
 
       ClassDef(KDEKernel,0); // Kernel density estimator for PDF smoothing

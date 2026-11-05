@@ -24,19 +24,30 @@ class RooRealVar;
 
 class RooKeysPdf : public RooAbsPdf {
 public:
-  enum Mirror { NoMirror, MirrorLeft, MirrorRight, MirrorBoth,
-      MirrorAsymLeft, MirrorAsymLeftRight,
-      MirrorAsymRight, MirrorLeftAsymRight,
-      MirrorAsymBoth };
+  /// Boundary correction obtained by reflecting the data across the lower
+  /// and/or upper edge of the observable range. Symmetric mirroring adds the
+  /// reflected events (density flat at the boundary), asymmetric mirroring
+  /// subtracts them (density vanishing at the boundary).
+  enum Mirror {
+     NoMirror,            ///< No boundary correction
+     MirrorLeft,          ///< Symmetric mirror at the lower edge
+     MirrorRight,         ///< Symmetric mirror at the upper edge
+     MirrorBoth,          ///< Symmetric mirror at both edges
+     MirrorAsymLeft,      ///< Asymmetric mirror at the lower edge
+     MirrorAsymLeftRight, ///< Asymmetric mirror at the lower edge, symmetric mirror at the upper edge
+     MirrorAsymRight,     ///< Asymmetric mirror at the upper edge
+     MirrorLeftAsymRight, ///< Symmetric mirror at the lower edge, asymmetric mirror at the upper edge
+     MirrorAsymBoth       ///< Asymmetric mirror at both edges
+  };
   RooKeysPdf() ;
   RooKeysPdf(const char *name, const char *title,
-             RooAbsReal& x, RooDataSet& data, Mirror mirror= NoMirror,
+             RooAbsReal& xpdf, RooDataSet& data, Mirror mirror= NoMirror,
         double rho=1);
   RooKeysPdf(const char *name, const char *title,
              RooAbsReal& x, RooRealVar& xdata, RooDataSet& data, Mirror mirror= NoMirror,
         double rho=1);
   RooKeysPdf(const RooKeysPdf& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override {return new RooKeysPdf(*this,newname); }
+  TObject* clone(const char* newname=nullptr) const override {return new RooKeysPdf(*this,newname); }
   ~RooKeysPdf() override;
 
   Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars,
@@ -55,21 +66,23 @@ protected:
 private:
   // how far you have to go out in a Gaussian until it is smaller than the
   // machine precision
-  static const double _nSigma; //!
+  static const double _nSigma; ///<!
 
-  Int_t _nEvents;
-  double *_dataPts;  //[_nEvents]
-  double *_dataWgts; //[_nEvents]
-  double *_weights;  //[_nEvents]
-  double _sumWgt ;
+  Int_t _nEvents = 0;
+  double *_dataPts = nullptr;  //[_nEvents]
+  double *_dataWgts = nullptr; //[_nEvents]
+  double *_weights = nullptr;  //[_nEvents]
+  double _sumWgt = 0.0;
 
-  enum { _nPoints = 1000 };
+  constexpr static int _nPoints{1000};
   double _lookupTable[_nPoints+1];
 
   double g(double x,double sigma) const;
 
-  bool _mirrorLeft, _mirrorRight;
-  bool _asymLeft, _asymRight;
+  bool _mirrorLeft = false;
+  bool _mirrorRight = false;
+  bool _asymLeft = false;
+  bool _asymRight = false;
 
   // cached info on variable
   Char_t _varName[128];

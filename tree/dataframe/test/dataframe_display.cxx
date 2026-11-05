@@ -5,60 +5,61 @@
 
 #include <utility> // std::pair
 
+#include <TFile.h>
+
 using namespace ROOT;
 using namespace ROOT::RDF;
 using namespace ROOT::VecOps;
 
-static const std::string DisplayPrintDefaultRows("+-----+----+----+-----------+\n"
-                                                 "| Row | b1 | b2 | b3        | \n"
-                                                 "+-----+----+----+-----------+\n"
-                                                 "| 0   | 0  | 1  | 2.0000000 | \n"
-                                                 "|     |    | 2  |           | \n"
-                                                 "|     |    | 3  |           | \n"
-                                                 "+-----+----+----+-----------+\n"
-                                                 "| 1   | 0  | 1  | 2.0000000 | \n"
-                                                 "|     |    | 2  |           | \n"
-                                                 "|     |    | 3  |           | \n"
-                                                 "+-----+----+----+-----------+\n"
-                                                 "| 2   | 0  | 1  | 2.0000000 | \n"
-                                                 "|     |    | 2  |           | \n"
-                                                 "|     |    | 3  |           | \n"
-                                                 "+-----+----+----+-----------+\n"
-                                                 "| 3   | 0  | 1  | 2.0000000 | \n"
-                                                 "|     |    | 2  |           | \n"
-                                                 "|     |    | 3  |           | \n"
-                                                 "+-----+----+----+-----------+\n"
-                                                 "| 4   | 0  | 1  | 2.0000000 | \n"
-                                                 "|     |    | 2  |           | \n"
-                                                 "|     |    | 3  |           | \n"
-                                                 "+-----+----+----+-----------+\n"
-);
+static const std::string DisplayPrintDefaultRows("+-----+----+----+----------+\n"
+                                                 "| Row | b1 | b2 | b3       | \n"
+                                                 "+-----+----+----+----------+\n"
+                                                 "| 0   | 0  | 1  | 2.000000 | \n"
+                                                 "|     |    | 2  |          | \n"
+                                                 "|     |    | 3  |          | \n"
+                                                 "+-----+----+----+----------+\n"
+                                                 "| 1   | 0  | 1  | 2.000000 | \n"
+                                                 "|     |    | 2  |          | \n"
+                                                 "|     |    | 3  |          | \n"
+                                                 "+-----+----+----+----------+\n"
+                                                 "| 2   | 0  | 1  | 2.000000 | \n"
+                                                 "|     |    | 2  |          | \n"
+                                                 "|     |    | 3  |          | \n"
+                                                 "+-----+----+----+----------+\n"
+                                                 "| 3   | 0  | 1  | 2.000000 | \n"
+                                                 "|     |    | 2  |          | \n"
+                                                 "|     |    | 3  |          | \n"
+                                                 "+-----+----+----+----------+\n"
+                                                 "| 4   | 0  | 1  | 2.000000 | \n"
+                                                 "|     |    | 2  |          | \n"
+                                                 "|     |    | 3  |          | \n"
+                                                 "+-----+----+----+----------+\n");
 
-static const std::string DisplayAsStringDefaultRows("+-----+----+----+-----------+\n"
-                                                    "| Row | b1 | b2 | b3        | \n"
-                                                    "+-----+----+----+-----------+\n"
-                                                    "| 0   | 0  | 1  | 2.0000000 | \n"
-                                                    "|     |    | 2  |           | \n"
-                                                    "|     |    | 3  |           | \n"
-                                                    "+-----+----+----+-----------+\n"
-                                                    "| 1   | 0  | 1  | 2.0000000 | \n"
-                                                    "|     |    | 2  |           | \n"
-                                                    "|     |    | 3  |           | \n"
-                                                    "+-----+----+----+-----------+\n"
-                                                    "| 2   | 0  | 1  | 2.0000000 | \n"
-                                                    "|     |    | 2  |           | \n"
-                                                    "|     |    | 3  |           | \n"
-                                                    "+-----+----+----+-----------+\n"
-                                                    "| 3   | 0  | 1  | 2.0000000 | \n"
-                                                    "|     |    | 2  |           | \n"
-                                                    "|     |    | 3  |           | \n"
-                                                    "+-----+----+----+-----------+\n"
-                                                    "| 4   | 0  | 1  | 2.0000000 | \n"
-                                                    "|     |    | 2  |           | \n"
-                                                    "|     |    | 3  |           | \n"
-                                                    "|     |    |    |           | \n"
-                                                    "+-----+----+----+-----------+\n"
+static const std::string DisplayAsStringDefaultRows = DisplayPrintDefaultRows;
+
+// clang-format off
+static const std::string DisplayAsHtmlDefaultRows(
+"<table style=\"border: 1px solid black; border-collapse: collapse;\">\n"
+"  <tr style=\"background: #fff\">\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">Row</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b1</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b2</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b3</th>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2.000000</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2.000000</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2.000000</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2.000000</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">4</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2.000000</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"</table>"
 );
+// clang-format on
 
 TEST(RDFDisplayTests, DisplayNoJitDefaultRows)
 {
@@ -85,6 +86,7 @@ TEST(RDFDisplayTests, DisplayNoJitDefaultRows)
 
    // Testing the string returned
    EXPECT_EQ(dd->AsString(), DisplayAsStringDefaultRows);
+   EXPECT_EQ(dd->AsString({RDisplay::EPrintFormat::kHtml}), DisplayAsHtmlDefaultRows);
 }
 
 TEST(RDFDisplayTests, DisplayJitDefaultRows)
@@ -112,6 +114,7 @@ TEST(RDFDisplayTests, DisplayJitDefaultRows)
 
    // Testing the string returned
    EXPECT_EQ(dd->AsString(), DisplayAsStringDefaultRows);
+   EXPECT_EQ(dd->AsString({RDisplay::EPrintFormat::kHtml}), DisplayAsHtmlDefaultRows);
 }
 
 TEST(RDFDisplayTests, DisplayRegexDefaultRows)
@@ -139,32 +142,37 @@ TEST(RDFDisplayTests, DisplayRegexDefaultRows)
 
    // Testing the string returned
    EXPECT_EQ(dd->AsString(), DisplayAsStringDefaultRows);
+   EXPECT_EQ(dd->AsString({RDisplay::EPrintFormat::kHtml}), DisplayAsHtmlDefaultRows);
 }
 
-static const std::string DisplayPrintTwoRows("+-----+----+----+-----------+\n"
-                                             "| Row | b1 | b2 | b3        | \n"
-                                             "+-----+----+----+-----------+\n"
-                                             "| 0   | 0  | 1  | 2.0000000 | \n"
-                                             "|     |    | 2  |           | \n"
-                                             "|     |    | 3  |           | \n"
-                                             "+-----+----+----+-----------+\n"
-                                             "| 1   | 0  | 1  | 2.0000000 | \n"
-                                             "|     |    | 2  |           | \n"
-                                             "|     |    | 3  |           | \n"
-                                             "+-----+----+----+-----------+\n");
+static const std::string DisplayPrintTwoRows("+-----+----+----+----------+\n"
+                                             "| Row | b1 | b2 | b3       | \n"
+                                             "+-----+----+----+----------+\n"
+                                             "| 0   | 0  | 1  | 2.000000 | \n"
+                                             "|     |    | 2  |          | \n"
+                                             "|     |    | 3  |          | \n"
+                                             "+-----+----+----+----------+\n"
+                                             "| 1   | 0  | 1  | 2.000000 | \n"
+                                             "|     |    | 2  |          | \n"
+                                             "|     |    | 3  |          | \n"
+                                             "+-----+----+----+----------+\n");
 
-static const std::string DisplayAsStringTwoRows("+-----+----+----+-----------+\n"
-                                                "| Row | b1 | b2 | b3        | \n"
-                                                "+-----+----+----+-----------+\n"
-                                                "| 0   | 0  | 1  | 2.0000000 | \n"
-                                                "|     |    | 2  |           | \n"
-                                                "|     |    | 3  |           | \n"
-                                                "+-----+----+----+-----------+\n"
-                                                "| 1   | 0  | 1  | 2.0000000 | \n"
-                                                "|     |    | 2  |           | \n"
-                                                "|     |    | 3  |           | \n"
-                                                "|     |    |    |           | \n"
-                                                "+-----+----+----+-----------+\n");
+static const std::string DisplayAsStringTwoRows = DisplayPrintTwoRows;
+
+// clang-format off
+static const std::string DisplayAsHtmlTwoRows(
+"<table style=\"border: 1px solid black; border-collapse: collapse;\">\n"
+"  <tr style=\"background: #fff\">\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">Row</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b1</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b2</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b3</th>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2.000000</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2.000000</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"</table>"
+);
+// clang-format on
 
 TEST(RDFDisplayTests, DisplayJitTwoRows)
 {
@@ -205,7 +213,6 @@ static const std::string DisplayAsStringOneColumn("+-----+----+\n"
                                                   "| 3   | 0  | \n"
                                                   "+-----+----+\n"
                                                   "| 4   | 0  | \n"
-                                                  "|     |    | \n"
                                                   "+-----+----+\n");
 static const std::string DisplayAsStringTwoColumns("+-----+----+----+\n"
                                                    "| Row | b1 | b2 | \n"
@@ -229,8 +236,31 @@ static const std::string DisplayAsStringTwoColumns("+-----+----+----+\n"
                                                    "| 4   | 0  | 1  | \n"
                                                    "|     |    | 2  | \n"
                                                    "|     |    | 3  | \n"
-                                                   "|     |    |    | \n"
                                                    "+-----+----+----+\n");
+
+// clang-format off
+static const std::string DisplayAsHtmlTwoColumns(
+"<table style=\"border: 1px solid black; border-collapse: collapse;\">\n"
+"  <tr style=\"background: #fff\">\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">Row</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b1</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b2</th>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">4</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">2</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">3</td>\n  </tr>\n"
+"  <tr style=\"background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"</table>"
+);
+// clang-format on
 
 TEST(RDFDisplayTests, DisplayAmbiguity)
 {
@@ -244,9 +274,27 @@ TEST(RDFDisplayTests, DisplayAmbiguity)
 
    EXPECT_EQ(display_1->AsString(), DisplayAsStringOneColumn);
    EXPECT_EQ(display_2->AsString(), DisplayAsStringTwoColumns);
+   EXPECT_EQ(display_2->AsString({ROOT::RDF::RDisplay::EPrintFormat::kHtml}), DisplayAsHtmlTwoColumns);
 }
 
-static const std::string DisplayAsStringString("+-----+-------+\n| Row | b1    | \n+-----+-------+\n| 0   | \"foo\" | \n+-----+-------+\n| 1   | \"foo\" | \n|     |       | \n+-----+-------+\n");
+static const std::string DisplayAsStringString("+-----+-------+\n"
+                                               "| Row | b1    | \n"
+                                               "+-----+-------+\n"
+                                               "| 0   | \"foo\" | \n"
+                                               "+-----+-------+\n"
+                                               "| 1   | \"foo\" | \n"
+                                               "+-----+-------+\n");
+
+// clang-format off
+static const std::string DisplayAsHtmlString(
+"<table style=\"border: 1px solid black; border-collapse: collapse;\">\n"
+"  <tr style=\"background: #fff\">\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">Row</th>\n    <th style=\"padding: 1px 4px; border-right: 1px solid\">b1</th>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #eee\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">0</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">\"foo\"</td>\n  </tr>\n"
+"  <tr style=\"border-top: 1px dotted; background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">1</td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\">\"foo\"</td>\n  </tr>\n"
+"  <tr style=\"background: #fff\">\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n    <td style=\"padding: 1px 4px; border-right: 1px solid\"></td>\n  </tr>\n"
+"</table>"
+);
+// clang-format on
 
 TEST(RDFDisplayTests, DisplayPrintString)
 {
@@ -266,6 +314,7 @@ TEST(RDFDisplayTests, DisplayPrintString)
 
    // Testing the string returned
    EXPECT_EQ(dd->AsString(), DisplayAsStringString);
+   EXPECT_EQ(dd->AsString({ROOT::RDF::RDisplay::EPrintFormat::kHtml}), DisplayAsHtmlString);
 }
 
 TEST(RDFDisplayTests, CharArray)
@@ -283,7 +332,9 @@ TEST(RDFDisplayTests, CharArray)
    }
 
    const auto str = ROOT::RDataFrame("t", "chararray.root").Display()->AsString();
-   EXPECT_EQ(str, "+-----+-----+\n| Row | str | \n+-----+-----+\n| 0   | asd | \n+-----+-----+\n| 1   | bar | \n|     |     | \n+-----+-----+\n");
+   EXPECT_EQ(
+      str,
+      "+-----+-----+\n| Row | str | \n+-----+-----+\n| 0   | asd | \n+-----+-----+\n| 1   | bar | \n+-----+-----+\n");
 }
 
 TEST(RDFDisplayTests, BoolArray)
@@ -299,16 +350,9 @@ TEST(RDFDisplayTests, BoolArray)
                          "+-----+-------+\n"
                          "| 1   | true  | \n"
                          "|     | false | \n"
-                         "|     | true  | \n"
-                         "|     | false | \n"
                          "+-----+-------+\n"
                          "| 2   | true  | \n"
                          "|     | false | \n"
-                         "|     | true  | \n"
-                         "|     | false | \n"
-                         "|     | true  | \n"
-                         "|     | false | \n"
-                         "|     |       | \n"
                          "+-----+-------+\n";
    EXPECT_EQ(r->AsString(), expected);
 }
@@ -322,7 +366,6 @@ TEST(RDFDisplayTests, UniquePtr)
                          "| Row | uptr                       | \n"
                          "+-----+----------------------------+\n"
                          "| 0   | std::unique_ptr -> nullptr | \n"
-                         "|     |                            | \n"
                          "+-----+----------------------------+\n";
    EXPECT_EQ(r->AsString(), expected);
 }
@@ -337,7 +380,8 @@ TEST(RDFDisplayTests, SubBranch)
    t.Fill();
    ROOT::RDataFrame df(t);
    const auto res = df.Display()->AsString();
-   const auto expected = "+-----+-----+-----+\n| Row | p.a | p.b | \n+-----+-----+-----+\n| 0   | 42  | 84  | \n|     |     |     | \n+-----+-----+-----+\n";
+   const auto expected =
+      "+-----+-----+-----+\n| Row | p.a | p.b | \n+-----+-----+-----+\n| 0   | 42  | 84  | \n+-----+-----+-----+\n";
    EXPECT_EQ(res, expected);
 }
 
@@ -353,7 +397,8 @@ TEST(RDFDisplayTests, Friends)
   main.AddFriend(&fr);
 
   const auto res = ROOT::RDataFrame(main).Display()->AsString();
-  const auto expected = "+-----+----------+\n| Row | friend.x | \n+-----+----------+\n| 0   | 0        | \n|     |          | \n+-----+----------+\n";
+  const auto expected =
+     "+-----+----------+\n| Row | friend.x | \n+-----+----------+\n| 0   | 0        | \n+-----+----------+\n";
   EXPECT_EQ(res, expected);
 }
 
@@ -462,7 +507,6 @@ static const std::string DisplayAsStringVectors("+-----+----+----+----+----+----
                                                 "|     |    |    |    |    |     |     | 0   | 0    | \n"
                                                 "|     |    |    |    |    |     |     | 0   | 0    | \n"
                                                 "|     |    |    |    |    |     |     | 0   | 0    | \n"
-                                                "|     |    |    |    |    |     |     |     |      | \n"
                                                 "+-----+----+----+----+----+-----+-----+-----+------+\n");
 
 TEST(RDFDisplayTests, Vectors)

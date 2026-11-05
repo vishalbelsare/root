@@ -32,8 +32,10 @@
 #include "TArrayC.h"
 #include "TArrayS.h"
 #include "TArrayI.h"
+#include "TArrayL64.h"
 #include "TArrayF.h"
 #include "TArrayD.h"
+#include "TDirectory.h"
 #include "Foption.h"
 
 #include "TVectorFfwd.h"
@@ -41,8 +43,13 @@
 
 #include "TFitResultPtr.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <string>
+#include <stdexcept>
+#include <type_traits>
+#include <array>
+#include <numeric>
 
 class TF1;
 class TH1D;
@@ -54,6 +61,50 @@ class TVirtualFFT;
 class TVirtualHistPainter;
 class TRandom;
 
+namespace ROOT::Internal {
+/**
+ * \brief Creates a sliced copy of the given histogram.
+ *
+ * \tparam T The type of the histogram.
+ * \param histo The histogram to slice.
+ * \param args A vector of integers specifying the low and upper edges of the slice for each dimension.
+ *
+ * \return A new histogram object that is a sliced version of the input histogram.
+ */
+template <typename T>
+T Slice(const T &histo, std::vector<Int_t> &args)
+{
+   static_assert(std::is_pointer_v<decltype(histo.fArray)>,
+                 "The type of the histogram to slice must expose the internal array data.");
+
+   TDirectory::TContext _{nullptr};
+   T slicedHisto = histo;
+
+   using ValueType = std::remove_pointer_t<decltype(slicedHisto.fArray)>;
+   slicedHisto.template SliceHistoInPlace<ValueType>(args, slicedHisto.fArray, slicedHisto.fN);
+   return slicedHisto;
+}
+
+/**
+ * \brief Sets the content of a slice in a histogram.
+ *
+ * \tparam T The type of the histogram.
+ * \param histo The histogram to set the slice content for.
+ * \param input A vector of values to assign to the bins in the specified slice. All input types are converted
+ *              to Double_t as that's the type `SetBinContent` eventually uses.
+ * \param sliceEdges A vector of pairs specifying the low and upper edges of the slice for each dimension.
+ */
+template <typename T>
+void SetSliceContent(T &histo, const std::vector<Double_t> &input,
+                     const std::vector<std::pair<Int_t, Int_t>> &sliceEdges)
+{
+   static_assert(std::is_pointer_v<decltype(histo.fArray)>,
+                 "The type of the histogram to slice must expose the internal array data.");
+
+   using ValueType = std::remove_pointer_t<decltype(histo.fArray)>;
+   histo.template SetSliceContent<ValueType>(input, sliceEdges, histo.fArray);
+}
+} // namespace ROOT::Internal
 
 class TH1 : public TNamed, public TAttLine, public TAttFill, public TAttMarker {
 
@@ -80,6 +131,17 @@ public:
          kIgnore = 0,   ///< Override global flag ignoring the overflows
          kConsider = 1, ///< Override global flag considering the overflows
          kNeutral = 2,  ///< Adapt to the global flag
+   };
+
+   /// Enumeration specifying inconsistencies between two histograms,
+   /// in increasing severity.
+   enum  EInconsistencyBits {
+         kFullyConsistent = 0,
+         kDifferentLabels = BIT(0),
+         kDifferentBinLimits = BIT(1),
+         kDifferentAxisLimits = BIT(2),
+         kDifferentNumberOfBins = BIT(3),
+         kDifferentDimensions = BIT(4)
    };
 
    friend class TH1Merger;
@@ -125,6 +187,183 @@ private:
    TH1(const TH1&) = delete;
    TH1& operator=(const TH1&) = delete;
 
+   /**
+    * \brief Slices a histogram in place based on the specified bin ranges for each dimension.
+    *
+    * This function modifies the histogram by extracting a sub-region defined by the provided
+    * bin ranges for each dimension. The resulting histogram will have updated bin counts,
+    * edges, and contents. Bin contents outside the range fall into the flow bins.
+    * The histogram's internal data array is freed and reallocated by this function.
+    * This function is used by the python implementation of the Unified Histogram Interface (UHI)
+    * for slicing.
+    *
+    * \tparam ValueType The type of the histogram's data.
+    * \param args A vector of integers specifying the low and upper edges of the slice for each dimension.
+    * \param dataArray A pointer to the histogram's data array.
+    * \param fN The size of dataArray.
+    */
+   template <typename ValueType>
+   void SliceHistoInPlace(std::vector<Int_t> &args, ValueType *&dataArray, Int_t &fN)
+   {
+      constexpr Int_t kMaxDim = 3;
+      Int_t ndim = args.size() / 2;
+      if (ndim != fDimension) {
+         throw std::invalid_argument(
+            Form("Number of dimensions in slice (%d) does not match histogram dimension (%d).", ndim, fDimension));
+      }
+
+      // Compute new bin counts and edges
+      std::array<Int_t, kMaxDim> nBins{}, totalBins{};
+      std::array<std::vector<Double_t>, kMaxDim> edges;
+      for (decltype(ndim) d = 0; d < ndim; ++d) {
+         const auto &axis = (d == 0 ? fXaxis : d == 1 ? fYaxis : fZaxis);
+         auto start = std::max(1, args[d * 2]);
+         auto end = std::min(axis.GetNbins() + 1, args[d * 2 + 1]);
+         nBins[d] = end - start;
+         totalBins[d] = axis.GetNbins() + 2;
+         args[2 * d] = start;
+         args[2 * d + 1] = end;
+         // Compute new edges
+         for (int b = start; b <= end; ++b)
+            edges[d].push_back(axis.GetBinLowEdge(b));
+         edges[d].push_back(axis.GetBinUpEdge(end));
+      }
+
+      // Compute layout sizes for slice
+      size_t rowSz = nBins[0] + 2;
+      size_t planeSz = rowSz * (ndim > 1 ? nBins[1] + 2 : 1);
+      size_t newSize = planeSz * (ndim > 2 ? nBins[2] + 2 : 1);
+
+      // Allocate the new array
+      auto *newArr = new ValueType[newSize]();
+
+      auto rowIncr = 1 + (ndim > 1 ? (rowSz - 1) : 0);
+      ValueType under = 0, over = 0;
+      Bool_t firstUnder = false;
+      Int_t lastOverIdx = 0;
+
+      // Copy the valid slice bins
+      size_t dstIdx = 1 + (ndim > 1 ? rowSz : 0) + (ndim > 2 ? planeSz : 0);
+      for (auto z = (ndim > 2 ? args[4] : 0); z < (ndim > 2 ? args[5] : 1); ++z) {
+         for (auto y = (ndim > 1 ? args[2] : 0); y < (ndim > 1 ? args[3] : 1); ++y) {
+            size_t rowStart = z * totalBins[1] * totalBins[0] + y * totalBins[0] + args[0];
+            std::copy_n(dataArray + rowStart, nBins[0], newArr + dstIdx);
+            if (!firstUnder) {
+               under = std::accumulate(dataArray, dataArray + rowStart, ValueType{});
+               firstUnder = true;
+            } else {
+               under += std::accumulate(dataArray + rowStart - args[0], dataArray + rowStart, ValueType{});
+            }
+            lastOverIdx = rowStart - args[0] + totalBins[0];
+            over += std::accumulate(dataArray + rowStart + nBins[0], dataArray + lastOverIdx, ValueType{});
+            dstIdx += rowIncr;
+         }
+         if (ndim > 2) {
+            dstIdx += 2 * rowIncr;
+         }
+      }
+
+      // Copy the flow bins
+      over += std::accumulate(dataArray + lastOverIdx, dataArray + fN, ValueType{});
+      newArr[0] = under;
+      newArr[newSize - 1] = over;
+
+      // Assign the new array
+      delete[] dataArray;
+      dataArray = newArr;
+
+      // Reconfigure Axes
+      switch (ndim) {
+      case 1: this->SetBins(nBins[0], edges[0].data()); break;
+      case 2: this->SetBins(nBins[0], edges[0].data(), nBins[1], edges[1].data()); break;
+      case 3: this->SetBins(nBins[0], edges[0].data(), nBins[1], edges[1].data(), nBins[2], edges[2].data()); break;
+      }
+
+      // Update the statistics
+      ResetStats();
+   }
+
+   template <typename T>
+   friend T ROOT::Internal::Slice(const T &histo, std::vector<Int_t> &args);
+
+   /**
+    * \brief Sets the content of a slice of bins in a histogram.
+    *
+    * This function allows setting the content of a slice of bins in a histogram
+    * by specifying the edges of the slice and the corresponding values to assign.
+    *
+    * \tparam ValueType The type of the histogram's data.
+    * \param values A vector of values to assign to the bins in the specified slice.
+    * \param sliceEdges A vector of pairs specifying the low and upper edges of the slice for each dimension.
+    * \param dataArray A pointer to the histogram's data array.
+    */
+   template <typename ValueType>
+   void SetSliceContent(const std::vector<Double_t> &values, const std::vector<std::pair<Int_t, Int_t>> &sliceEdges,
+                        ValueType *dataArray)
+   {
+      const Int_t ndim = sliceEdges.size();
+      if (ndim != fDimension) {
+         throw std::invalid_argument(Form(
+            "Number of edges in the specified slice (%d) does not match histogram dimension (%d).", ndim, fDimension));
+      }
+
+      // Get the indices to set
+      auto getSliceIndices = [](const std::vector<std::pair<Int_t, Int_t>> &edges) -> std::vector<std::vector<Int_t>> {
+         const auto dim = edges.size();
+         if (dim == 0) {
+            return {};
+         }
+
+         std::vector<std::vector<Int_t>> slices(dim);
+         for (size_t d = 0; d < dim; ++d) {
+            for (auto val = edges[d].first; val < edges[d].second; ++val) {
+               slices[d].push_back(val);
+            }
+         }
+
+         size_t totalCombinations = 1;
+         for (const auto &slice : slices) {
+            totalCombinations *= slice.size();
+         }
+
+         std::vector<std::vector<Int_t>> result(totalCombinations, std::vector<Int_t>(3, 0));
+         for (size_t d = 0; d < slices.size(); ++d) {
+            size_t repeat = 1;
+            for (size_t i = d + 1; i < slices.size(); ++i) {
+               repeat *= slices[i].size();
+            }
+
+            size_t index = 0;
+            for (size_t i = 0; i < totalCombinations; ++i) {
+               result[i][d] = slices[d][(index / repeat) % slices[d].size()];
+               ++index;
+            }
+         }
+
+         return result;
+      };
+
+      auto sliceIndices = getSliceIndices(sliceEdges);
+
+      if (values.size() != sliceIndices.size()) {
+         throw std::invalid_argument("Number of provided values does not match number of bins to set.");
+      }
+
+      for (size_t i = 0; i < sliceIndices.size(); ++i) {
+         auto globalBin = this->GetBin(sliceIndices[i][0], sliceIndices[i][1], sliceIndices[i][2]);
+
+         // Set the bin content
+         dataArray[globalBin] = values[i];
+      }
+
+      // Update the statistics
+      ResetStats();
+   }
+
+   template <typename T>
+   friend void ROOT::Internal::SetSliceContent(T &histo, const std::vector<Double_t> &input,
+                                               const std::vector<std::pair<Int_t, Int_t>> &sliceEdges);
+
 protected:
    TH1();
    TH1(const char *name,const char *title,Int_t nbinsx,Double_t xlow,Double_t xup);
@@ -134,6 +373,7 @@ protected:
    Int_t            AxisChoice(Option_t *axis) const;
    virtual Int_t    BufferFill(Double_t x, Double_t w);
    virtual Bool_t   FindNewAxisLimits(const TAxis* axis, const Double_t point, Double_t& newMin, Double_t &newMax);
+   TString          ProvideSaveName(Option_t *option, Bool_t testfdir = kFALSE);
    virtual void     SavePrimitiveHelp(std::ostream &out, const char *hname, Option_t *option = "");
    static Bool_t    RecomputeAxisLimits(TAxis& destAxis, const TAxis& anAxis);
    static Bool_t    SameLimitsAndNBins(const TAxis& axis1, const TAxis& axis2);
@@ -155,7 +395,7 @@ protected:
    static bool CheckBinLabels(const TAxis* a1, const TAxis* a2);
    static bool CheckEqualAxes(const TAxis* a1, const TAxis* a2);
    static bool CheckConsistentSubAxes(const TAxis *a1, Int_t firstBin1, Int_t lastBin1, const TAxis *a2, Int_t firstBin2=0, Int_t lastBin2=0);
-   static bool CheckConsistency(const TH1* h1, const TH1* h2);
+   int LoggedInconsistency(const char* name, const TH1* h1, const TH1* h2, bool useMerge=false) const;
 
 public:
    /// TH1 status bits
@@ -187,9 +427,13 @@ public:
 
    virtual Bool_t   Add(TF1 *h1, Double_t c1=1, Option_t *option="");
    virtual Bool_t   Add(const TH1 *h1, Double_t c1=1);
-   virtual Bool_t   Add(const TH1 *h, const TH1 *h2, Double_t c1=1, Double_t c2=1); // *MENU*
-   virtual void     AddBinContent(Int_t bin);
-   virtual void     AddBinContent(Int_t bin, Double_t w);
+   virtual Bool_t   Add(const TH1 *h, const TH1 *h2, Double_t c1=1, Double_t c2=1);
+   /// Increment bin content by 1.
+   /// Passing an out-of-range bin leads to undefined behavior
+   virtual void     AddBinContent(Int_t bin) = 0;
+   /// Increment bin content by a weight w.
+   /// Passing an out-of-range bin leads to undefined behavior
+   virtual void     AddBinContent(Int_t bin, Double_t w) = 0;
    static  void     AddDirectory(Bool_t add=kTRUE);
    static  Bool_t   AddDirectoryStatus();
            void     Browse(TBrowser *b) override;
@@ -197,15 +441,16 @@ public:
    virtual Double_t Chi2Test(const TH1* h2, Option_t *option = "UU", Double_t *res = nullptr) const;
    virtual Double_t Chi2TestX(const TH1* h2, Double_t &chi2, Int_t &ndf, Int_t &igood,Option_t *option = "UU",  Double_t *res = nullptr) const;
    virtual Double_t Chisquare(TF1 * f1, Option_t *option = "") const;
+   static  Int_t    CheckConsistency(const TH1* h1, const TH1* h2);
    virtual void     ClearUnderflowAndOverflow();
-   virtual Double_t ComputeIntegral(Bool_t onlyPositive = false);
+   virtual Double_t ComputeIntegral(Bool_t onlyPositive = false, Option_t *option = "");
            TObject* Clone(const char *newname = "") const override;
            void     Copy(TObject &hnew) const override;
    virtual void     DirectoryAutoAdd(TDirectory *);
            Int_t    DistancetoPrimitive(Int_t px, Int_t py) override;
    virtual Bool_t   Divide(TF1 *f1, Double_t c1=1);
    virtual Bool_t   Divide(const TH1 *h1);
-   virtual Bool_t   Divide(const TH1 *h1, const TH1 *h2, Double_t c1=1, Double_t c2=1, Option_t *option=""); // *MENU*
+   virtual Bool_t   Divide(const TH1 *h1, const TH1 *h2, Double_t c1=1, Double_t c2=1, Option_t *option="");
            void     Draw(Option_t *option = "") override;
    virtual TH1     *DrawCopy(Option_t *option="", const char * name_postfix = "_copy") const;
    virtual TH1     *DrawNormalized(Option_t *option="", Double_t norm=1) const;
@@ -220,7 +465,8 @@ public:
    virtual Int_t    Fill(const char *name, Double_t w);
    virtual void     FillN(Int_t ntimes, const Double_t *x, const Double_t *w, Int_t stride=1);
    virtual void     FillN(Int_t, const Double_t *, const Double_t *, const Double_t *, Int_t) {}
-   virtual void     FillRandom(const char *fname, Int_t ntimes=5000, TRandom * rng = nullptr);
+   virtual void     FillRandom(TF1 *f1, Int_t ntimes=5000, TRandom * rng = nullptr);
+           void     FillRandom(const char *fname, Int_t ntimes=5000, TRandom * rng = nullptr);
    virtual void     FillRandom(TH1 *h, Int_t ntimes=5000, TRandom * rng = nullptr);
    virtual Int_t    FindBin(Double_t x, Double_t y=0, Double_t z=0);
    virtual Int_t    FindFixBin(Double_t x, Double_t y=0, Double_t z=0) const;
@@ -302,12 +548,15 @@ public:
 
    TVirtualHistPainter *GetPainter(Option_t *option="");
 
-   virtual Int_t    GetQuantiles(Int_t nprobSum, Double_t *q, const Double_t *probSum = nullptr);
-   virtual Double_t GetRandom(TRandom * rng = nullptr) const;
+   virtual Int_t    GetQuantiles(Int_t n, Double_t *xp, const Double_t *p = nullptr);
+   virtual Double_t GetRandom(TRandom *rng = nullptr, Option_t *option = "") const;
    virtual void     GetStats(Double_t *stats) const;
    virtual Double_t GetStdDev(Int_t axis=1) const;
    virtual Double_t GetStdDevError(Int_t axis=1) const;
-   virtual Double_t GetSumOfWeights() const;
+   Double_t         GetSumOfAllWeights(const bool includeOverflow, Double_t * sumWeightSquare = nullptr) const;
+   /// Return the sum of weights across all bins excluding under/overflows.
+   /// \see TH1::GetSumOfAllWeights()
+   virtual Double_t GetSumOfWeights() const { return GetSumOfAllWeights(false); }
    virtual TArrayD *GetSumw2() {return &fSumw2;}
    virtual const TArrayD *GetSumw2() const {return &fSumw2;}
    virtual Int_t    GetSumw2N() const {return fSumw2.fN;}
@@ -344,7 +593,8 @@ public:
            Long64_t Merge(TCollection *list, Option_t * option);
    virtual Bool_t   Multiply(TF1 *f1, Double_t c1=1);
    virtual Bool_t   Multiply(const TH1 *h1);
-   virtual Bool_t   Multiply(const TH1 *h1, const TH1 *h2, Double_t c1=1, Double_t c2=1, Option_t *option=""); // *MENU*
+   virtual Bool_t   Multiply(const TH1 *h1, const TH1 *h2, Double_t c1=1, Double_t c2=1, Option_t *option="");
+   virtual void     Normalize(Option_t *option=""); // *MENU*
            void     Paint(Option_t *option = "") override;
            void     Print(Option_t *option = "") const override;
    virtual void     PutStats(Double_t *stats);
@@ -354,8 +604,9 @@ public:
            void     RecursiveRemove(TObject *obj) override;
    virtual void     Reset(Option_t *option = "");
    virtual void     ResetStats();
+           void     SaveAs(const char *filename = "hist", Option_t *option = "") const override;  // *MENU*
            void     SavePrimitive(std::ostream &out, Option_t *option = "") override;
-   virtual void     Scale(Double_t c1=1, Option_t *option="");
+   virtual void     Scale(Double_t c1=1, Option_t *option="");  // *MENU*
    virtual void     SetAxisColor(Color_t color=1, Option_t *axis="X");
    virtual void     SetAxisRange(Double_t xmin, Double_t xmax, Option_t *axis="X");
    virtual void     SetBarOffset(Float_t offset=0.25) {fBarOffset = Short_t(1000*offset);}
@@ -376,12 +627,13 @@ public:
                             const Double_t *zBins);
    virtual void     SetBinsLength(Int_t = -1) { } //redefined in derived classes
    virtual void     SetBinErrorOption(EBinErrorOpt type) { fBinStatErrOpt = type; }
-   virtual void     SetBuffer(Int_t buffersize, Option_t *option="");
+   virtual void     SetBuffer(Int_t bufsize, Option_t *option="");
    virtual UInt_t   SetCanExtend(UInt_t extendBitMask);
    virtual void     SetContent(const Double_t *content);
    virtual void     SetContour(Int_t nlevels, const Double_t *levels = nullptr);
    virtual void     SetContourLevel(Int_t level, Double_t value);
-   static  void     SetDefaultBufferSize(Int_t buffersize=1000);
+   virtual void     SetColors(Color_t linecolor = -1, Color_t markercolor = -1, Color_t fillcolor = -1);
+   static  void     SetDefaultBufferSize(Int_t bufsize=1000);
    static  void     SetDefaultSumw2(Bool_t sumw2=kTRUE);
    virtual void     SetDirectory(TDirectory *dir);
    virtual void     SetEntries(Double_t n) { fEntries = n; }
@@ -424,6 +676,7 @@ public:
            void     UseCurrentStyle() override;
    static  TH1     *TransformHisto(TVirtualFFT *fft, TH1* h_output,  Option_t *option);
 
+   static void      SavePrimitiveFunctions(std::ostream &out, const char *varname, TList *lst);
 
    // TODO: Remove obsolete methods in v6-04
    virtual Double_t GetCellContent(Int_t binx, Int_t biny) const
@@ -440,8 +693,15 @@ public:
    ClassDefOverride(TH1,8)  //1-Dim histogram base class
 
 protected:
-   virtual Double_t RetrieveBinContent(Int_t bin) const;
-   virtual void     UpdateBinContent(Int_t bin, Double_t content);
+
+   /// Raw retrieval of bin content on internal data structure
+   /// see convention for numbering bins in TH1::GetBin
+   virtual Double_t RetrieveBinContent(Int_t bin) const = 0;
+
+   /// Raw update of bin content on internal data structure
+   /// see convention for numbering bins in TH1::GetBin
+   virtual void     UpdateBinContent(Int_t bin, Double_t content) = 0;
+
    virtual Double_t GetBinErrorSqUnchecked(Int_t bin) const { return fSumw2.fN ? fSumw2.fArray[bin] : RetrieveBinContent(bin); }
 };
 
@@ -550,7 +810,7 @@ public:
    void     Reset(Option_t *option="") override;
    void     SetBinsLength(Int_t n=-1) override;
 
-   ClassDefOverride(TH1I,3)  //1-Dim histograms (one 32 bits integer per channel)
+   ClassDefOverride(TH1I,3)  //1-Dim histograms (one 32 bit integer per channel)
 
    friend  TH1I     operator*(Double_t c1, const TH1I &h1);
    friend  TH1I     operator*(const TH1I &h1, Double_t c1);
@@ -574,6 +834,47 @@ TH1I operator/(const TH1I &h1, const TH1I &h2);
 
 //________________________________________________________________________
 
+class TH1L: public TH1, public TArrayL64 {
+
+public:
+   TH1L();
+   TH1L(const char *name,const char *title,Int_t nbinsx,Double_t xlow,Double_t xup);
+   TH1L(const char *name,const char *title,Int_t nbinsx,const Float_t  *xbins);
+   TH1L(const char *name,const char *title,Int_t nbinsx,const Double_t *xbins);
+   TH1L(const TH1L &h1l);
+   TH1L& operator=(const TH1L &h1);
+   ~TH1L() override;
+
+   void     AddBinContent(Int_t bin) override;
+   void     AddBinContent(Int_t bin, Double_t w) override;
+   void     Copy(TObject &hnew) const override;
+   void     Reset(Option_t *option="") override;
+   void     SetBinsLength(Int_t n=-1) override;
+
+   ClassDefOverride(TH1L,0)  //1-Dim histograms (one 64 bit integer per channel)
+
+   friend  TH1L     operator*(Double_t c1, const TH1L &h1);
+   friend  TH1L     operator*(const TH1L &h1, Double_t c1);
+   friend  TH1L     operator+(const TH1L &h1, const TH1L &h2);
+   friend  TH1L     operator-(const TH1L &h1, const TH1L &h2);
+   friend  TH1L     operator*(const TH1L &h1, const TH1L &h2);
+   friend  TH1L     operator/(const TH1L &h1, const TH1L &h2);
+
+protected:
+   Double_t RetrieveBinContent(Int_t bin) const override { return Double_t (fArray[bin]); }
+   void     UpdateBinContent(Int_t bin, Double_t content) override { fArray[bin] = Long64_t (content); }
+};
+
+TH1L operator*(Double_t c1, const TH1L &h1);
+inline
+TH1L operator*(const TH1L &h1, Double_t c1) {return operator*(c1,h1);}
+TH1L operator+(const TH1L &h1, const TH1L &h2);
+TH1L operator-(const TH1L &h1, const TH1L &h2);
+TH1L operator*(const TH1L &h1, const TH1L &h2);
+TH1L operator/(const TH1L &h1, const TH1L &h2);
+
+//________________________________________________________________________
+
 class TH1F : public TH1, public TArrayF {
 
 public:
@@ -586,7 +887,12 @@ public:
    TH1F& operator=(const TH1F &h1);
    ~TH1F() override;
 
+   /// Increment bin content by 1.
+   /// Passing an out-of-range bin leads to undefined behavior
    void     AddBinContent(Int_t bin) override {++fArray[bin];}
+   /// Increment bin content by a weight w.
+   /// \warning The value of w is cast to `Float_t` before being added.
+   /// Passing an out-of-range bin leads to undefined behavior
    void     AddBinContent(Int_t bin, Double_t w) override
                           { fArray[bin] += Float_t (w); }
    void     Copy(TObject &hnew) const override;
@@ -629,7 +935,11 @@ public:
    TH1D& operator=(const TH1D &h1);
    ~TH1D() override;
 
+   /// Increment bin content by 1.
+   /// Passing an out-of-range bin leads to undefined behavior
    void     AddBinContent(Int_t bin) override {++fArray[bin];}
+   /// Increment bin content by a weight w
+   /// Passing an out-of-range bin leads to undefined behavior
    void     AddBinContent(Int_t bin, Double_t w) override
                           {fArray[bin] += Double_t (w);}
    void     Copy(TObject &hnew) const override;

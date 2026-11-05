@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include <cstdio>
 
 #include "TBranch.h"
 #include "TBufferFile.h"
@@ -12,6 +12,8 @@
 
 #include "gtest/gtest.h"
 
+#include <cmath>
+
 static const Long64_t gRollOver = std::pow(10, (std::numeric_limits<float>::digits10-1));
 
 class BulkApiMultipleTest : public ::testing::Test {
@@ -22,7 +24,7 @@ public:
    static constexpr double fDoubleInitial = 3.0;
 
 protected:
-   virtual void SetUp()
+   void SetUp() override
    {
       auto hfile = std::make_unique<TFile>(fFileName.c_str(), "RECREATE", "TTree float and double micro benchmark ROOT file");
       hfile->SetCompressionLevel(0); // No compression at all.
@@ -46,13 +48,13 @@ protected:
       TBranch *branch7 = tree->Branch("myLongLong", &ll, 320000, 1);
       TBranch *branch8 = tree->Branch("myChar", &c, 320000, 1);
 
-      branch2->SetAutoDelete(kFALSE);
-      branch3->SetAutoDelete(kFALSE);
-      branch4->SetAutoDelete(kFALSE);
-      branch5->SetAutoDelete(kFALSE);
-      branch6->SetAutoDelete(kFALSE);
-      branch7->SetAutoDelete(kFALSE);
-      branch8->SetAutoDelete(kFALSE);
+      branch2->SetAutoDelete(false);
+      branch3->SetAutoDelete(false);
+      branch4->SetAutoDelete(false);
+      branch5->SetAutoDelete(false);
+      branch6->SetAutoDelete(false);
+      branch7->SetAutoDelete(false);
+      branch8->SetAutoDelete(false);
 
       for (Long64_t ev = 0; ev < fEventCount; ev++) {
          tree->Fill();

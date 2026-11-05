@@ -7,7 +7,7 @@
 // and slots communication mechanism can be found in $ROOTSYS/tutorials.
 // That version can be run entirely in the interpreter.
 
-#include <stdlib.h>
+#include <cstdlib>
 
 #include <TROOT.h>
 #include <TApplication.h>
@@ -988,7 +988,7 @@ TestDialog::TestDialog(const TGWindow *p, const TGWindow *main, UInt_t w,
    // make tab yellow
    Pixel_t yellow;
    fClient->GetColorByName("yellow", yellow);
-   TGTabElement *tabel = fTab->GetTabTab("Tab 3");;
+   TGTabElement *tabel = fTab->GetTabTab("Tab 3");
    tabel->ChangeBackground(yellow);
 
    //-------------- end embedded canvas demo

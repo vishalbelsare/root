@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : SVWorkingSet                                                          *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Working class for Support Vector Machine                                  *
@@ -22,7 +22,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_SVWorkingSet
@@ -60,13 +60,6 @@ namespace TMVA {
       Bool_t IsDiffSignificant(Float_t, Float_t, Float_t);
       void   TrainReg();
 
-      //setting up helper variables for JsMVA
-      void SetIPythonInteractive(bool* ExitFromTraining, UInt_t *fIPyCurrentIter_){
-        fExitFromTraining = ExitFromTraining;
-        fIPyCurrentIter = fIPyCurrentIter_;
-      }
-
-
    private:
 
       Bool_t fdoRegression;                     ///< TODO temporary, find nicer solution
@@ -83,10 +76,6 @@ namespace TMVA {
       Float_t                     fTolerance;   ///< documentation
 
       mutable MsgLogger*          fLogger;      ///<! message logger
-
-      // variables for JsMVA
-      UInt_t *fIPyCurrentIter = nullptr;
-      bool * fExitFromTraining = nullptr;
 
       void SetIndex( TMVA::SVEvent* );
    };

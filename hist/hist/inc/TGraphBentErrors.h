@@ -36,6 +36,7 @@ protected:
    Double_t    *fEYhighd;      ///<[fNpoints] array of Y high displacements
 
    void       SwapPoints(Int_t pos1, Int_t pos2) override;
+   void       UpdateArrays(const std::vector<Int_t> &sorting_indices, Int_t numSortedPoints, Int_t low) override;
 
    Double_t** Allocate(Int_t size) override;
    void       CopyAndRelease(Double_t **newarrays,
@@ -65,6 +66,8 @@ public:
                     const Double_t *eyld=nullptr, const Double_t *eyhd=nullptr);
    TGraphBentErrors(const TGraphBentErrors &gr);
    ~TGraphBentErrors() override;
+   virtual void AddPointError(Double_t x, Double_t y, Double_t exl, Double_t exh, Double_t eyl, Double_t eyh,
+                              Double_t exld = 0, Double_t exhd = 0, Double_t eyld = 0, Double_t eyhd = 0);
    void    Apply(TF1 *f) override;
    void    ComputeRange(Double_t &xmin, Double_t &ymin,
                                 Double_t &xmax, Double_t &ymax) const override;

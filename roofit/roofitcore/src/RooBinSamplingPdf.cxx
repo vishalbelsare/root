@@ -29,6 +29,10 @@
  * using integrator(). This can be used to change the integration rules, so less/more function evaluations are
  * performed. The target precision of the integrator can be set in the constructor.
  *
+ * If the wrapped PDF supports analytical integration over the sampled observable, the exact analytical integral
+ * is used for each bin instead of the numeric integrator. This is both faster and more accurate, and happens
+ * transparently without any user intervention.
+ *
  *
  * ### How to use it
  * There are two ways to use this class:
@@ -91,9 +95,8 @@
 
 #include "RooBinSamplingPdf.h"
 
-#include "RooHelpers.h"
+#include "RooFitImplHelpers.h"
 #include "RooRealBinding.h"
-#include "RunContext.h"
 #include "RooRealVar.h"
 #include "RooGlobalFunc.h"
 #include "RooDataHist.h"
@@ -147,7 +150,7 @@ double RooBinSamplingPdf::evaluate() const {
   double result;
   {
     // Important: When the integrator samples x, caching of sub-tree values needs to be off.
-    RooHelpers::DisableCachingRAII disableCaching(inhibitDirty());
+    DisableCachingRAII disableCaching(inhibitDirty());
     result = integrate(_normSet, low, high) / (high-low);
   }
 
@@ -159,35 +162,34 @@ double RooBinSamplingPdf::evaluate() const {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Integrate the PDF over all its bins, and return a batch with those values.
-/// \param[in,out] evalData Struct with evaluation data.
-/// \param[in] normSet Normalisation set that's used to evaluate the PDF.
-RooSpan<double> RooBinSamplingPdf::evaluateSpan(RooBatchCompute::RunContext& evalData, const RooArgSet* normSet) const {
-  // Retrieve binning, which we need to compute the probabilities
-  auto boundaries = binBoundaries();
-  auto xValues = _observable->getValues(evalData, normSet);
-  auto results = evalData.makeBatch(this, xValues.size());
+/// \param[in,out] ctx Struct with evaluation data
+void RooBinSamplingPdf::doEval(RooFit::EvalContext &ctx) const
+{
+   std::span<double> output = ctx.output();
 
-  // Important: When the integrator samples x, caching of sub-tree values needs to be off.
-  RooHelpers::DisableCachingRAII disableCaching(inhibitDirty());
+   // Retrieve binning, which we need to compute the probabilities
+   auto boundaries = binBoundaries();
+   auto xValues = ctx.at(_observable);
 
-  // Now integrate PDF in each bin:
-  for (unsigned int i=0; i < xValues.size(); ++i) {
-    const double x = xValues[i];
-    const auto upperIt = std::upper_bound(boundaries.begin(), boundaries.end(), x);
-    const unsigned int bin = std::distance(boundaries.begin(), upperIt) - 1;
-    assert(bin < boundaries.size());
+   // Important: When the integrator samples x, caching of sub-tree values needs to be off.
+   DisableCachingRAII disableCaching(inhibitDirty());
 
-    results[i] = integrate(normSet, boundaries[bin], boundaries[bin+1]) / (boundaries[bin+1]-boundaries[bin]);
-  }
+   // Now integrate PDF in each bin:
+   for (unsigned int i = 0; i < xValues.size(); ++i) {
+      const double x = xValues[i];
+      const auto upperIt = std::upper_bound(boundaries.begin(), boundaries.end(), x);
+      const unsigned int bin = std::distance(boundaries.begin(), upperIt) - 1;
+      assert(bin < boundaries.size());
 
-  return results;
+      output[i] = integrate(nullptr, boundaries[bin], boundaries[bin + 1]) / (boundaries[bin + 1] - boundaries[bin]);
+   }
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Get the bin boundaries for the observable.
 /// These will be recomputed whenever the shape of this object is dirty.
-RooSpan<const double> RooBinSamplingPdf::binBoundaries() const {
+std::span<const double> RooBinSamplingPdf::binBoundaries() const {
   if (isShapeDirty() || _binBoundaries.empty()) {
     _binBoundaries.clear();
     const RooAbsBinning& binning = _observable->getBinning(nullptr);
@@ -274,16 +276,16 @@ std::list<double>* RooBinSamplingPdf::plotSamplingHint(RooAbsRealLValue& obs, do
 ///   intOptions.SetRelTolerance(1.E-9); // Smaller tolerance -> more subdivisions
 ///   pdf.integrator()->SetOptions(intOptions);
 /// ```
-/// \see ROOT::Math::IntegratorOneDim::SetOptions for more details on integration options.
+/// \note see ROOT::Math::IntegratorOneDim::SetOptions for more details on integration options.
 /// \note When RooBinSamplingPdf is loaded from files, integrator options will fall back to the default values.
 std::unique_ptr<ROOT::Math::IntegratorOneDim>& RooBinSamplingPdf::integrator() const {
   if (!_integrator) {
-    _integrator.reset(new ROOT::Math::IntegratorOneDim(*this,
+    _integrator = std::make_unique<ROOT::Math::IntegratorOneDim>(*this,
         ROOT::Math::IntegrationOneDim::kADAPTIVE, // GSL Integrator. Will really get it only if MathMore enabled.
         -1., _relEpsilon, // Abs epsilon = default, rel epsilon set by us.
         0, // We don't limit the sub-intervals. Steer run time via _relEpsilon.
         2 // This should read ROOT::Math::Integration::kGAUSS21, but this is in MathMore, so we cannot include it here.
-        ));
+        );
   }
 
   return _integrator;
@@ -299,8 +301,63 @@ double RooBinSamplingPdf::operator()(double x) const {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Integrate the wrapped PDF using our current integrator, with given norm set and limits.
-double RooBinSamplingPdf::integrate(const RooArgSet* /*normSet*/, double low, double high) const {
+/// Check once whether the wrapped PDF can integrate over the observable
+/// analytically. If so, the analytical integral code is cached so that
+/// integrate() can use the exact integral instead of the numeric integrator.
+void RooBinSamplingPdf::initializeAnalyticalIntegral(const RooArgSet* normSet) const {
+  // Setting a named range to select the bin boundaries requires a RooRealVar.
+  // For other observable types we stick to the numeric integrator.
+  auto *observable = dynamic_cast<RooRealVar *>(&*_observable);
+  if (!observable) {
+    _analyticalIntegralCode = 0;
+    return;
+  }
+
+  _analyticalIntegralRangeName = std::string("_binSampling_") + GetName();
+
+  // Define the range so that PDFs that inspect it in getAnalyticalIntegral()
+  // find a valid one. The actual bin boundaries are filled in for each bin in
+  // integrate().
+  observable->setRange(_analyticalIntegralRangeName.c_str(), observable->getMin(), observable->getMax());
+
+  RooArgSet allVars{*_observable};
+  RooArgSet analVars;
+  _analyticalIntegralCode = _pdf->getAnalyticalIntegralWN(allVars, analVars, normSet, _analyticalIntegralRangeName.c_str());
+
+  // Only use analytical integration if the observable is really integrated
+  // analytically. Otherwise, fall back to the numeric integrator.
+  if (_analyticalIntegralCode != 0 && !analVars.contains(*_observable)) {
+    _analyticalIntegralCode = 0;
+  }
+
+  if (_analyticalIntegralCode != 0) {
+    coutI(NumIntegration) << "RooBinSamplingPdf::integrate(" << GetName()
+        << "): using the analytical integral of " << _pdf->GetName()
+        << " to sample the bins instead of the numeric integrator." << std::endl;
+  }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Integrate the wrapped PDF over a single bin, with the given norm set and limits.
+/// If the wrapped PDF supports analytical integration over the observable, the
+/// exact integral is used. Otherwise, the numeric integrator is employed.
+///
+/// The result must match the numeric path, which integrates the value returned by
+/// operator(), i.e. the PDF value normalized over `normSet`. Therefore, the
+/// analytical integral is normalized over `normSet` as well via analyticalIntegralWN().
+double RooBinSamplingPdf::integrate(const RooArgSet* normSet, double low, double high) const {
+  if (_analyticalIntegralCode == -1) {
+    initializeAnalyticalIntegral(normSet);
+  }
+
+  if (_analyticalIntegralCode != 0) {
+    // The analytical path is only enabled for RooRealVar observables (see
+    // initializeAnalyticalIntegral()), so this static_cast is safe.
+    static_cast<RooRealVar &>(*_observable).setRange(_analyticalIntegralRangeName.c_str(), low, high);
+    return _pdf->analyticalIntegralWN(_analyticalIntegralCode, normSet, _analyticalIntegralRangeName.c_str());
+  }
+
   return integrator()->Integral(low, high);
 }
 

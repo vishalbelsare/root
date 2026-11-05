@@ -55,26 +55,8 @@ public:
    */
    ~TFumiliMinimizer () override;
 
-private:
-   // usually copying is non trivial, so we make this unaccessible
-
-   /**
-      Copy constructor
-   */
-   TFumiliMinimizer(const TFumiliMinimizer &);
-
-   /**
-      Assignment operator
-   */
-   TFumiliMinimizer & operator = (const TFumiliMinimizer & rhs);
-
-public:
-
    /// set the function to minimize
    void SetFunction(const ROOT::Math::IMultiGenFunction & func) override;
-
-   /// set the function to minimize
-   void SetFunction(const ROOT::Math::IMultiGradFunction & func) override;
 
    /// set free variable
    bool SetVariable(unsigned int ivar, const std::string & name, double val, double step) override;
@@ -139,7 +121,7 @@ public:
      return covariance matrix status
    */
    int CovMatrixStatus() const override {
-      if (fCovar.size() == 0) return 0;
+      if (fCovar.empty()) return 0;
       return (fStatus ==0) ? 3 : 1;
    }
 

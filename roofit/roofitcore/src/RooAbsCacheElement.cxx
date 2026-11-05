@@ -19,7 +19,7 @@
 \class RooAbsCacheElement
 \ingroup Roofitcore
 
-RooAbsCacheElement is the abstract base class for objects to be stored
+Abstract base class for objects to be stored
 in RooAbsCache cache manager objects. Each storage element has an
 interface to pass on calls for server redirection, operation mode
 change calls and constant term optimization management calls
@@ -29,10 +29,6 @@ change calls and constant term optimization management calls
 #include "RooAbsArg.h"
 #include "RooArgList.h"
 
-using namespace std;
-
-ClassImp(RooAbsCacheElement);
-   ;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,16 +62,3 @@ void RooAbsCacheElement::optimizeCacheMode(const RooArgSet& obs, RooArgSet& optN
   }
 }
 
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Interface for constant term optimization calls. The default implementation is to forward all these
-/// calls to all contained RooAbsArg objects as publicized through containedArg()
-
-void RooAbsCacheElement::findConstantNodes(const RooArgSet& obs, RooArgSet& cacheList, RooLinkedList& processedNodes)
-{
-  RooArgList list = containedArgs(FindConstantNodes) ;
-  for (const auto arg : list) {
-    arg->findConstantNodes(obs, cacheList, processedNodes);
-  }
-}

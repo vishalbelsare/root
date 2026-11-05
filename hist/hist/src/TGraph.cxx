@@ -14,9 +14,6 @@
 #include "TBuffer.h"
 #include "TEnv.h"
 #include "TGraph.h"
-#include "TGraphErrors.h"
-#include "TGraphAsymmErrors.h"
-#include "TGraphBentErrors.h"
 #include "TH1.h"
 #include "TF1.h"
 #include "TStyle.h"
@@ -39,6 +36,9 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <numeric>
+#include <limits>
+#include <iomanip>
 
 #include "HFitInterface.h"
 #include "Fit/DataRange.h"
@@ -46,7 +46,6 @@
 
 extern void H1LeastSquareSeqnd(Int_t n, Double_t *a, Int_t idim, Int_t &ifail, Int_t k, Double_t *b);
 
-ClassImp(TGraph);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -99,12 +98,31 @@ Begin_Macro(source)
 }
 End_Macro
 
+#### X-axis zooming
+
+The underlying x axis of a TGraph is based on a virtual fixed binwidth histogram, which means that one can not infinitely zoom on it, just down to one bin.
+The number of virtual bins is the maximum between 100 and the number of points in the TGraph. If you find a case where you would like to zoom deeper than allowed,
+you can either start canvas in web mode, or keep in classic mode but predefine the histogram before the first drawing of the graph:
+
+\code{.cpp}
+TGraph gr;
+for(auto i = 0; i < 100; ++i) gr.AddPoint(i,i);
+gr.AddPoint(10000, 0);
+// If one draws here, one can not zoom between x = 0 and x = 50, since first bin goes from x = 0 to 100.
+auto h1 = new TH1F("hist", "hist", 10000, -10., 11000.); // Define underlying hist with 10000 instead of 101 bins
+h1->SetMaximum(120);
+h1->SetStats(0);
+h1->SetDirectory(nullptr);
+gr.SetHistogram(h1);
+gr.Draw("A*")
+\endcode
+
 */
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Graph default constructor.
 
-TGraph::TGraph(): TNamed(), TAttLine(), TAttFill(0, 1000), TAttMarker()
+TGraph::TGraph() : TAttFill(0, 1000)
 {
    fNpoints = -1;  //will be reset to 0 in CtorAllocate
    if (!CtorAllocate()) return;
@@ -115,7 +133,7 @@ TGraph::TGraph(): TNamed(), TAttLine(), TAttFill(0, 1000), TAttMarker()
 /// the arrays x and y will be set later
 
 TGraph::TGraph(Int_t n)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    fNpoints = n;
    if (!CtorAllocate()) return;
@@ -126,7 +144,7 @@ TGraph::TGraph(Int_t n)
 /// Graph normal constructor with ints.
 
 TGraph::TGraph(Int_t n, const Int_t *x, const Int_t *y)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    if (!x || !y) {
       fNpoints = 0;
@@ -144,7 +162,7 @@ TGraph::TGraph(Int_t n, const Int_t *x, const Int_t *y)
 /// Graph normal constructor with floats.
 
 TGraph::TGraph(Int_t n, const Float_t *x, const Float_t *y)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    if (!x || !y) {
       fNpoints = 0;
@@ -163,7 +181,7 @@ TGraph::TGraph(Int_t n, const Float_t *x, const Float_t *y)
 /// values `start`, `start+step`, `start+2*step`, `start+3*step`, etc ...
 
 TGraph::TGraph(Int_t n, const Double_t *y, Double_t start, Double_t step)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    if (!y) {
       fNpoints = 0;
@@ -181,7 +199,7 @@ TGraph::TGraph(Int_t n, const Double_t *y, Double_t start, Double_t step)
 /// Graph normal constructor with doubles.
 
 TGraph::TGraph(Int_t n, const Double_t *x, const Double_t *y)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    if (!x || !y) {
       fNpoints = 0;
@@ -294,7 +312,7 @@ TGraph& TGraph::operator=(const TGraph &gr)
 /// in vx and vy.
 
 TGraph::TGraph(const TVectorF &vx, const TVectorF &vy)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    fNpoints = TMath::Min(vx.GetNrows(), vy.GetNrows());
    if (!CtorAllocate()) return;
@@ -313,7 +331,7 @@ TGraph::TGraph(const TVectorF &vx, const TVectorF &vy)
 /// in vx and vy.
 
 TGraph::TGraph(const TVectorD &vx, const TVectorD &vy)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    fNpoints = TMath::Min(vx.GetNrows(), vy.GetNrows());
    if (!CtorAllocate()) return;
@@ -329,7 +347,7 @@ TGraph::TGraph(const TVectorD &vx, const TVectorD &vy)
 /// Graph constructor importing its parameters from the TH1 object passed as argument
 
 TGraph::TGraph(const TH1 *h)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    if (!h) {
       Error("TGraph", "Pointer to histogram is null");
@@ -340,12 +358,13 @@ TGraph::TGraph(const TH1 *h)
       Error("TGraph", "Histogram must be 1-D; h %s is %d-D", h->GetName(), h->GetDimension());
       fNpoints = 0;
    } else {
-      fNpoints = ((TH1*)h)->GetXaxis()->GetNbins();
+      fNpoints = h->GetXaxis()->GetNbins();
    }
 
-   if (!CtorAllocate()) return;
+   if (!CtorAllocate())
+      return;
 
-   TAxis *xaxis = ((TH1*)h)->GetXaxis();
+   auto xaxis = h->GetXaxis();
    for (Int_t i = 0; i < fNpoints; i++) {
       fX[i] = xaxis->GetBinCenter(i + 1);
       fY[i] = h->GetBinContent(i + 1);
@@ -371,7 +390,7 @@ TGraph::TGraph(const TH1 *h)
 ///                at the fNpx+1 points of f and the integral is normalized to 1.
 
 TGraph::TGraph(const TF1 *f, Option_t *option)
-   : TNamed("Graph", "Graph"), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", "Graph"), TAttFill(0, 1000)
 {
    char coption = ' ';
    if (!f) {
@@ -421,6 +440,8 @@ TGraph::TGraph(const TF1 *f, Option_t *option)
 /// `filename` is assumed to contain at least two columns of numbers.
 /// The string format is by default `"%lg %lg"`.
 /// This is a standard c formatting for `scanf()`.
+/// For example, set format to  `"%lg,%lg"` for a comma-separated file.
+/// If format string is empty, suitable value will be provided based on file extension
 ///
 /// If columns of numbers should be skipped, a `"%*lg"` or `"%*s"` for each column
 /// can be added,  e.g. `"%lg %*lg %lg"` would read x-values from the first and
@@ -435,7 +456,7 @@ TGraph::TGraph(const TF1 *f, Option_t *option)
 /// Note in that case, the instantiation is about two times slower.
 
 TGraph::TGraph(const char *filename, const char *format, Option_t *option)
-   : TNamed("Graph", filename), TAttLine(), TAttFill(0, 1000), TAttMarker()
+   : TNamed("Graph", filename), TAttFill(0, 1000)
 {
    Double_t x, y;
    TString fname = filename;
@@ -454,11 +475,21 @@ TGraph::TGraph(const char *filename, const char *format, Option_t *option)
    std::string line;
    Int_t np = 0;
 
-   // No delimiters specified (standard constructor).
-   if (strcmp(option, "") == 0) {
+   TString format_ = format;
+
+   if (!option || !*option) { // No delimiters specified (standard constructor).
+      // is empty format string specified - try to guess format from the file extension
+      if (format_.IsNull()) {
+         if (fname.EndsWith(".txt", TString::kIgnoreCase))
+            format_ = "%lg %lg";
+         else if (fname.EndsWith(".tsv", TString::kIgnoreCase))
+            format_ = "%lg\t%lg";
+         else
+            format_ = "%lg,%lg";
+      }
 
       while (std::getline(infile, line, '\n')) {
-         if (2 != sscanf(line.c_str(), format, &x, &y)) {
+         if (2 != sscanf(line.c_str(), format_.Data(), &x, &y)) {
             continue; //skip empty and ill-formed lines
          }
          SetPoint(np, x, y);
@@ -470,7 +501,6 @@ TGraph::TGraph(const char *filename, const char *format, Option_t *option)
    } else {
 
       // Checking format and creating its boolean counterpart
-      TString format_ = TString(format) ;
       format_.ReplaceAll(" ", "") ;
       format_.ReplaceAll("\t", "") ;
       format_.ReplaceAll("lg", "") ;
@@ -502,7 +532,7 @@ TGraph::TGraph(const char *filename, const char *format, Option_t *option)
 
       // Initializing loop variables
       Bool_t isLineToBeSkipped = kFALSE ; //empty and ill-formed lines
-      char * token = NULL ;
+      char * token = nullptr ;
       TString token_str = "" ;
       Int_t token_idx = 0 ;
       Double_t * value = new Double_t [2] ; //x,y buffers
@@ -511,13 +541,13 @@ TGraph::TGraph(const char *filename, const char *format, Option_t *option)
       // Looping
       char *rest;
       while (std::getline(infile, line, '\n')) {
-         if (line != "") {
+         if (!line.empty()) {
             if (line[line.size() - 1] == char(13)) {  // removing DOS CR character
                line.erase(line.end() - 1, line.end()) ;
             }
             //token = R__STRTOK_R(const_cast<char *>(line.c_str()), option, rest);
             token = R__STRTOK_R(const_cast<char *>(line.c_str()), option, &rest);
-            while (token != NULL && value_idx < 2) {
+            while (token != nullptr && value_idx < 2) {
                if (isTokenToBeSaved[token_idx]) {
                   token_str = TString(token) ;
                   token_str.ReplaceAll("\t", "") ;
@@ -529,7 +559,7 @@ TGraph::TGraph(const char *filename, const char *format, Option_t *option)
                      value_idx++ ;
                   }
                }
-               token = R__STRTOK_R(NULL, option, &rest); // next token
+               token = R__STRTOK_R(nullptr, option, &rest); // next token
                token_idx++ ;
             }
             if (!isLineToBeSkipped && value_idx == 2) {
@@ -540,7 +570,7 @@ TGraph::TGraph(const char *filename, const char *format, Option_t *option)
             }
          }
          isLineToBeSkipped = kFALSE ;
-         token = NULL ;
+         token = nullptr ;
          token_idx = 0 ;
          value_idx = 0 ;
       }
@@ -552,6 +582,10 @@ TGraph::TGraph(const char *filename, const char *format, Option_t *option)
       delete token ;
    }
    infile.close();
+   if (fNpoints == 0) {
+      Warning("TGraph", "No points were found in file %s with the specified input format %s", filename, format);
+      return;
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -597,13 +631,30 @@ Double_t** TGraph::AllocateArrays(Int_t Narrays, Int_t arraySize)
    Double_t **newarrays = new Double_t*[Narrays];
    if (!arraySize) {
       for (Int_t i = 0; i < Narrays; ++i)
-         newarrays[i] = 0;
+         newarrays[i] = nullptr;
    } else {
       for (Int_t i = 0; i < Narrays; ++i)
          newarrays[i] = new Double_t[arraySize];
    }
    fMaxSize = arraySize;
    return newarrays;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Performs the operation: `y = y + c1*f(x,y)`
+/// Errors are not recalculated.
+///
+/// \param f may be a 1-D function TF1 or 2-d function TF2
+/// \param c1 a scaling factor, 1 by default
+
+void TGraph::Add(TF1 *f, Double_t c1)
+{
+   if (fHistogram) SetBit(kResetHisto);
+
+   for (Int_t i = 0; i < fNpoints; i++) {
+      fY[i] += c1*f->Eval(fX[i], fY[i]);
+   }
+   if (gPad) gPad->Modified();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -810,37 +861,38 @@ void TGraph::Draw(Option_t *option)
    TString opt = option;
    opt.ToLower();
 
-   if (opt.Contains("same")) {
+   if (opt.Contains("same"))
       opt.ReplaceAll("same", "");
-   }
 
    // in case of option *, set marker style to 3 (star) and replace
    // * option by option P.
-   Ssiz_t pos;
-   if ((pos = opt.Index("*")) != kNPOS) {
+   auto pos = opt.Index("*");
+   if (pos != kNPOS) {
       SetMarkerStyle(3);
-      opt.Replace(pos, 1, "p");
+      opt[pos] = 'p';
    }
 
-   // If no option is specified, it is defined as "alp" in case there
-   // no current pad or if the current pad as no axis defined.
-   if (!option || !strlen(option)) {
-      if (gPad) {
-         if (!gPad->GetListOfPrimitives()->FindObject("TFrame")) opt = "alp";
-      } else {
-         opt = "alp";
+   // If no option is specified, it is defined as "alp" in case there is
+   // no current pad or if the current pad has no axis defined and if there is
+   // no default option set using TGraph::SetOption. If fOption is set using
+   // TGraph::SetOption, it is used as default option.
+   if (!option || !*option) {
+      if (!gPad || !gPad->GetListOfPrimitives()->FindObject("TFrame")) {
+         opt = !fOption.IsNull() ? fOption.Data() : "alp";
+         opt.ToLower();
       }
    }
 
    if (gPad) {
-      if (!gPad->IsEditable()) gROOT->MakeDefCanvas();
-      if (opt.Contains("a")) gPad->Clear();
+      if (!gPad->IsEditable())
+         gROOT->MakeDefCanvas();
+      if (opt.Contains("a"))
+         gPad->Clear();
    }
 
    AppendPad(opt);
 
    gPad->IncrementPaletteColor(1, opt);
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1061,9 +1113,8 @@ void TGraph::Expand(Int_t newsize, Int_t step)
 
 Double_t **TGraph::ExpandAndCopy(Int_t size, Int_t iend)
 {
-   if (size <= fMaxSize) {
-      return 0;
-   }
+   if (size <= fMaxSize)
+      return nullptr;
    Double_t **newarrays = Allocate(2 * size);
    CopyPoints(newarrays, 0, iend, 0);
    return newarrays;
@@ -1084,8 +1135,7 @@ void TGraph::FillZero(Int_t begin, Int_t end, Bool_t)
 
 TObject *TGraph::FindObject(const char *name) const
 {
-   if (fFunctions) return fFunctions->FindObject(name);
-   return 0;
+   return fFunctions ? fFunctions->FindObject(name) : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1093,8 +1143,7 @@ TObject *TGraph::FindObject(const char *name) const
 
 TObject *TGraph::FindObject(const TObject *obj) const
 {
-   if (fFunctions) return fFunctions->FindObject(obj);
-   return 0;
+   return fFunctions ? fFunctions->FindObject(obj) : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1129,6 +1178,8 @@ TObject *TGraph::FindObject(const TObject *obj) const
 /// "G"  | Uses the gradient implemented in `TF1::GradientPar` for the minimization. This allows to use Automatic Differentiation when it is supported by the provided TF1 function.
 /// "EX0" | When fitting a TGraphErrors or TGraphAsymErrors do not consider errors in the X coordinates
 /// "ROB" | In case of linear fitting, compute the LTS regression coefficients (robust (resistant) regression), using the default fraction of good points "ROB=0.x" - compute the LTS regression coefficients, using 0.x as a fraction of good points
+/// "SERIAL" | Runs in serial mode. By default, if ROOT is built with MT support and MT is enabled, the fit is performed in multi-thread.
+/// "MULTITHREAD" | Forces usage of multi-thread execution whenever possible.
 ///
 ///
 /// This function is used for fitting also the derived TGraph classes such as TGraphErrors or TGraphAsymmErrors.
@@ -1207,7 +1258,7 @@ TObject *TGraph::FindObject(const TObject *obj) const
 TFitResultPtr TGraph::Fit(TF1 *f1, Option_t *option, Option_t *goption, Axis_t rxmin, Axis_t rxmax)
 {
    Foption_t fitOption;
-   ROOT::Fit::FitOptionsMake(ROOT::Fit::kGraph, option, fitOption);
+   ROOT::Fit::FitOptionsMake(ROOT::Fit::EFitObjectType::kGraph, option, fitOption);
    // create range and minimizer options with default values
    ROOT::Fit::DataRange range(rxmin, rxmax);
    ROOT::Math::MinimizerOptions minOption;
@@ -1215,14 +1266,17 @@ TFitResultPtr TGraph::Fit(TF1 *f1, Option_t *option, Option_t *goption, Axis_t r
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Fit this graph with function with name `fname`.
+/// Fit this graph with the global function named `fname`.
 ///
-/// This is a different interface to TGraph fitting using TGraph::Fit(TF1 *f1,Option_t *, Option_t *, Axis_t, Axis_t)
-/// See there for the details about fitting a TGraph.
+/// This will retrieve the function with name `fname` from ROOT's global list of functions, and use it to
+/// fit the data in the TGraph.
+/// TF1 or TF2 functions that have been created in the same ROOT session can be accessed using `fname`.
+/// Predefined functions such as gaus, expo, poln, etc. are automatically created by ROOT.
+/// @see TF1::InitStandardFunctions, TF2::InitStandardFunctions, TF3::InitStandardFunctions
 ///
-/// The parameter `fname` is the name of an already predefined function created by TF1 or TF2
-/// Predefined functions such as gaus, expo and poln are automatically
-/// created by ROOT.
+/// Note that using a global function is not thread safe. In this case, use the overload
+/// TGraph::Fit(TF1 *f1,Option_t *, Option_t *, Axis_t, Axis_t) with a locally created function.
+/// For more details about fitting a TGraph, see the same overload.
 ///
 /// The parameter `fname` can also be a formula, accepted by the linear fitter (linear parts divided
 /// by "++" sign), for example "x++sin(x)" for fitting "[0]*x+[1]*sin(x)"
@@ -1391,8 +1445,7 @@ Double_t TGraph::GetErrorYlow(Int_t) const
 
 TF1 *TGraph::GetFunction(const char *name) const
 {
-   if (!fFunctions) return nullptr;
-   return (TF1*)fFunctions->FindObject(name);
+   return dynamic_cast<TF1*>(FindObject(name));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1414,7 +1467,7 @@ TH1F *TGraph::GetHistogram() const
    // therefore they might be too strict and cut some points. In that case the
    // fHistogram limits should be recomputed ie: the existing fHistogram
    // should not be returned.
-   TH1F *historg = nullptr;
+   TH1F *histogr = nullptr;
    if (fHistogram) {
       if (!TestBit(kResetHisto)) {
          if (gPad && gPad->GetLogx()) {
@@ -1427,7 +1480,7 @@ TH1F *TGraph::GetHistogram() const
       } else {
          const_cast <TGraph*>(this)->ResetBit(kResetHisto);
       }
-      historg = fHistogram;
+      histogr = fHistogram;
    }
 
    if (rwxmin == rwxmax) rwxmax += 1.;
@@ -1468,7 +1521,7 @@ TH1F *TGraph::GetHistogram() const
    const char *gname = GetName();
    if (!gname[0]) gname = "Graph";
    // do not add the histogram to gDirectory
-   // use local TDirectory::TContect that will set temporarly gDirectory to a nullptr and
+   // use local TDirectory::TContext that will set temporarly gDirectory to a nullptr and
    // will avoid that histogram is added in the global directory
    {
       TDirectory::TContext ctx(nullptr);
@@ -1480,35 +1533,24 @@ TH1F *TGraph::GetHistogram() const
    fHistogram->SetMaximum(maximum);
    fHistogram->GetYaxis()->SetLimits(minimum, maximum);
    // Restore the axis attributes if needed
-   if (historg) {
-      fHistogram->GetXaxis()->SetTitle(historg->GetXaxis()->GetTitle());
-      fHistogram->GetXaxis()->CenterTitle(historg->GetXaxis()->GetCenterTitle());
-      fHistogram->GetXaxis()->RotateTitle(historg->GetXaxis()->GetRotateTitle());
-      fHistogram->GetXaxis()->SetNoExponent(historg->GetXaxis()->GetNoExponent());
-      fHistogram->GetXaxis()->SetNdivisions(historg->GetXaxis()->GetNdivisions());
-      fHistogram->GetXaxis()->SetLabelFont(historg->GetXaxis()->GetLabelFont());
-      fHistogram->GetXaxis()->SetLabelOffset(historg->GetXaxis()->GetLabelOffset());
-      fHistogram->GetXaxis()->SetLabelSize(historg->GetXaxis()->GetLabelSize());
-      fHistogram->GetXaxis()->SetTitleSize(historg->GetXaxis()->GetTitleSize());
-      fHistogram->GetXaxis()->SetTitleOffset(historg->GetXaxis()->GetTitleOffset());
-      fHistogram->GetXaxis()->SetTitleFont(historg->GetXaxis()->GetTitleFont());
-      fHistogram->GetXaxis()->SetTimeDisplay(historg->GetXaxis()->GetTimeDisplay());
-      fHistogram->GetXaxis()->SetTimeFormat(historg->GetXaxis()->GetTimeFormat());
+   if (histogr) {
+      fHistogram->GetXaxis()->SetTitle(histogr->GetXaxis()->GetTitle());
+      fHistogram->GetXaxis()->CenterTitle(histogr->GetXaxis()->GetCenterTitle());
+      fHistogram->GetXaxis()->RotateTitle(histogr->GetXaxis()->GetRotateTitle());
+      fHistogram->GetXaxis()->SetNoExponent(histogr->GetXaxis()->GetNoExponent());
+      fHistogram->GetXaxis()->SetTimeDisplay(histogr->GetXaxis()->GetTimeDisplay());
+      fHistogram->GetXaxis()->SetTimeFormat(histogr->GetXaxis()->GetTimeFormat());
+      histogr->GetXaxis()->TAttAxis::Copy(*(fHistogram->GetXaxis()));
 
-      fHistogram->GetYaxis()->SetTitle(historg->GetYaxis()->GetTitle());
-      fHistogram->GetYaxis()->CenterTitle(historg->GetYaxis()->GetCenterTitle());
-      fHistogram->GetYaxis()->RotateTitle(historg->GetYaxis()->GetRotateTitle());
-      fHistogram->GetYaxis()->SetNoExponent(historg->GetYaxis()->GetNoExponent());
-      fHistogram->GetYaxis()->SetNdivisions(historg->GetYaxis()->GetNdivisions());
-      fHistogram->GetYaxis()->SetLabelFont(historg->GetYaxis()->GetLabelFont());
-      fHistogram->GetYaxis()->SetLabelOffset(historg->GetYaxis()->GetLabelOffset());
-      fHistogram->GetYaxis()->SetLabelSize(historg->GetYaxis()->GetLabelSize());
-      fHistogram->GetYaxis()->SetTitleSize(historg->GetYaxis()->GetTitleSize());
-      fHistogram->GetYaxis()->SetTitleOffset(historg->GetYaxis()->GetTitleOffset());
-      fHistogram->GetYaxis()->SetTitleFont(historg->GetYaxis()->GetTitleFont());
-      fHistogram->GetYaxis()->SetTimeDisplay(historg->GetYaxis()->GetTimeDisplay());
-      fHistogram->GetYaxis()->SetTimeFormat(historg->GetYaxis()->GetTimeFormat());
-      delete historg;
+      fHistogram->GetYaxis()->SetTitle(histogr->GetYaxis()->GetTitle());
+      fHistogram->GetYaxis()->CenterTitle(histogr->GetYaxis()->GetCenterTitle());
+      fHistogram->GetYaxis()->RotateTitle(histogr->GetYaxis()->GetRotateTitle());
+      fHistogram->GetYaxis()->SetNoExponent(histogr->GetYaxis()->GetNoExponent());
+      fHistogram->GetYaxis()->SetTimeDisplay(histogr->GetYaxis()->GetTimeDisplay());
+      fHistogram->GetYaxis()->SetTimeFormat(histogr->GetYaxis()->GetTimeFormat());
+      histogr->GetYaxis()->TAttAxis::Copy(*(fHistogram->GetYaxis()));
+
+      delete histogr;
    }
    return fHistogram;
 }
@@ -1552,9 +1594,8 @@ Double_t TGraph::GetPointY(Int_t i) const
 
 TAxis *TGraph::GetXaxis() const
 {
-   TH1 *h = GetHistogram();
-   if (!h) return 0;
-   return h->GetXaxis();
+   auto h = GetHistogram();
+   return h ? h->GetXaxis() : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1562,9 +1603,8 @@ TAxis *TGraph::GetXaxis() const
 
 TAxis *TGraph::GetYaxis() const
 {
-   TH1 *h = GetHistogram();
-   if (!h) return 0;
-   return h->GetYaxis();
+   auto h = GetHistogram();
+   return h ? h->GetYaxis() : nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1573,11 +1613,15 @@ TAxis *TGraph::GetYaxis() const
 
 char *TGraph::GetObjectInfo(Int_t px, Int_t py) const
 {
+   if (!gPad) {
+      Error("GetObjectInfo", "Cannot be used without gPad");
+      return nullptr;
+   }
+
    // localize point
    Int_t ipoint = -2;
-   Int_t i;
    // start with a small window (in case the mouse is very close to one point)
-   for (i = 0; i < fNpoints; i++) {
+   for (Int_t i = 0; i < fNpoints; i++) {
       Int_t dpx = px - gPad->XtoAbsPixel(gPad->XtoPad(fX[i]));
       Int_t dpy = py - gPad->YtoAbsPixel(gPad->YtoPad(fY[i]));
 
@@ -1683,6 +1727,11 @@ void TGraph::InitPolynom(Double_t xmin, Double_t xmax)
 
 Int_t TGraph::InsertPoint()
 {
+   if (!gPad) {
+      Error("InsertPoint", "Cannot be used without gPad, requires last mouse position");
+      return -1;
+   }
+
    Int_t px = gPad->GetEventX();
    Int_t py = gPad->GetEventY();
 
@@ -2003,7 +2052,8 @@ void TGraph::Print(Option_t *) const
 void TGraph::RecursiveRemove(TObject *obj)
 {
    if (fFunctions) {
-      if (!fFunctions->TestBit(kInvalidObject)) fFunctions->RecursiveRemove(obj);
+      if (!fFunctions->TestBit(kInvalidObject))
+         fFunctions->RecursiveRemove(obj);
    }
    if (fHistogram == obj)
       fHistogram = nullptr;
@@ -2011,17 +2061,22 @@ void TGraph::RecursiveRemove(TObject *obj)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Delete point close to the mouse position
+/// Returns index of removed point (or -1 if nothing was changed)
 
 Int_t TGraph::RemovePoint()
 {
+   if (!gPad) {
+      Error("RemovePoint", "Cannot be used without gPad, requires last mouse position");
+      return -1;
+   }
+
    Int_t px = gPad->GetEventX();
    Int_t py = gPad->GetEventY();
 
    //localize point to be deleted
    Int_t ipoint = -2;
-   Int_t i;
    // start with a small window (in case the mouse is very close to one point)
-   for (i = 0; i < fNpoints; i++) {
+   for (Int_t i = 0; i < fNpoints; i++) {
       Int_t dpx = px - gPad->XtoAbsPixel(gPad->XtoPad(fX[i]));
       Int_t dpy = py - gPad->YtoAbsPixel(gPad->YtoPad(fY[i]));
       if (dpx * dpx + dpy * dpy < 100) {
@@ -2034,11 +2089,12 @@ Int_t TGraph::RemovePoint()
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Delete point number ipoint
+/// Returns index of removed point (or -1 if nothing was changed)
 
 Int_t TGraph::RemovePoint(Int_t ipoint)
 {
-   if (ipoint < 0) return -1;
-   if (ipoint >= fNpoints) return -1;
+   if ((ipoint < 0) || (ipoint >= fNpoints))
+      return -1;
 
    Double_t **ps = ShrinkAndCopy(fNpoints - 1, ipoint);
    CopyAndRelease(ps, ipoint + 1, fNpoints--, ipoint);
@@ -2061,7 +2117,18 @@ Int_t TGraph::RemovePoint(Int_t ipoint)
 ///  - `.tsv` : tab
 ///  - `.txt` : space
 ///
-/// If option = "title" a title line is generated with the axis titles.
+/// By default file contains lines with (X, Y) coordinates. If errors are present,
+/// (X, EX, Y, EY) are written. With asymmetric errors (X, EXL, EXH, Y, EYL, EYH) are stored.
+/// If option contains "asroot" string, order of values will match such order in TGraph constructors.
+/// So one will get (X, Y, EX, EY) or (X, Y, EXL, EXH, EYL, EYH).
+///
+/// Also one can directly select that kind of errors are stored:
+///   - "errors" - (X, Y, EX, EY) will be stored
+///   - "asymmerrors" - (X, Y, EXL, EXH, EYL, EYH) will be stored
+///   - "noerrors" - just (X, Y) will be stored disregard of graph kind
+///
+/// If option contains "title" a title line is generated with the axis titles.
+
 
 void TGraph::SaveAs(const char *filename, Option_t *option) const
 {
@@ -2069,6 +2136,7 @@ void TGraph::SaveAs(const char *filename, Option_t *option) const
    TString ext = "";
    TString fname = filename;
    TString opt = option;
+   opt.ToLower();
 
    if (filename) {
       if      (fname.EndsWith(".csv")) {del = ',';  ext = "csv";}
@@ -2082,27 +2150,73 @@ void TGraph::SaveAs(const char *filename, Option_t *option) const
          Error("SaveAs", "cannot open file: %s", filename);
          return;
       }
-      if (InheritsFrom(TGraphErrors::Class()) ) {
-         if(opt.Contains("title"))
-         out << "# " << GetXaxis()->GetTitle() << "\tex\t" << GetYaxis()->GetTitle() << "\tey" << std::endl;
-         double *ex = this->GetEX();
-         double *ey = this->GetEY();
-         for(int i=0 ; i<fNpoints ; i++)
-         out << fX[i] << del << (ex?ex[i]:0) << del << fY[i] << del << (ey?ey[i]:0) << std::endl;
-      } else if (InheritsFrom(TGraphAsymmErrors::Class()) || InheritsFrom(TGraphBentErrors::Class())) {
-         if(opt.Contains("title"))
-         out << "# " << GetXaxis()->GetTitle() << "\texl\t" << "\texh\t" << GetYaxis()->GetTitle() << "\teyl" << "\teyh" << std::endl;
-         double *exl = this->GetEXlow();
-         double *exh = this->GetEXhigh();
-         double *eyl = this->GetEYlow();
-         double *eyh = this->GetEYhigh();
-         for(int i=0 ; i<fNpoints ; i++)
-         out << fX[i] << del << (exl?exl[i]:0) << del << (exh?exh[i]:0) << del << fY[i] << del << (eyl?eyl[i]:0) << del << (eyh?eyh[i]:0) << std::endl;
-      } else {
-         if(opt.Contains("title"))
-         out << "# " << GetXaxis()->GetTitle() << "\t" << GetYaxis()->GetTitle() << std::endl;
-         for (int i=0 ; i<fNpoints ; i++)
-         out << fX[i] << del << fY[i] << std::endl;
+      Bool_t store_title = opt.Contains("title");
+      Bool_t no_errors = kFALSE, plain_errors = kFALSE, asymm_erros = kFALSE;
+      Bool_t as_root = opt.Contains("asroot") || opt.Contains("native");
+      if (opt.Contains("noerrors"))
+         no_errors = kTRUE;
+      else if (opt.Contains("asymmerrors"))
+         asymm_erros = kTRUE;
+      else if (opt.Contains("errors"))
+         plain_errors = kTRUE;
+      else if (InheritsFrom("TGraphErrors"))
+         plain_errors = kTRUE;
+      else if (InheritsFrom("TGraphAsymmErrors") || InheritsFrom("TGraphBentErrors"))
+         asymm_erros = kTRUE;
+      else
+         no_errors = kTRUE;
+
+      TString xtitle, ytitle;
+      if (fHistogram) {
+         xtitle = fHistogram->GetXaxis()->GetTitle();
+         ytitle = fHistogram->GetYaxis()->GetTitle();
+      }
+      if (xtitle.IsNull())
+         xtitle = "x";
+      if (ytitle.IsNull())
+         ytitle = "y";
+
+      if (plain_errors) {
+         if(store_title) {
+            if (as_root)
+               out << "# " << xtitle << "\t" << ytitle << "\tex\tey\n";
+            else
+               out << "# " << xtitle << "\tex\t" << ytitle << "\tey\n";
+         }
+         for(int i = 0; i < fNpoints ; i++) {
+            Double_t x = GetPointX(i);
+            Double_t y = GetPointY(i);
+            Double_t ex = GetErrorX(i);
+            Double_t ey = GetErrorY(i);
+            if (as_root)
+               out << x << del << y << del <<  ex << del << ey << "\n";
+            else
+               out << x << del << ex << del << y << del << ey << "\n";
+         }
+      } else if (asymm_erros) {
+         if(store_title) {
+            if (as_root)
+               out << "# " << xtitle << "\t" << ytitle << "\texl\texh\teyl\teyh\n";
+            else
+               out << "# " << xtitle << "\texl\texh\t" << ytitle << "\teyl\teyh\n";
+         }
+         for(int i = 0; i < GetN(); i++) {
+            Double_t x = GetPointX(i);
+            Double_t y = GetPointY(i);
+            Double_t exl = GetErrorXlow(i);
+            Double_t exh = GetErrorXhigh(i);
+            Double_t eyl = GetErrorYlow(i);
+            Double_t eyh = GetErrorYhigh(i);
+            if (as_root)
+               out << x << del << y << del << exl << del << exh << del << eyl << del << eyh << "\n";
+            else
+               out << x << del << exl << del << exh << del << y << del << eyl << del << eyh << "\n";
+         }
+      } else if (no_errors) {
+         if(store_title)
+            out << "# " << xtitle << "\t" << ytitle << "\n";
+         for (Int_t i = 0 ; i < GetN(); i++)
+            out << GetPointX(i) << del << GetPointY(i) << "\n";
       }
       out.close();
       Info("SaveAs", "%s file: %s has been generated", ext.Data(), filename);
@@ -2117,77 +2231,59 @@ void TGraph::SaveAs(const char *filename, Option_t *option) const
 
 void TGraph::SavePrimitive(std::ostream &out, Option_t *option /*= ""*/)
 {
-   char quote = '"';
-   out << "   " << std::endl;
-   static Int_t frameNumber = 0;
-   frameNumber++;
-
+   TString args;
    if (fNpoints >= 1) {
-      Int_t i;
-      TString fXName = TString(GetName()) + Form("_fx%d",frameNumber);
-      TString fYName = TString(GetName()) + Form("_fy%d",frameNumber);
-      out << "   Double_t " << fXName << "[" << fNpoints << "] = {" << std::endl;
-      for (i = 0; i < fNpoints-1; i++) out << "   " << fX[i] << "," << std::endl;
-      out << "   " << fX[fNpoints-1] << "};" << std::endl;
-      out << "   Double_t " << fYName << "[" << fNpoints << "] = {" << std::endl;
-      for (i = 0; i < fNpoints-1; i++) out << "   " << fY[i] << "," << std::endl;
-      out << "   " << fY[fNpoints-1] << "};" << std::endl;
-      if (gROOT->ClassSaved(TGraph::Class())) out << "   ";
-      else out << "   TGraph *";
-      out << "graph = new TGraph(" << fNpoints << "," << fXName << "," << fYName << ");" << std::endl;
-   } else {
-      if (gROOT->ClassSaved(TGraph::Class())) out << "   ";
-      else out << "   TGraph *";
-      out << "graph = new TGraph();" << std::endl;
+      TString xname = SavePrimitiveVector(out, "graph_x", fNpoints, fX, kTRUE);
+      TString yname = SavePrimitiveVector(out, "graph_y", fNpoints, fY);
+      args.Form("%d, %s.data(), %s.data()", fNpoints, xname.Data(), yname.Data());
    }
 
-   out << "   graph->SetName(" << quote << GetName() << quote << ");" << std::endl;
-   out << "   graph->SetTitle(" << quote << GetTitle() << quote << ");" << std::endl;
+   SavePrimitiveConstructor(out, Class(), "graph", args, fNpoints < 1);
 
-   SaveFillAttributes(out, "graph", 0, 1001);
-   SaveLineAttributes(out, "graph", 1, 1, 1);
-   SaveMarkerAttributes(out, "graph", 1, 1, 1);
+   SaveHistogramAndFunctions(out, "graph", option);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Save histogram and list of functions of TGraph as C++ statement
+/// Used in all TGraph-derived classes
+
+void TGraph::SaveHistogramAndFunctions(std::ostream &out, const char *varname, Option_t *option)
+{
+   thread_local Int_t frameNumber = 0;
+
+   TString ref = "Graph";
+   if ((ref != GetName()) || (ref != GetTitle()))
+      SavePrimitiveNameTitle(out, varname);
+
+   SaveFillAttributes(out, varname, 0, 1000);
+   SaveLineAttributes(out, varname, 1, 1, 1);
+   SaveMarkerAttributes(out, varname, 1, 1, 1);
 
    if (fHistogram) {
       TString hname = fHistogram->GetName();
-      hname += frameNumber;
-      fHistogram->SetName(Form("Graph_%s", hname.Data()));
+      fHistogram->SetName(TString::Format("Graph_histogram%d", ++frameNumber).Data());
       fHistogram->SavePrimitive(out, "nodraw");
-      out << "   graph->SetHistogram(" << fHistogram->GetName() << ");" << std::endl;
-      out << "   " << std::endl;
+      out << "   " <<varname << "->SetHistogram(" << fHistogram->GetName() << ");\n";
+      out << "   \n";
+      fHistogram->SetName(hname.Data());
    }
 
-   // save list of functions
-   TIter next(fFunctions);
-   TObject *obj;
-   while ((obj = next())) {
-      obj->SavePrimitive(out, Form("nodraw #%d\n",++frameNumber));
-      if (obj->InheritsFrom("TPaveStats")) {
-         out << "   graph->GetListOfFunctions()->Add(ptstats);" << std::endl;
-         out << "   ptstats->SetParent(graph->GetListOfFunctions());" << std::endl;
-      } else {
-         TString objname;
-         objname.Form("%s%d",obj->GetName(),frameNumber);
-         if (obj->InheritsFrom("TF1")) {
-            out << "   " << objname << "->SetParent(graph);\n";
-         }
-         out << "   graph->GetListOfFunctions()->Add("
-             << objname << ");" << std::endl;
-      }
+   TH1::SavePrimitiveFunctions(out, varname, fFunctions);
+
+   if (!option)
+      option = "";
+   const char *l = strstr(option, "multigraph");
+   if (l) {
+      out << "   multigraph->Add(" << varname << ",\"" << l + 10 << "\");\n";
+      return;
+   }
+   l = strstr(option, "th2poly");
+   if (l) {
+      out << "   " << l + 7 << "->AddBin(" << varname << ");\n";
+      return;
    }
 
-   const char *soption = option ? option : "";
-   const char *l = strstr(soption, "multigraph");
-   if (l) {
-      out << "   multigraph->Add(graph," << quote << l + 10 << quote << ");" << std::endl;
-      return;
-   }
-   l = strstr(soption, "th2poly");
-   if (l) {
-      out << "   " << l + 7 << "->AddBin(graph);" << std::endl;
-      return;
-   }
-   out << "   graph->Draw(" << quote << soption << quote << ");" << std::endl;
+   SavePrimitiveDraw(out, varname, option);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2246,7 +2342,7 @@ void TGraph::SetEditable(Bool_t editable)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Set highlight (enable/disble) mode for the graph
+/// Set highlight (enable/disable) mode for the graph
 /// by default highlight mode is disable
 
 void TGraph::SetHighlight(Bool_t set)
@@ -2257,6 +2353,13 @@ void TGraph::SetHighlight(Bool_t set)
    if (!painter) return;
    SetBit(kIsHighlight, set);
    painter->SetHighlight(this);
+}
+
+/// Set the histogram underlying the TGraph. This transfers the ownership of h to the TGraph. The preexisting fHistogram will be deleted.
+void  TGraph::SetHistogram(TH1F *h)
+{
+   delete fHistogram;
+   fHistogram = h;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2365,7 +2468,7 @@ void TGraph::SetNameTitle(const char *name, const char *title)
 /// Set statistics option on/off.
 ///
 /// By default, the statistics box is drawn.
-/// The paint options can be selected via gStyle->SetOptStats.
+/// The paint options can be selected via gStyle->SetOptStat.
 /// This function sets/resets the kNoStats bit in the graph object.
 /// It has priority over the Style option.
 
@@ -2393,9 +2496,9 @@ void TGraph::SetStats(Bool_t stats)
 
 Double_t **TGraph::ShrinkAndCopy(Int_t size, Int_t oend)
 {
-   if (size * 2 > fMaxSize || !fMaxSize) {
-      return 0;
-   }
+   if (size * 2 > fMaxSize || !fMaxSize)
+      return nullptr;
+
    Double_t **newarrays = Allocate(size);
    CopyPoints(newarrays, 0, oend, 0);
    return newarrays;
@@ -2424,36 +2527,29 @@ Double_t **TGraph::ShrinkAndCopy(Int_t size, Int_t oend)
 ///   graph->Sort(&CompareErrors, kFALSE);
 /// ~~~
 
-void TGraph::Sort(Bool_t (*greaterfunc)(const TGraph*, Int_t, Int_t) /*=TGraph::CompareX()*/,
-                  Bool_t ascending /*=kTRUE*/, Int_t low /* =0 */, Int_t high /* =-1111 */)
+void TGraph::Sort(Bool_t (*greaterfunc)(const TGraph *, Int_t, Int_t) /*=TGraph::CompareX()*/,
+                  Bool_t ascending /*=kTRUE*/, Int_t low /*=0*/, Int_t high /*=-1111*/)
 {
-
    // set the bit in case of an ascending =sort in X
-   if (greaterfunc == TGraph::CompareX && ascending  && low == 0 && high == -1111)
+   if (greaterfunc == TGraph::CompareX && ascending && low == 0 && high == -1111)
       SetBit(TGraph::kIsSortedX);
 
-   if (high == -1111) high = GetN() - 1;
-   //  Termination condition
-   if (high <= low) return;
+   if (high == -1111)
+      high = fNpoints - 1;
 
-   int left, right;
-   left = low; // low is the pivot element
-   right = high;
-   while (left < right) {
-      // move left while item < pivot
-      while (left <= high && greaterfunc(this, left, low) != ascending)
-         left++;
-      // move right while item > pivot
-      while (right > low && greaterfunc(this, right, low) == ascending)
-         right--;
-      if (left < right && left < high && right > low)
-         SwapPoints(left, right);
-   }
-   // right is final position for the pivot
-   if (right > low)
-      SwapPoints(low, right);
-   Sort(greaterfunc, ascending, low, right - 1);
-   Sort(greaterfunc, ascending, right + 1, high);
+   // Create a vector to store the indices of the graph data points.
+   // We use std::vector<Int_t> instead of std::vector<ULong64_t> to match the input type
+   // required by the comparison operator's signature provided as `greaterfunc`
+   std::vector<int> sorting_indices(fNpoints);
+   std::iota(sorting_indices.begin(), sorting_indices.end(), 0);
+
+   // Sort the indices using the provided comparison function
+   std::stable_sort(sorting_indices.begin() + low, sorting_indices.begin() + high + 1,
+             [&](int left, int right) { return ascending ? greaterfunc(this, right, left) :
+                                        greaterfunc(this, left, right); });
+
+   Int_t numSortedPoints = high - low + 1;
+   UpdateArrays(sorting_indices, numSortedPoints, low);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2530,6 +2626,25 @@ void TGraph::SwapPoints(Int_t pos1, Int_t pos2)
 {
    SwapValues(fX, pos1, pos2);
    SwapValues(fY, pos1, pos2);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Update the fX and fY arrays with the sorted values.
+
+void TGraph::UpdateArrays(const std::vector<Int_t> &sorting_indices, Int_t numSortedPoints, Int_t low)
+{
+   std::vector<Double_t> fXSorted(numSortedPoints);
+   std::vector<Double_t> fYSorted(numSortedPoints);
+
+   // Fill the sorted X and Y values based on the sorted indices
+   std::generate(fXSorted.begin(), fXSorted.end(),
+                 [begin = low, &sorting_indices, this]() mutable { return fX[sorting_indices[begin++]]; });
+   std::generate(fYSorted.begin(), fYSorted.end(),
+                 [begin = low, &sorting_indices, this]() mutable { return fY[sorting_indices[begin++]]; });
+
+   // Copy the sorted X and Y values back to the original arrays
+   std::copy(fXSorted.begin(), fXSorted.end(), fX + low);
+   std::copy(fYSorted.begin(), fYSorted.end(), fY + low);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

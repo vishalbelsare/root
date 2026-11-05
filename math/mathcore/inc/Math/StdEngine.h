@@ -13,6 +13,7 @@
 #ifndef ROOT_Math_StdEngine
 #define ROOT_Math_StdEngine
 
+#include <cstdint>
 #include <random>
 
 namespace ROOT {
@@ -58,7 +59,7 @@ namespace ROOT {
 
       /**
           @ingroup Random
-          Class to wrap engines fron the C++ standard random library in
+          Class to wrap engines from the C++ standard random library in
           the ROOT Random interface.
           These cases are then used by the generic TRandomGen class
           to provide TRandom interrace generators for the C++ random generators.
@@ -108,7 +109,7 @@ namespace ROOT {
 
       private:
          Generator fGen;
-         double fCONS;   //! cached value of maximum integer value generated
+         double fCONS;   ///<! cached value of maximum integer value generated
       };
 
 

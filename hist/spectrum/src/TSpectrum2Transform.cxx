@@ -6,7 +6,7 @@
     \brief Advanced 2-dimensional orthogonal transform functions
     \author Miroslav Morhac
 
- \legacy{TSpectrum2Transform}
+ \legacy{TSpectrum2Transform, For modeling a spectrum fitting and estimating the background one can use RooFit while for deconvolution and unfolding one can use TUnfold.}
 
  Class to carry out transforms of 2D spectra, its filtering and
  enhancement. It allows to calculate classic Fourier, Cosine, Sin,
@@ -33,7 +33,6 @@
 #include "TSpectrum2Transform.h"
 #include "TMath.h"
 
-ClassImp(TSpectrum2Transform);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor
@@ -56,7 +55,7 @@ TSpectrum2Transform::TSpectrum2Transform()
 /// The constructor creates TSpectrum2Transform object. Its sizes must be > than zero and must be power of 2.
 /// It sets default transform type to be Cosine transform. Transform parameters can be changed using setter functions.
 
-TSpectrum2Transform::TSpectrum2Transform(Int_t sizeX, Int_t sizeY) :TObject()
+TSpectrum2Transform::TSpectrum2Transform(Int_t sizeX, Int_t sizeY)
 {
    Int_t n;
    if (sizeX <= 0 || sizeY <= 0){
@@ -1749,7 +1748,7 @@ void TSpectrum2Transform::Transform(const Double_t **fSource, Double_t **fDest)
 {
    Int_t i, j;
    Int_t size;
-   Double_t *working_vector = 0, **working_matrix = 0;
+   Double_t *working_vector = nullptr, **working_matrix = nullptr;
    size = (Int_t) TMath::Max(fSizeX, fSizeY);
    switch (fTransformType) {
    case kTransformHaar:
@@ -2110,7 +2109,7 @@ void TSpectrum2Transform::FilterZonal(const Double_t **fSource, Double_t **fDest
    Int_t i, j;
    Double_t a, old_area = 0, new_area = 0;
    Int_t size;
-   Double_t *working_vector = 0, **working_matrix = 0;
+   Double_t *working_vector = nullptr, **working_matrix = nullptr;
    size = (Int_t) TMath::Max(fSizeX, fSizeY);
    switch (fTransformType) {
    case kTransformHaar:
@@ -2441,7 +2440,7 @@ void TSpectrum2Transform::Enhance(const Double_t **fSource, Double_t **fDest)
    Int_t i, j;
    Double_t a, old_area = 0, new_area = 0;
    Int_t size;
-   Double_t *working_vector = 0, **working_matrix = 0;
+   Double_t *working_vector = nullptr, **working_matrix = nullptr;
    size = (Int_t) TMath::Max(fSizeX, fSizeY);
    switch (fTransformType) {
    case kTransformHaar:

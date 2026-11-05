@@ -13,9 +13,12 @@
 #ifndef ROOT_ROOFIT_TESTSTATISTICS_LikelihoodGradientWrapper
 #define ROOT_ROOFIT_TESTSTATISTICS_LikelihoodGradientWrapper
 
+#include "RooFit/TestStatistics/SharedOffset.h"
+
 #include <Fit/ParameterSettings.h>
 #include <Math/IFunctionfwd.h>
 #include "Math/MinimizerOptions.h"
+#include "Math/Util.h"
 
 #include <vector>
 #include <memory> // shared_ptr
@@ -33,26 +36,33 @@ struct WrapperCalculationCleanFlags;
 enum class LikelihoodGradientMode { multiprocess };
 
 class LikelihoodGradientWrapper {
-public:
+protected:
    LikelihoodGradientWrapper(std::shared_ptr<RooAbsL> likelihood,
                              std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean, std::size_t N_dim,
-                             RooMinimizer *minimizer);
+                             RooMinimizer *minimizer, SharedOffset offset);
+
+public:
    virtual ~LikelihoodGradientWrapper() = default;
-   virtual LikelihoodGradientWrapper *clone() const = 0;
+   LikelihoodGradientWrapper(const LikelihoodGradientWrapper &) = delete;
+   LikelihoodGradientWrapper &operator=(const LikelihoodGradientWrapper &) = delete;
 
    static std::unique_ptr<LikelihoodGradientWrapper>
    create(LikelihoodGradientMode likelihoodGradientMode, std::shared_ptr<RooAbsL> likelihood,
-          std::shared_ptr<WrapperCalculationCleanFlags> calculationIsClean, std::size_t nDim, RooMinimizer *minimizer);
+          std::shared_ptr<WrapperCalculationCleanFlags> calculationIsClean, std::size_t nDim, RooMinimizer *minimizer,
+          SharedOffset offset);
 
    virtual void fillGradient(double *grad) = 0;
-   virtual void
-   fillGradientWithPrevResult(double *grad, double *previous_grad, double *previous_g2, double *previous_gstep) = 0;
+   /// \param[in] fValAtX The function value at the current parameter point, if known by the
+   ///            caller (e.g. from the preceding line search); NaN when unknown. Implementations
+   ///            can use it to avoid re-evaluating the function at the central point.
+   virtual void fillGradientWithPrevResult(double *grad, double *previous_grad, double *previous_g2,
+                                           double *previous_gstep, double fValAtX) = 0;
 
    /// Synchronize minimizer settings with calculators in child classes.
    virtual void synchronizeWithMinimizer(const ROOT::Math::MinimizerOptions &options);
    virtual void synchronizeParameterSettings(const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings);
-   virtual void synchronizeParameterSettings(ROOT::Math::IMultiGenFunction *function,
-                                             const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings) = 0;
+   virtual void
+   synchronizeParameterSettingsImpl(const std::vector<ROOT::Fit::ParameterSettings> &parameter_settings) = 0;
    /// Minuit passes in parameter values that may not conform to RooFit internal standards (like applying range
    /// clipping), but that the specific calculator does need. This function can be implemented to receive these
    /// Minuit-internal values.
@@ -82,6 +92,7 @@ protected:
    std::shared_ptr<RooAbsL> likelihood_;
    RooMinimizer *minimizer_;
    std::shared_ptr<WrapperCalculationCleanFlags> calculation_is_clean_;
+   SharedOffset shared_offset_;
 };
 
 } // namespace TestStatistics

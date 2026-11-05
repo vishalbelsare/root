@@ -1,44 +1,108 @@
 #ifndef TMVA_SOFIE_SOFIE_COMMON
 #define TMVA_SOFIE_SOFIE_COMMON
 
-// #include "TMVA/RTensor.hxx"
-// #include "TMVA/Types.h"
+#include "ROOT/RSpan.hxx"
 
-#include <stdexcept>
-#include <type_traits>
+#include <algorithm>
+#include <cassert>
+#include <complex>
 #include <cstdint>
 #include <cstring>
-#include <string>
-#include <vector>
+#include <iomanip>
+#include <iostream>
+#include <limits>
+#include <map>
 #include <memory>
 #include <regex>
+#include <set>
 #include <sstream>
-#include <iostream>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <vector>
 
-namespace TMVA{
-namespace Experimental{
-namespace SOFIE{
-
-//typedef RTensor tensor_t;
+namespace TMVA::Experimental::SOFIE {
 
 enum class ETensorType{
-   UNDEFINED = 0, FLOAT = 1, UNINT8 = 2, INT8 = 3, UINT16 = 4, INT16 = 5, INT32 = 6, INT64 = 7, STRING = 8, BOOL = 9, //order sensitive
+   UNDEFINED = 0, FLOAT = 1, UINT8 = 2, INT8 = 3, UINT16 = 4, INT16 = 5, INT32 = 6, INT64 = 7, STRING = 8, BOOL = 9, //order sensitive
     FLOAT16 = 10, DOUBLE = 11, UINT32 = 12, UINT64 = 13, COMPLEX64 = 14, COMPLEX28 = 15, BFLOAT16 = 16
 };
+
+enum class EActivationType{
+   UNDEFINED = 0, RELU = 1, SOFTMAX = 2, SIGMOID = 3, LEAKYRELU = 4, TANH = 5, ELU = 6
+};
+
+constexpr size_t GetTypeSize(ETensorType type) {
+    switch (type) {
+        case ETensorType::FLOAT:     return sizeof(float);
+        case ETensorType::DOUBLE:    return sizeof(double);
+        case ETensorType::UINT8:     return sizeof(uint8_t);
+        case ETensorType::INT8:      return sizeof(int8_t);
+        case ETensorType::UINT16:    return sizeof(uint16_t);
+        case ETensorType::INT16:     return sizeof(int16_t);
+        case ETensorType::INT32:     return sizeof(int32_t);
+        case ETensorType::INT64:     return sizeof(int64_t);
+        case ETensorType::UINT32:    return sizeof(uint32_t);
+        case ETensorType::UINT64:    return sizeof(uint64_t);
+        case ETensorType::BOOL:      return sizeof(bool);
+        case ETensorType::STRING:    return sizeof(std::string);
+        default: return 0;
+    }
+}
 
 typedef std::int64_t int_t;
 
 std::string ConvertTypeToString(ETensorType type);
 ETensorType ConvertStringToType(std::string type);
 
+// find if a string represents a number
+bool IsInteger(const std::string & s);
+
 struct Dim{
    bool isParam = false;
-   size_t dim;
+   size_t dim = 0;
    std::string param;
+
+    // default constructor (for I/O)
+   Dim() {}
+
+   // constructor for a parametric dimension with the option to pass a default dim value
+   // We use -1 for dim to indicate that the param dimension is an expression (e.g. "d1+d2")
+   // in case the string represents a number make Dim not parametric
+   Dim(const std::string & p, size_t d = 0) : isParam(true), dim(d), param(p)
+   {
+      if (IsInteger(p)) {
+            isParam = false;
+            dim = std::stoi(p);
+      }
+   }
+
+   // constructor for a non-parametric dimension
+   Dim(size_t d) : dim(d) {}
+
+   std::string GetVal() const {
+      // cast to int64_t for negative shape values
+      return (isParam) ? param : std::to_string(static_cast<int64_t>(dim));
+   }
+
+   std::ostream& operator<< (std::ostream& os) const {
+      os << GetVal();
+      return os;
+   }
+
+   bool operator==(const Dim& rhs) const {
+       return (isParam && rhs.isParam) ? param == rhs.param : dim == rhs.dim;
+   }
+   bool operator!=(const Dim& rhs) const {
+       return !(*this == rhs);
+   }
 };
 
-std::vector<Dim> ConvertShapeToDim(std::vector<size_t> shape);
-
+//bool operator==(const Dim& lhs, const Dim& rhs);
+inline std::ostream & operator<< (std::ostream &os, const Dim &d) {
+   os << d.GetVal();
+   return os;
+}
 
 struct InputTensorInfo{
    ETensorType type;
@@ -50,47 +114,214 @@ struct TensorInfo{
    std::vector<size_t> shape;
 };
 
-std::size_t ConvertShapeToLength(std::vector<size_t> shape);
+struct DynamicTensorInfo{
+   ETensorType type;
+   std::vector<Dim> shape;
+};
 
-std::string ConvertShapeToString(std::vector<size_t> shape);
+// template traits for Tensor Shape
+template <typename T>
+struct TensorShape {};
+template<>
+struct TensorShape<Dim> {
+   static bool IsDim() { return true; }
+};
+template<>
+struct TensorShape<size_t> {
+   static bool IsDim() { return false; }
+};
 
-struct InitializedTensor{
-   ETensorType fType;
-   std::vector<std::size_t> fShape;
-   std::shared_ptr<void> fData;     //! Transient
-   int fSize=1;
-   char* fPersistentData=nullptr;   //[fSize] Persistent
+// template traits for Tensor type
+template <typename T>
+struct TensorType {};
+template<>
+struct TensorType<float> {
+   static const std::string Name() { return "float"; }
+};
+template<>
+struct TensorType<double> {
+   static const std::string Name() { return "double"; }
+};
+template<>
+struct TensorType<int64_t> {
+   static const std::string Name() { return "int64_t"; }
+};
+template<>
+struct TensorType<int32_t> {
+   static const std::string Name() { return "int32_t"; }
+};
+template<>
+struct TensorType<uint32_t> {
+   static const std::string Name() { return "uint32_t"; }
+};
+template<>
+struct TensorType<uint64_t> {
+   static const std::string Name() { return "uint64_t"; }
+};
+template<>
+struct TensorType<bool> {
+   static const std::string Name() { return "bool"; }
+};
+template<>
+struct TensorType<int8_t> {
+   static const std::string Name() { return "int8_t"; }
+};
+template<>
+struct TensorType<uint8_t> {
+   static const std::string Name() { return "uint8_t"; }
+};
 
-   void CastSharedToPersistent(){
-      for(auto item:fShape){
-         fSize*=(int)item;
-      }
-      switch(fType){
-         case ETensorType::FLOAT: fSize*=sizeof(float); break;
-         default:
-          throw std::runtime_error("TMVA::SOFIE doesn't yet supports serialising data-type " + ConvertTypeToString(fType));
-      }
-      fPersistentData=(char*)fData.get();
+struct TensorMemoryInfo {
+   std::string_view tensor_name;
+   size_t tensor_size;
+
+   TensorMemoryInfo split(const std::string_view new_name, size_t new_size) {
+        if (new_size > tensor_size) {
+            throw std::invalid_argument("New size exceeds available tensor size.");
+        }
+        tensor_size -= new_size;
+        return TensorMemoryInfo{new_name, new_size};
    }
-   void CastPersistentToShared(){
-     switch(fType){
-       case ETensorType::FLOAT: {
-      std::shared_ptr<void> tData(malloc(fSize * sizeof(float)), free);
-      std::memcpy(tData.get(), fPersistentData,fSize * sizeof(float));
-      fData=tData;
-      break;
-      }
-      default: {
-          throw std::runtime_error("TMVA::SOFIE doesn't yet supports serialising data-type " + ConvertTypeToString(fType));
-      }
-      }
+
+    // Method to merge another struct into this one
+   void merge(const TensorMemoryInfo& other) {
+        tensor_size += other.tensor_size;
    }
+};
+
+struct MemoryPoolInfo {
+
+   // ordered map with chunk_idx as key and TensorMemoryInfo as value
+   std::map<size_t, TensorMemoryInfo> total_stack;
+
+   // ordered map with chunk_idx as key and chunk_size as value
+   std::map<size_t, size_t> available_stack;
+};
+
+std::vector<Dim> ConvertShapeToDim(const std::vector<size_t> & shape);
+
+std::vector<size_t> ConvertShapeToInt(const std::vector<Dim> & shape);
+
+std::size_t ConvertShapeToLength(const std::vector<size_t> & shape);
+
+std::string ConvertShapeToString(const std::vector<size_t> & shape);
+std::string ConvertDimShapeToString(const std::vector<Dim> & shape);
+
+std::string ConvertDimShapeToLength(const std::vector<Dim> & shape);
+
+
+template<class T>
+std::string ConvertValToString(T value) {
+   std::stringstream ret;
+   ret << std::to_string(value);
+   return ret.str();
+}
+// float specialization
+template<>
+inline std::string ConvertValToString<float>(float value) {
+   std::stringstream ret;
+   // special case for infinity and Nan
+   if (std::isinf(value))
+         ret << (value > 0 ? "std::numeric_limits<float>::infinity()" :
+                                  "-std::numeric_limits<float>::infinity()");
+   else if (std::isnan(value))
+         ret << "std::numeric_limits<float>::quiet_NaN()";
+   else {
+      ret << std::setprecision(std::numeric_limits<float>::max_digits10);
+      ret << value;
+   }
+   return ret.str();
+}
+// double specialization
+template<>
+inline std::string ConvertValToString<double>(double value) {
+   std::stringstream ret;
+   // special case for infinity and Nan
+   if (std::isinf(value))
+         ret << (value > 0 ? "std::numeric_limits<double>::infinity()" :
+                                  "-std::numeric_limits<double>::infinity()");
+   else if (std::isnan(value))
+         ret << "std::numeric_limits<double>::quiet_NaN()";
+   else {
+      ret << std::setprecision(std::numeric_limits<double>::max_digits10);
+      ret << value;
+   }
+   return ret.str();
+}
+// int64_t specialization for INT64_MIN
+template<>
+inline std::string ConvertValToString<int64_t>(int64_t value) {
+   std::stringstream ret;
+   if (value == INT64_MIN)
+      ret << "INT64_MIN";
+   else
+      ret << std::to_string(value);
+   return ret.str();
+}
+
+
+// convert list of values in a string taking into account the precision
+template<class T>
+std::string ConvertValuesToString(size_t n, const T * data, size_t maxprint = -1) {
+   std::stringstream ret;
+   ret << "{ ";
+   for (size_t i = 0; i < std::min(n,maxprint); i++) {
+      ret << ConvertValToString(data[i]);
+      if (i < n-1) ret << ", ";
+      if (i < n-1 && i == maxprint-1) ret << "..... ";
+   }
+   ret << "}";
+   return ret.str();
+}
+template<class T>
+std::string ConvertValuesToString(const std::vector<T> & data, size_t maxprint = 5) {
+  return ConvertValuesToString(data.size(), data.data(), maxprint);
+}
+
+class InitializedTensor {
+public:
+   InitializedTensor() = default;
+   InitializedTensor(ETensorType type, std::span<std::size_t> shape, std::shared_ptr<void> data, bool typeConstant = false)
+      : fConstant(typeConstant), fType{type}, fShape{shape.begin(), shape.end()}, fData{data}
+   {
+   }
+
+   ETensorType const &type() const { return fType; }
+   std::vector<std::size_t> const &shape() const { return fShape; }
+   std::shared_ptr<void> const &sharedptr() const { return fData; }
+   // query if tensor comes from a Constant operator
+   bool IsConstantTensor() const { return fConstant;}
+   // query if tensor needs to be written in a weight file. Constant tensors are not written in a separate file
+   bool IsWeightTensor() const { return !fConstant && !fIsNotWritable;}
+   // check if a Tensor is Writable (need to be written in the file or in the generated code (e.g. as a constant tensor)
+   // if an initialized tensors is used in a constant operator at compile time does not need to be written and can be omitted in
+   // the generated code
+   bool IsNotWritable() const { return fIsNotWritable; }
+   // set not writable initialized tensors - i.e. tensor that must not be written in a file
+   void SetNotWritable() { fIsNotWritable = true;}
+   // set writable initialized tensors - i.e. tensor that must be written in a file
+   void SetWritable() { fIsNotWritable = false;}
+   // set as constant (needed for non-float initialized tensors)
+   void SetConstant() { fConstant = true;}
+
+   template <class T = void>
+   T const *data() const
+   {
+      return static_cast<T const *>(fData.get());
+   }
+
+private:
+   bool  fConstant = false;      ///< Flag specifying if tensor is a Constant one (coming from a Constant operator)
+   bool  fIsNotWritable = false; ///< Flag to indicate that tensor values do not need to be written as weight or generated code
+   ETensorType fType;               ///< Encodes the type of the data
+   std::vector<std::size_t> fShape; ///< The shape of the data in terms of elements in each dimension
+   std::shared_ptr<void> fData;     ///<! Transient shared data
 };
 
 template <typename T>
 ETensorType GetTemplatedType(T /*obj*/ ){
    if (std::is_same<T, float>::value) return ETensorType::FLOAT;
-   if (std::is_same<T, uint8_t>::value) return ETensorType::UNINT8;
+   if (std::is_same<T, uint8_t>::value) return ETensorType::UINT8;
    if (std::is_same<T, int8_t>::value) return ETensorType::INT8;
    if (std::is_same<T, uint16_t>::value) return ETensorType::UINT16;
    if (std::is_same<T, int16_t>::value) return ETensorType::INT16;
@@ -106,16 +337,29 @@ ETensorType GetTemplatedType(T /*obj*/ ){
 }
 
 namespace UTILITY{
+
+
+
+// clean operator and tensor names
+std::string Clean_name(std::string input_tensor_name);
+
 // Check if two shapes are equal
 bool AreSameShape(const std::vector<size_t>&, const std::vector<size_t>&);
+bool AreSameShape(const std::vector<size_t>&, const std::vector<Dim>&);
+bool AreSameShape(const std::vector<Dim>&, const std::vector<Dim>&);
+
 
 // Multidirectional broadcast a list of tensors to the same shape
 std::vector<size_t> MultidirectionalBroadcastShape(std::vector<std::vector<size_t>>);
 
-// Unidirectional broadcast two shapes to the same shape
-std::vector<size_t> UnidirectionalBroadcastShape(std::vector<size_t>, std::vector<size_t>);
+// Multidirectional broadcast two shapes to the same shape
 
-std::string Clean_name(std::string input_tensor_name);
+std::pair<int, std::vector<size_t>> MultidirectionalBroadcastShape(std::vector<size_t> &, std::vector<size_t> &);
+std::vector<size_t> UnidirectionalBroadcastShape(std::vector<size_t> &, std::vector<size_t> &);
+
+std::pair<int, std::vector<Dim>> MultidirectionalBroadcastShape(std::vector<Dim> &, std::vector<Dim> &);
+
+
 
 template<typename T>
 T* BroadcastConvBias(const T* data, const size_t channel, const std::vector<size_t>& targetShape) {
@@ -159,20 +403,31 @@ T* BroadcastConvBias(const T* data, const size_t channel, const std::vector<size
 // Broadcast a tensor from shape to targetShape according to numpy broadcasting rules
 // See more at https://numpy.org/doc/stable/user/basics.broadcasting.html
 // and https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md .
-template<typename T>
-T* BroadcastTensor(const T* data, const std::vector<size_t>& shape, const std::vector<size_t>& targetShape) {
-   // Size of the shapes
+template<typename T, class ConstContT = std::span<const T>>
+void BroadcastTensor(ConstContT data, const std::vector<size_t>& shape, const std::vector<size_t>& targetShape, T *broadcastedData) {
+   // Size of the shapes (tensor input here have shapes with same sizes, we have already added the needed ones )
    size_t size = shape.size();
    // Current length of the broadcasted tensor
-   size_t curLength = ConvertShapeToLength(shape);
-   size_t targetLength = ConvertShapeToLength(targetShape);
-   // newShape is an aray of size equal to dimension along which we are broadcasting the tensor
-   T* broadcastedData = new T[targetLength];
-   std::copy(data, data + curLength, broadcastedData);
+   size_t curLength = data.size();
+   // special case when broadcasting last dimensions (initial shapes must be the same)
+   if (size > 1 && shape.front() == targetShape.front() && shape.back() == 1) {
+      size_t bsize = targetShape.back();
+      // compute the size of the data to broadcast
+      for (int k = int(size)-2; k >=0; k--) {
+         if (shape[k] != 1) break;
+         bsize *= targetShape[k];
+      }
+      for (size_t i = 0; i < curLength; i++) {
+         std::fill(broadcastedData + i*bsize, broadcastedData + (i+1)*bsize , data[i]);
+      }
+      return;
+   }
+
+   std::copy(data.begin(), data.end(), broadcastedData);
    // Product of the previous dimensions of targetShape
    size_t arrayNum = 1;
-   // New broadcasted data
-   std::vector<T> newData(targetLength);
+   // New broadcasted data: is this needed?
+   std::vector<T> newData(ConvertShapeToLength(targetShape));
 
    for (size_t idx = 0; idx < size; idx++) {
       size_t dim = shape[idx];
@@ -208,10 +463,19 @@ T* BroadcastTensor(const T* data, const std::vector<size_t>& shape, const std::v
       // Update the number of arrays
       arrayNum *= targetDim;
    }
-   return broadcastedData;
 }
 
-// Unidirectional broadcasting shape to targetShape
+// interface where we allocate a new array for broadcasted data
+template<typename T>
+T* CreateBroadcastTensor(const T* data, const std::vector<size_t>& shape, const std::vector<size_t>& targetShape, size_t targetLength) {
+   // newShape is an array of size equal to dimension along which we are broadcasting the tensor
+   T* broadcastedData = new T[targetLength];
+   size_t curLength = ConvertShapeToLength(shape);
+   BroadcastTensor<T>({data, curLength}, shape, targetShape, broadcastedData);
+   return broadcastedData;
+}
+// Unidirectional broadcasting shape to targetShape// In unidirectional broadcast - only tensor B can have the shape changed not
+// tensor A - otherwise is a multidirectional broadcast
 template<typename T>
 T* UnidirectionalBroadcast(const T* data, const std::vector<size_t>& shape, const std::vector<size_t>& targetShape) {
    // Prepend shape with ones
@@ -220,177 +484,31 @@ T* UnidirectionalBroadcast(const T* data, const std::vector<size_t>& shape, cons
       std::vector<size_t> newShape(targetSize, 1);
       size_t offset = targetSize - shape.size();
       std::copy(shape.begin(), shape.end(), newShape.begin() + offset);
-      return BroadcastTensor<T>(data, newShape, targetShape);
+      return CreateBroadcastTensor(data, newShape, targetShape, ConvertShapeToLength(targetShape));
    }
-   return BroadcastTensor<T>(data, shape, targetShape);
+   return CreateBroadcastTensor(data, shape, targetShape, ConvertShapeToLength(targetShape));
+}
+
+// Unidirectional broadcasting shape to targetShape using a passed vector to avoid allocations
+template<typename T>
+void UnidirectionalBroadcast(const T* data, const std::vector<size_t>& shape, const std::vector<size_t>& targetShape, T *broadcastedData) {
+   size_t curLength = ConvertShapeToLength(shape);
+   std::span<T> inData(const_cast<T*>(data), curLength);
+   // Prepend shape with ones
+   if (shape.size() < targetShape.size()) {
+      size_t targetSize = targetShape.size();
+      std::vector<size_t> newShape(targetSize, 1);
+      size_t offset = targetSize - shape.size();
+      std::copy(shape.begin(), shape.end(), newShape.begin() + offset);
+      BroadcastTensor(inData, newShape, targetShape, broadcastedData);
+      return;
+   }
+   BroadcastTensor(inData, shape, targetShape, broadcastedData);
 }
 
 /// compute stride of a tensor given its shape (assume layout is row-major)
 std::vector<size_t> ComputeStrideFromShape(const std::vector<size_t> & shape);
-
-/// function to check if a >> 0 and a < MAX using a single comparison
-//// use trick casting to unsigned values so it becomes a single comparison
-inline bool is_a_ge_zero_and_a_lt_b(int a, int b) {
-   return static_cast<unsigned>(a) < static_cast<unsigned>(b);
-}
-
-
-/// im2col : efficient function to re-arrange input data of convolution to a matrix
-/// that can be used by BLAS
-/// Use trick to loop on each element of filtered region first and follow input data layout
-/// By doing this reads and writes are of consecutive data in memory and one gains in efficiency
-/// The resulting matrix will be already transposed and can be used directly in BLAS
-/// since output will be a matrix : (channels*kernel_h*kernel_w , output_h*output_w)
-/// Example: with an input matrix
-///    a1 a2 a3
-///    b1 b2 b3    and a 2x2 kernel    (k1,k2,k3,k4) and padding 1 :
-///    c1 c2 c3
-///     outpout will be a matrix (4 x 16)
-///  the routine will follow output order :
-//     first all elements which will be operated by k1 then k2 then k3
-///  -> ( 0  0  0  0  0  a1 a2 a3 0  b1 b2 b3  0 c1 c2 c3  )    all elements for k1
-///     ( 0  0  0  0  a1 a2 a3  0 b1 b2 b3  0 c1 c2 c3  0  )     for k2
-///     ( 0  a1 a2 a3 0  b1 b2 b3 0  c1 c2 c3  0  0  0  0  )     for k3
-///     ( a1 a2 a3 0  b1 b2 b3  0 c1 c2 c3  0  0  0  0  0  )     for k4
-///
-
-template <typename T>
-void Im2col(const T *data_im, const int channels, const int height, const int width, const int kernel_h,
-                const int kernel_w, const int pad_h, const int pad_w, const int stride_h, const int stride_w,
-                const int dilation_h, const int dilation_w, T *data_col)
-{
-   const int output_h = (height + 2 * pad_h - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
-   const int output_w = (width + 2 * pad_w - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
-   const int channel_size = height * width;
-   for (int channel = channels; channel--; data_im += channel_size) {
-      for (int kernel_row = 0; kernel_row < kernel_h; kernel_row++) {
-         for (int kernel_col = 0; kernel_col < kernel_w; kernel_col++) {
-            int input_row = -pad_h + kernel_row * dilation_h;
-            for (int output_rows = output_h; output_rows; output_rows--) {
-               if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
-                  for (int output_cols = output_w; output_cols; output_cols--) {
-                     *(data_col++) = 0;
-                  }
-               } else {
-                  int input_col = -pad_w + kernel_col * dilation_w;
-                  for (int output_col = output_w; output_col; output_col--) {
-                     if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
-                        *(data_col++) = data_im[input_row * width + input_col];
-                     } else {
-                        *(data_col++) = 0;
-                     }
-                     input_col += stride_w;
-                  }
-               }
-               input_row += stride_h;
-            }
-         }
-      }
-   }
-}
-
-/// 3d implementation
-template <typename T>
-void Im2col_3d(const T *data_im, const int channels,
-            const int depth, const int height, const int width,
-            const int kernel_d, const int kernel_h, const int kernel_w,
-            const int pad_d, const int pad_h, const int pad_w,
-            const int stride_d, const int stride_h, const int stride_w,
-            const int dilation_d, const int dilation_h,  const int dilation_w, T *data_col)
-{
-   const int output_h = (height + 2 * pad_h - (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
-   const int output_w = (width + 2 * pad_w - (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
-   const int output_d = (depth + 2 * pad_d - (dilation_d * (kernel_d - 1) + 1)) / stride_d + 1;
-   const int channel_size = height * width * depth;
-   // assume data are c x d x h x w
-   for (int channel = channels; channel--; data_im += channel_size) {
-      for (int kernel_depth = 0; kernel_depth < kernel_d; kernel_depth++) {
-         for (int kernel_row = 0; kernel_row < kernel_h; kernel_row++) {
-            for (int kernel_col = 0; kernel_col < kernel_w; kernel_col++) {
-               int input_dep = -pad_d + kernel_depth * dilation_d;
-               for (int output_dep = output_d; output_dep; output_dep--) {
-                  if (!is_a_ge_zero_and_a_lt_b(input_dep, depth)) {
-                     for (int output_rows = output_h; output_rows; output_rows--) {
-                        for (int output_cols = output_w; output_cols; output_cols--) {
-                           *(data_col++) = 0;
-                        }
-                     }
-                  } else {
-                     int input_row = -pad_h + kernel_row * dilation_h;
-                     for (int output_rows = output_h; output_rows; output_rows--) {
-                        if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
-                           for (int output_cols = output_w; output_cols; output_cols--) {
-                              *(data_col++) = 0;
-                           }
-                        } else {
-                           int input_col = -pad_w + kernel_col * dilation_w;
-                           for (int output_col = output_w; output_col; output_col--) {
-                              if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
-                                 *(data_col++) = data_im[input_dep * width * height + input_row * width + input_col];
-                              } else {
-                                 *(data_col++) = 0;
-                              }
-                              input_col += stride_w;
-                           }
-                        }
-                        input_row += stride_h;
-                     }
-                  }
-                  input_dep += stride_d;
-               }
-            }
-         }
-      }
-   }
-}
-
-template <typename Dtype>
-void col2im(const Dtype* data_col, const int channels,
-    const int height, const int width, const int kernel_h, const int kernel_w,
-    const int pad_h, const int pad_w,
-    const int stride_h, const int stride_w,
-    const int dilation_h, const int dilation_w,
-    Dtype* data_im) {
-   // note that output data_im needs to be set to zero value!!!!
-   std::fill(data_im, data_im + height * width * channels, 0.);
-  //caffe_set(height * width * channels, Dtype(0), data_im);
-  // data_im must be a zero vector
-  //const Dtype * data_col_0 = data_col;
-  const int output_h = (height + 2 * pad_h -
-    (dilation_h * (kernel_h - 1) + 1)) / stride_h + 1;
-  const int output_w = (width + 2 * pad_w -
-    (dilation_w * (kernel_w - 1) + 1)) / stride_w + 1;
-  const int channel_size = height * width;
-  for (int channel = channels; channel--; data_im += channel_size) {
-    for (int kernel_row = 0; kernel_row < kernel_h; kernel_row++) {
-      for (int kernel_col = 0; kernel_col < kernel_w; kernel_col++) {
-        int input_row = -pad_h + kernel_row * dilation_h;
-        for (int output_rows = output_h; output_rows; output_rows--) {
-          if (!is_a_ge_zero_and_a_lt_b(input_row, height)) {
-            data_col += output_w;
-          } else {
-            int input_col = -pad_w + kernel_col * dilation_w;
-            for (int output_col = output_w; output_col; output_col--) {
-              if (is_a_ge_zero_and_a_lt_b(input_col, width)) {
-                //assert(input_row*width+input_col < height * width * channels);
-                //assert(data_col - data_col_0 < output_h*output_w*channels);
-               //  std::cout << "COL2IM: input_row" << "  " << input_row << "  " << input_col
-               //       << " <---- " << data_col - data_col_0 << " values:  "
-               //       << data_im[input_row * width + input_col] << " <--- " << *data_col << std::endl;
-                data_im[input_row * width + input_col] += *data_col;
-              }
-              data_col++;
-              input_col += stride_w;
-            }
-          }
-          input_row += stride_h;
-        }
-      }
-    }
-  }
-  //std::cout << "finishing col2imp" << std::endl;
-}
-
+std::vector<Dim> ComputeStrideFromShape(const std::vector<Dim> & shape);
 
 
 }  // end namespace UTILITY
@@ -400,8 +518,42 @@ extern "C" void sgemm_(const char * transa, const char * transb, const int * m, 
                        const float * alpha, const float * A, const int * lda, const float * B, const int * ldb,
                        const float * beta, float * C, const int * ldc);
 }//BLAS
-}//SOFIE
-}//Experimental
-}//TMVA
 
-#endif //TMVA_SOFIE_RMODEL
+
+//Utility functions to generate code
+void EmitNestedLoops(std::stringstream &out, size_t loopRank, const std::vector<Dim> shape);
+void CloseNestedLoops(std::stringstream &out, size_t loopRank);
+
+
+
+/// Source code of the inference helper functions to embed in generated code so
+/// that it is standalone and does not need to include TMVA/SOFIE_common.hxx.
+struct HelperFunctionsCode {
+   std::string includes;    ///< #include directives to place in the header preamble
+   std::string definitions; ///< function/type definitions to place inside the generated model namespace
+   std::string cladDefinitions; ///< Clad custom-derivative definitions to place at file scope (outside the model
+                                ///< namespace) so that Clad discovers them; empty when none are needed
+};
+
+/// Return the standalone C++ source of the inference helper functions requested
+/// in `neededHelpers` (see RModel::AddNeededHelperFunction), resolving
+/// their inter-dependencies. Recognised keys are: "Im2col", "Im2col_3d",
+/// "col2im", "UnidirectionalBroadcast", "BroadcastConvBias", "Gemm_Call",
+/// "Relu", "Fill", "Copy", "ReadTensorFromStream", "SafetensorsBlob",
+/// "SafetensorsReader", "InputTensorDims", "DynamicMemory".
+///
+/// `modelNamespace` (e.g. "TMVA_SOFIE_MyModel") is the generated model namespace;
+/// the Clad pullbacks are emitted into clad::custom_derivatives::<modelNamespace>
+/// so the model stays differentiable without SOFIE_common.hxx / CladDerivator.h.
+///
+/// `sgemmAlreadyDeclared`: set true if the caller already emitted the `extern "C"`
+/// sgemm_ declaration (fNeededBlasRoutines block), so Gemm_Call skips its own and
+/// avoids a duplicate. Default false emits it, keeping the returned code self-contained.
+HelperFunctionsCode GenerateHelperFunctionsCode(const std::set<std::string> & neededHelpers,
+                                                const std::string & modelNamespace,
+                                                bool sgemmAlreadyDeclared = false);
+
+
+} // namespace TMVA::Experimental::SOFIE
+
+#endif //TMVA_SOFIE_COMMON

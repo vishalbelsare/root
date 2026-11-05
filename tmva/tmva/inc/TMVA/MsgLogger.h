@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MsgLogger                                                             *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      TMVA output logger class producing nicely formatted log messages          *
@@ -24,7 +24,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_MsgLogger
@@ -118,7 +118,7 @@ namespace TMVA {
       static std::atomic<const std::map<EMsgType, std::string>*> fgColorMap;  ///< matches output types with terminal colors
       EMsgType                                fMinType;    ///< minimum type for output
 
-      ClassDef(MsgLogger,0) // Ostringstream derivative to redirect and format logging output
+      ClassDefOverride(MsgLogger,0) // Ostringstream derivative to redirect and format logging output
    }; // class MsgLogger
 
    inline MsgLogger& MsgLogger::operator<< ( MsgLogger& (*_f)( MsgLogger& ) )

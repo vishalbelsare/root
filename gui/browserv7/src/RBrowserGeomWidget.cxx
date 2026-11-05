@@ -1,6 +1,5 @@
 // Author: Sergey Linev <S.Linev@gsi.de>
 // Date: 2021-01-22
-// Warning: This is part of the ROOT 7 prototype! It will change without notice. It might trigger earthquakes. Feedback is welcome!
 
 /*************************************************************************
  * Copyright (C) 1995-2021, Rene Brun and Fons Rademakers.               *
@@ -19,7 +18,7 @@
 #include "TGeoMaterial.h"
 #include "TGeoMedium.h"
 
-using namespace ROOT::Experimental;
+using namespace ROOT;
 
 using namespace std::string_literals;
 
@@ -58,13 +57,11 @@ public:
       fViewer.SetShowHierarchy(false);
    }
 
-   virtual ~RBrowserGeomWidget() = default;
+   ~RBrowserGeomWidget() override = default;
 
    std::string GetKind() const override { return "geom"s; }
 
-   void Show(const std::string &arg) override { fViewer.Show(arg); }
-
-   std::string GetUrl() override { return "../"s + fViewer.GetWindowAddr() + "/"s; }
+   std::shared_ptr<ROOT::RWebWindow> GetWindow() override { return fViewer.GetWindow(); }
 
    bool DrawElement(std::shared_ptr<Browsable::RElement> &elem, const std::string & = "") override
    {
@@ -118,5 +115,5 @@ protected:
    }
 public:
    RBrowserGeomProvider() : RBrowserWidgetProvider("geom") {}
-   ~RBrowserGeomProvider() = default;
+   ~RBrowserGeomProvider() override = default;
 } sRBrowserGeomProvider;

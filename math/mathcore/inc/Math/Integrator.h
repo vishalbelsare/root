@@ -26,17 +26,13 @@
 #include <vector>
 #include <string>
 
-
 /**
 @defgroup NumAlgo Numerical Algorithms
 
 Numerical Algorithm classes from the \ref MathCore and \ref MathMore libraries.
 
 @ingroup MathCore
-@ingroup MathMore
-
 */
-
 
 /**
 
@@ -484,7 +480,6 @@ private:
 } // namespace ROOT
 
 
-#ifndef __CINT__
 
 
 #include "Math/WrappedFunction.h"
@@ -541,7 +536,6 @@ double ROOT::Math::IntegratorOneDim::IntegralCauchy(Function & f, double a, doub
 }
 
 
-#endif
 
 
 

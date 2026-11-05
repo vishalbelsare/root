@@ -21,7 +21,7 @@
 
 class RooRealVar;
 
-class RooJohnson final : public RooAbsPdf {
+class RooJohnson : public RooAbsPdf {
 public:
   RooJohnson() {} // NOLINT: not allowed to use = default because of TObject::kIsOnHeap detection, see ROOT-10300
 
@@ -32,9 +32,7 @@ public:
 
   RooJohnson(const RooJohnson& other, const char* newName = nullptr);
 
-  ~RooJohnson() override = default;
-
-  TObject* clone(const char* newname) const override {
+  TObject* clone(const char* newname=nullptr) const override {
     return new RooJohnson(*this,newname);
   }
 
@@ -57,7 +55,7 @@ private:
   double _massThreshold{-1.E300};
 
   double evaluate() const override;
-  void computeBatch(cudaStream_t*, double* output, size_t nEvents, RooFit::Detail::DataMap const&) const override;
+  void doEval(RooFit::EvalContext &) const override;
   inline bool canComputeBatchWithCuda() const override { return true; }
 
   ClassDefOverride(RooJohnson,1)

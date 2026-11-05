@@ -32,9 +32,8 @@ public:
 
   RooAbsMCStudyModule(const char* name, const char* title) ;
   RooAbsMCStudyModule(const RooAbsMCStudyModule& other) ;
-  ~RooAbsMCStudyModule() override {} ;
 
-  /// Initializer method called upon attachement to given RooMCStudy object
+  /// Initializer method called upon attachment to given RooMCStudy object
   bool doInitializeInstance(RooMCStudy& /*study*/) ;
 
   /// Initializer called immediately after attachment to RooMCStudy object and initialization of module base class
@@ -66,10 +65,11 @@ public:
     return true ;
   }
 
-  /// Method called after fit has been performed.
-  virtual bool processAfterFit(Int_t /*sampleNum*/) {
-    return true ;
-  }
+  /// Method called after fit has been performed. It's crucial that this is
+  /// implemented, because it's the responsability of this method to ensure
+  /// that this MC study module will not have added an element to its internal
+  /// RooDataSet if the fit has failed.
+  virtual bool processAfterFit(bool fitOk) = 0;
 
 protected:
 
@@ -77,9 +77,7 @@ protected:
    // which are only functional after module has been attached to a RooMCStudy object
 
    /// Refit model using original or specified data sample
-   RooFitResult* refit(RooAbsData* inGenSample=nullptr) {
-     if (_mcs) return _mcs->refit(inGenSample) ; else return nullptr ;
-   }
+   RooFit::OwningPtr<RooFitResult> refit(RooAbsData* inGenSample=nullptr);
 
    /// Return generate sample
    RooAbsData* genSample() {
@@ -93,17 +91,17 @@ protected:
 
    // Accessor for generator context, generator parameters, prototype data and projected dependents.
    RooAbsGenContext* genContext() {
-     return _mcs ? _mcs->_genContext : nullptr ;
+     return _mcs ? _mcs->_genContext.get() : nullptr ;
    }
 
    /// Return initial value of generator model parameters
    RooArgSet* genInitParams() {
-     return _mcs ? _mcs->_genInitParams : nullptr ;
+     return _mcs ? &_mcs->_genInitParams : nullptr ;
    }
 
    /// Return current value of generator model parameters
    RooArgSet* genParams() {
-     return _mcs ? _mcs->_genParams : nullptr ;
+     return _mcs ? &_mcs->_genParams : nullptr ;
    }
 
    /// Return generator prototype data provided by user
@@ -135,17 +133,17 @@ protected:
 
    /// Return initial value of parameters of fit model
    RooArgSet* fitInitParams() {
-     return _mcs ? _mcs->_fitInitParams : nullptr ;
+     return _mcs ? &_mcs->_fitInitParams : nullptr ;
    }
 
    /// Return current value of parameters of fit model
    RooArgSet* fitParams() {
-     return _mcs ? _mcs-> _fitParams : nullptr ;
+     return _mcs ? &_mcs-> _fitParams : nullptr ;
    }
 
    /// Return pointer to RooRealVar holding minimized -log(L) value
    RooRealVar* nllVar() {
-     return _mcs ? _mcs->_nllVar : nullptr ;
+     return _mcs ? _mcs->_nllVar.get() : nullptr ;
    }
 
    // Accessors for fit options, generator and MCstudy configuration flags

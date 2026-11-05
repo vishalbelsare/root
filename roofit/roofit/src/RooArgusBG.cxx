@@ -34,28 +34,13 @@ RooArgusBG is a RooAbsPdf implementation describing the ARGUS background shape.
 #include "TMath.h"
 
 #include <cmath>
-using namespace std;
 
-ClassImp(RooArgusBG);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor.
 
 RooArgusBG::RooArgusBG(const char *name, const char *title,
-             RooAbsReal& _m, RooAbsReal& _m0, RooAbsReal& _c) :
-  RooAbsPdf(name, title),
-  m("m","Mass",this,_m),
-  m0("m0","Resonance mass",this,_m0),
-  c("c","Slope parameter",this,_c),
-  p("p","Power",this,(RooRealVar&)RooRealConstant::value(0.5))
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor.
-
-RooArgusBG::RooArgusBG(const char *name, const char *title,
-             RooAbsReal& _m, RooAbsReal& _m0, RooAbsReal& _c, RooAbsReal& _p) :
+             RooAbsReal::Ref _m, RooAbsReal::Ref _m0, RooAbsReal::Ref _c, RooAbsReal::Ref _p) :
   RooAbsPdf(name, title),
   m("m","Mass",this,_m),
   m0("m0","Resonance mass",this,_m0),
@@ -83,16 +68,15 @@ double RooArgusBG::evaluate() const {
   if(t >= 1) return 0;
 
   double u= 1 - t*t;
-  return m*TMath::Power(u,p)*exp(c*u) ;
+  return m*std::pow(u,p)*exp(c*u) ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RooArgusBG::computeBatch(cudaStream_t* stream, double* output, size_t nEvents, RooFit::Detail::DataMap const& dataMap) const
+void RooArgusBG::doEval(RooFit::EvalContext & ctx) const
 {
-  auto dispatch = stream ? RooBatchCompute::dispatchCUDA : RooBatchCompute::dispatchCPU;
-  dispatch->compute(stream, RooBatchCompute::ArgusBG, output, nEvents,
-          {dataMap.at(m), dataMap.at(m0), dataMap.at(c), dataMap.at(p)});
+  RooBatchCompute::compute(ctx.config(this), RooBatchCompute::ArgusBG, ctx.output(),
+          {ctx.at(m), ctx.at(m0), ctx.at(c), ctx.at(p)});
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,12 +100,13 @@ double RooArgusBG::analyticalIntegral(Int_t code, const char* rangeName) const
   static const double pi = atan2(0.0,-1.0);
   double min = (m.min(rangeName) < m0) ? m.min(rangeName) : m0;
   double max = (m.max(rangeName) < m0) ? m.max(rangeName) : m0;
-  double f1 = (1.-TMath::Power(min/m0,2));
-  double f2 = (1.-TMath::Power(max/m0,2));
-  double aLow, aHigh ;
+  double f1 = (1.-std::pow(min/m0,2));
+  double f2 = (1.-std::pow(max/m0,2));
+  double aLow;
+  double aHigh;
   if ( c < 0. ) {
-    aLow  = -0.5*m0*m0*(exp(c*f1)*sqrt(f1)/c + 0.5/TMath::Power(-c,1.5)*sqrt(pi)*RooMath::erf(sqrt(-c*f1)));
-    aHigh = -0.5*m0*m0*(exp(c*f2)*sqrt(f2)/c + 0.5/TMath::Power(-c,1.5)*sqrt(pi)*RooMath::erf(sqrt(-c*f2)));
+    aLow  = -0.5*m0*m0*(exp(c*f1)*sqrt(f1)/c + 0.5/std::pow(-c,1.5)*sqrt(pi)*RooMath::erf(sqrt(-c*f1)));
+    aHigh = -0.5*m0*m0*(exp(c*f2)*sqrt(f2)/c + 0.5/std::pow(-c,1.5)*sqrt(pi)*RooMath::erf(sqrt(-c*f2)));
   } else if ( c == 0. ) {
     aLow  = -m0*m0/3.*f1*sqrt(f1);
     aHigh = -m0*m0/3.*f1*sqrt(f2);
@@ -130,7 +115,7 @@ double RooArgusBG::analyticalIntegral(Int_t code, const char* rangeName) const
     aHigh = 0.5*m0*m0*exp(c*f2)/(c*sqrt(c)) * (0.5*sqrt(pi)*(RooMath::faddeeva(sqrt(c*f2))).imag() - sqrt(c*f2));
   }
   double area = aHigh - aLow;
-  //cout << "c = " << c << "aHigh = " << aHigh << " aLow = " << aLow << " area = " << area << endl ;
+  //cout << "c = " << c << "aHigh = " << aHigh << " aLow = " << aLow << " area = " << area << std::endl ;
   return area;
 
 }

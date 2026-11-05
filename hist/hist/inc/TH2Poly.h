@@ -70,6 +70,8 @@ public:
    TH2Poly(const char *name,const char *title, Double_t xlow, Double_t xup, Double_t ylow, Double_t yup);
    TH2Poly(const char *name,const char *title, Int_t nX, Double_t xlow, Double_t xup,  Int_t nY, Double_t ylow, Double_t yup);
    ~TH2Poly() override;
+   TH2Poly(const TH2Poly & rhs);
+   TH2Poly & operator=(const TH2Poly & rhs);
 
    virtual TH2PolyBin *CreateBin(TObject *poly);
    virtual Int_t AddBin(TObject *poly);
@@ -79,14 +81,14 @@ public:
    Bool_t Add(const TH1 *h1, const TH1 *h2, Double_t c1=1, Double_t c2=1) override;
    Bool_t Add(TF1 *h1, Double_t c1=1, Option_t *option="") override;
    void          ClearBinContents();                 // Clears the content of all bins
-   TObject      *Clone(const char* newname = "") const override;
+   void          Copy(TObject & newth2p) const override;
    void          ChangePartition(Int_t n, Int_t m);  // Sets the number of partition cells to another value
    using TH2::Multiply;
    using TH2::Divide;
    using TH2::Interpolate;
    Bool_t Divide(TF1 *, Double_t) override;
    Bool_t Multiply(TF1 *, Double_t) override;
-   Double_t ComputeIntegral(Bool_t) override;
+   Double_t ComputeIntegral(Bool_t, Option_t *) override;
    TH1 *  FFT(TH1*, Option_t * ) override;
    virtual TH1 *  GetAsymmetry(TH1* , Double_t,  Double_t);
    virtual Double_t Interpolate(Double_t, Double_t);
@@ -107,8 +109,8 @@ public:
    Double_t     GetMinimum() const;
    Double_t     GetMinimum(Double_t minval) const override;
    Bool_t       GetNewBinAdded() const{return fNewBinAdded;}
-   Int_t        GetNumberOfBins() const{return fNcells-kNOverflow;}
-   void         Honeycomb(Double_t xstart, Double_t ystart, Double_t a, Int_t k, Int_t s);
+   Int_t        GetNumberOfBins() const;
+   void         Honeycomb(Double_t xstart, Double_t ystart, Double_t a, Int_t k, Int_t s, Option_t* option = "v");
    Double_t     Integral(Option_t* option = "") const override;
    Long64_t     Merge(TCollection *) override;
    void Reset(Option_t *option) override;
@@ -126,6 +128,9 @@ public:
 protected:
 
    //functions not to be used for TH2Poly
+
+   void AddBinContent(Int_t) override;           ///< NOT IMPLEMENTED for TH2Poly
+   void AddBinContent(Int_t, Double_t) override; ///< NOT IMPLEMENTED for TH2Poly
 
    Int_t        Fill(Double_t) override{return -1;}                              ///< NOT IMPLEMENTED for TH2Poly
    Int_t        Fill(Double_t , const char *, Double_t) override{return -1;}     ///< NOT IMPLEMENTED for TH2Poly

@@ -33,17 +33,6 @@ of the original parameter.
 #include "RooUnblindUniform.h"
 
 
-using namespace std;
-
-ClassImp(RooUnblindUniform);
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
-
-RooUnblindUniform::RooUnblindUniform()
-{
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor from a given RooAbsReal (to hold the blinded value) and a set
 /// of blinding parameters.
@@ -69,13 +58,6 @@ RooUnblindUniform::RooUnblindUniform(const RooUnblindUniform& other, const char*
   RooAbsHiddenReal(other, name),
   _value("asym",this,other._value),
   _blindEngine(other._blindEngine)
-{
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooUnblindUniform::~RooUnblindUniform()
 {
 }
 

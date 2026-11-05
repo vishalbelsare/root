@@ -49,7 +49,6 @@ fButton->SetToolTipText("Go to the ROOT page\n (http://root.cern.ch)
 #include "TVirtualX.h"
 
 
-ClassImp(TGToolTip);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -88,6 +87,7 @@ TGToolTip::TGToolTip(const TGWindow *p, const TGFrame *f, const char *text,
    attr.fSaveUnder        = kTRUE;
 
    gVirtualX->ChangeWindowAttributes(fId, &attr);
+   gVirtualX->SetWindowHint(fId, TVirtualX::kHintTooltip);
    SetBackgroundColor(fClient->GetResourcePool()->GetTipBgndColor());
 
    fLabel = new TGLabel(this, text);
@@ -123,6 +123,7 @@ TGToolTip::TGToolTip(const TGWindow *p, const TBox *box, const char *text,
    attr.fSaveUnder        = kTRUE;
 
    gVirtualX->ChangeWindowAttributes(fId, &attr);
+   gVirtualX->SetWindowHint(fId, TVirtualX::kHintTooltip);
    SetBackgroundColor(fClient->GetResourcePool()->GetTipBgndColor());
 
    fLabel = new TGLabel(this, text);
@@ -156,6 +157,7 @@ TGToolTip::TGToolTip(const TBox *box, const char *text,Long_t delayms)
    attr.fSaveUnder        = kTRUE;
 
    gVirtualX->ChangeWindowAttributes(fId, &attr);
+   gVirtualX->SetWindowHint(fId, TVirtualX::kHintTooltip);
    SetBackgroundColor(fClient->GetResourcePool()->GetTipBgndColor());
 
    fLabel = new TGLabel(this, text);
@@ -187,6 +189,7 @@ TGToolTip::TGToolTip(Int_t x, Int_t y, const char *text, Long_t delayms)
    attr.fSaveUnder        = kTRUE;
 
    gVirtualX->ChangeWindowAttributes(fId, &attr);
+   gVirtualX->SetWindowHint(fId, TVirtualX::kHintTooltip);
    SetBackgroundColor(fClient->GetResourcePool()->GetTipBgndColor());
 
    fLabel = new TGLabel(this, text);

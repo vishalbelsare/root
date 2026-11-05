@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MethodCompositeBase                                                   *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Virtual base class for all MVA method                                     *
@@ -26,7 +26,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_MethodBoost
@@ -52,13 +52,9 @@ namespace TMVA {
    class Factory;  // DSMTEST
    class Reader;   // DSMTEST
    class DataSetManager;  // DSMTEST
-   namespace Experimental {
-   class Classification;
-   }
    class MethodBoost : public MethodCompositeBase {
       friend class Factory; // DSMTEST
       friend class Reader;  // DSMTEST
-      friend class Experimental::Classification;
 
    public :
 
@@ -73,13 +69,13 @@ namespace TMVA {
 
       virtual ~MethodBoost( void );
 
-      virtual Bool_t HasAnalysisType( Types::EAnalysisType type, UInt_t numberClasses, UInt_t /*numberTargets*/ );
+      Bool_t HasAnalysisType( Types::EAnalysisType type, UInt_t numberClasses, UInt_t /*numberTargets*/ ) override;
 
       // training and boosting all the classifiers
-      void Train( void );
+      void Train( void ) override;
 
       // ranking of input variables
-      const Ranking* CreateRanking();
+      const Ranking* CreateRanking() override;
 
       // saves the name and options string of the boosted classifier
       Bool_t BookMethod( Types::EMVA theMethod, TString methodTitle, TString theOption );
@@ -89,7 +85,7 @@ namespace TMVA {
 
       void CleanBoostOptions();
 
-      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr );
+      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr ) override;
 
    private :
       // clean up
@@ -99,16 +95,16 @@ namespace TMVA {
       void PrintResults( const TString&, std::vector<Double_t>&, const Double_t ) const;
 
       // initializing mostly monitoring tools of the boost process
-      void Init();
+      void Init() override;
       void InitHistos();
-      void CheckSetup();
+      void CheckSetup() override;
 
       void MonitorBoost( Types::EBoostStage stage, UInt_t methodIdx=0);
 
       // the option handling methods
-      void DeclareOptions();
-      void DeclareCompatibilityOptions();
-      void ProcessOptions();
+      void DeclareOptions() override;
+      void DeclareCompatibilityOptions() override;
+      void ProcessOptions() override;
 
 
       MethodBase*  CurrentMethod(){return fCurrentMethod;}
@@ -129,13 +125,13 @@ namespace TMVA {
       Double_t GetBoostROCIntegral(Bool_t, Types::ETreeType, Bool_t CalcOverlapIntergral=kFALSE);
 
       // writing the monitoring histograms and tree to a file
-      void WriteMonitoringHistosToFile( void ) const;
+      void WriteMonitoringHistosToFile( void ) const override;
 
       // write evaluation histograms into target file
-      virtual void WriteEvaluationHistosToFile(Types::ETreeType treetype);
+      virtual void WriteEvaluationHistosToFile(Types::ETreeType treetype) override;
 
       // performs the MethodBase testing + testing of each boosted classifier
-      virtual void TestClassification();
+      virtual void TestClassification() override;
 
       // finding the MVA to cut between sig and bgd according to fMVACutPerc,fMVACutType
       void FindMVACut(MethodBase* method);
@@ -197,9 +193,9 @@ namespace TMVA {
    protected:
 
       // get help message text
-      void GetHelpMessage() const;
+      void GetHelpMessage() const override;
 
-      ClassDef(MethodBoost,0);
+      ClassDefOverride(MethodBoost,0);
    };
 }
 

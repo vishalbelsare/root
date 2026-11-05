@@ -43,14 +43,11 @@ and TGPrintDialog.
 #include "TObjArray.h"
 #include "TVirtualX.h"
 #include "strlcpy.h"
-#include "snprintf.h"
 
+#include <cstdio>
 #include <cstdlib>
 
 
-ClassImp(TGSearchDialog);
-ClassImp(TGPrintDialog);
-ClassImp(TGGotoDialog);
 
 static TString gLastSearchString;
 TGSearchDialog *TGSearchDialog::fgSearchDialog = nullptr;

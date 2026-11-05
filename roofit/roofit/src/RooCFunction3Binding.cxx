@@ -22,16 +22,7 @@ class cannot be persisted in a RooWorkspace without registering the function
 pointer first using RooCFunction3Binding<T1,T2,T3,T4>::register().
 **/
 
-#include "Riostream.h"
 #include "RooCFunction3Binding.h"
-
-using namespace std ;
-
-#ifndef ROOFIT_R__NO_CLASS_TEMPLATE_SPECIALIZATION
-#define ROOFIT_R__NO_CLASS_TEMPLATE_SPECIALIZATION
-templateClassImp(RooCFunction3Binding);
-templateClassImp(RooCFunction3Ref);
-#endif
 
 
 namespace RooFit {

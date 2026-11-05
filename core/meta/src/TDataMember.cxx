@@ -137,7 +137,6 @@ but also in Dump() and Inspect() methods and by the THtml class.
 
 #include "TDataMember.h"
 
-#include "Strlen.h"
 #include "strtok.h"
 #include "strlcpy.h"
 #include "TBuffer.h"
@@ -152,6 +151,7 @@ but also in Dump() and Inspect() methods and by the THtml class.
 #include "TList.h"
 #include "TListOfDataMembers.h"
 #include "TMethod.h"
+#include "TMethodArg.h"
 #include "TMethodCall.h"
 #include "TRealData.h"
 #include "TROOT.h"
@@ -160,9 +160,8 @@ but also in Dump() and Inspect() methods and by the THtml class.
 #include <cassert>
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
 
-
-ClassImp(TDataMember);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default TDataMember ctor. TDataMembers are constructed in TClass
@@ -222,7 +221,12 @@ void TDataMember::Init(bool afterReading)
             fDataType = gROOT->GetType(name,kTRUE);
          }
       } else {
-         fDataType = gROOT->GetType("Int_t", kTRUE); // In rare instance we are called before Int_t has been added to the list of types in TROOT, the kTRUE insures it is there.
+         auto enumdesc = TEnum::GetEnum(GetFullTypeName(), TEnum::kNone);
+         if (enumdesc)
+            fDataType = TDataType::GetDataType(enumdesc->GetUnderlyingType());
+         else
+            fDataType = gROOT->GetType("Int_t", kTRUE); // In rare instance we are called before Int_t has been added to
+                                                        // the list of types in TROOT, the kTRUE insures it is there.
       }
       //         if (!fDataType)
       //            Error("TDataMember", "basic data type %s not found in list of basic types",
@@ -403,7 +407,9 @@ Int_t TDataMember::GetMaxIndex(Int_t dim) const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Get type of data member, e,g.: "class TDirectory*" -> "TDirectory".
+/// Get the decayed type name of this data member, removing `const` and `volatile` qualifiers, and pointers `*` and
+/// references `&`.  This function resolves typedefs in the type name. E.g., let `Foo_t` be a typedef to `class
+/// TDirectory`; assuming `this` is a member of type `const Foo_t*`, this function will return `TDirectory`.
 
 const char *TDataMember::GetTypeName() const
 {
@@ -412,7 +418,11 @@ const char *TDataMember::GetTypeName() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Get full type description of data member, e,g.: "class TDirectory*".
+/// Get the concrete type name of this data member, including `const` and `volatile` qualifiers.  This function does not
+/// resolve any typedef in the type name. E.g., let `Foo_t` be a typedef to `class TDirectory`; assuming `this` is a
+/// member of type `const Foo_t*`, this function will return `const Foo_t*`.
+///
+/// For the desugared type name, see TDataMember::GetTrueTypeName().
 
 const char *TDataMember::GetFullTypeName() const
 {
@@ -422,7 +432,9 @@ const char *TDataMember::GetFullTypeName() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Get full type description of data member, e,g.: "class TDirectory*".
+/// Get the desugared type name of this data member, including `const` and `volatile` qualifiers.  This function
+/// resolves typedefs in the type name. E.g., let `Foo_t` be a typedef to `class TDirectory`; assuming `this` is a
+/// member of type `const Foo_t*`, this function will return `const TDirectory*`.
 
 const char *TDataMember::GetTrueTypeName() const
 {
@@ -499,8 +511,15 @@ Longptr_t TDataMember::GetOffsetCint() const
 Int_t TDataMember::GetUnitSize() const
 {
    if (IsaPointer()) return sizeof(void*);
-   if (IsEnum()    ) return sizeof(Int_t);
-   if (IsBasic()   ) return GetDataType()->Size();
+   if (IsEnum()) {
+      auto e = TEnum::GetEnum(GetTypeName());
+      if (e)
+         return TDataType::GetDataType(e->GetUnderlyingType())->Size();
+      else
+         return sizeof(Int_t);
+   }
+   if (IsBasic())
+      return GetDataType()->Size();
 
    TClass *cl = TClass::GetClass(GetTypeName());
    if (!cl) cl = TClass::GetClass(GetTrueTypeName());
@@ -587,7 +606,14 @@ Long_t TDataMember::Property() const
    if (!fInfo || !gCling->DataMemberInfo_IsValid(fInfo)) return 0;
    int prop  = gCling->DataMemberInfo_Property(fInfo);
    int propt = gCling->DataMemberInfo_TypeProperty(fInfo);
-   t->fProperty = prop|propt;
+   t->fProperty = (prop | propt) & ~(kIsPublic | kIsProtected | kIsPrivate);
+   // Set to the strictest access of the member and the type
+   if ((prop | propt) & kIsPrivate)
+      t->fProperty |= kIsPrivate;
+   else if ((prop | propt) & kIsProtected)
+      t->fProperty |= kIsProtected;
+   else
+      t->fProperty |= kIsPublic;
 
    t->fFullTypeName = TClassEdit::GetLong64_Name(gCling->DataMemberInfo_TypeName(fInfo));
    t->fTrueTypeName = TClassEdit::GetLong64_Name(gCling->DataMemberInfo_TypeTrueName(fInfo));
@@ -702,9 +728,16 @@ void TDataMember::ExtractOptionsFromComment()
             Fatal("TDataMember","Internal error, found \"SetMethod\" but not \"\\\"\" in %s.",GetTitle());
             return;
          }
+         // setter method may accept enum data type - therefore check if it exists at all
          if (GetClass()->GetMethod(ptr1,"1"))
             // FIXME: wrong in case called derives via multiple inheritance from this class
-            fValueSetter = new TMethodCall(GetClass(),ptr1,"1");
+            fValueSetter = new TMethodCall(GetClass(), ptr1, "1");
+         else if (auto method = IsEnum() ? GetClass()->GetMethodAny(ptr1) : nullptr) {
+            // if data member is enum, take setter and cast 1 to argument data type
+            auto arg = dynamic_cast<TMethodArg *>(method->GetListOfMethodArgs()->First());
+            auto sarg = TString::Format("(%s) 1", arg ? arg->GetFullTypeName() : "int");
+            fValueSetter = new TMethodCall(GetClass(), ptr1, sarg.Data());
+         }
       }
    }
 
@@ -748,6 +781,8 @@ void TDataMember::ExtractOptionsFromComment()
    //having all options extracted and put into list, we finally can parse
    //them to create a list of options...
 
+   auto enumDict = IsEnum() ? TEnum::GetEnum(GetTypeName()) : nullptr;
+
    fOptions = new TList();                //create the list
 
    TIter next(optionlist.get());                //we'll iterate through all
@@ -777,11 +812,10 @@ void TDataMember::ExtractOptionsFromComment()
                // We'll try to find global enum existing in ROOT...
                l = (Long_t)(*value);
             } else if (IsEnum()) {
-               TObject *obj = fClass->GetListOfDataMembers(false)->FindObject(ptr1);
-               if (obj)
-                  l = ((TEnumConstant *)obj)->GetValue();
+               if (auto enumConst = enumDict ? (TEnumConstant*) enumDict->GetConstants()->FindObject(ptr1) : nullptr)
+                  l = enumConst->GetValue();
                else
-                  l = gInterpreter->Calc(Form("%s;", ptr1));
+                  l = gInterpreter->Calc(TString::Format("%s;", ptr1));
             } else {
                Fatal("TDataMember", "Internal error, couldn't recognize enum/global value %s.", ptr1);
             }
@@ -886,8 +920,8 @@ TMethodCall *TDataMember::SetterMethod(TClass *cl)
          TString settername;
          settername.Form( "Set%s", dataname+1);
          if (strstr(settername, "Is")) settername.Form( "Set%s", dataname+3);
-         if (GetClass()->GetMethod(settername, "1"))
-            fValueSetter = new TMethodCall(cl, settername, "1");
+         if (GetClass()->GetMethod(settername, "0"))
+            fValueSetter = new TMethodCall(cl, settername, "0");
          if (!fValueSetter)
             if (GetClass()->GetMethod(settername, "true"))
                fValueSetter = new TMethodCall(cl, settername, "true");

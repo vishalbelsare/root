@@ -1,3 +1,4 @@
+/// \file
 /// \brief This file contains a specialised ROOT message handler to test for diagnostic in unit tests.
 ///
 /// \author Stephan Hageboeck <stephan.hageboeck@cern.ch>
@@ -11,6 +12,8 @@
  *************************************************************************/
 
 #include "ROOT/TestSupport.hxx"
+
+#include "gtest/gtest.h"
 
 #include <algorithm>
 #include <cstring>
@@ -38,7 +41,8 @@ static struct ForbidDiagnostics {
          const char *msg) {
       if (level <= gErrorIgnoreLevel) return;
       if (level <= kInfo) {
-         std::cerr << "Diagnostic in '" << location << "': " << msg << std::endl;
+         std::cerr << "ROOT::TestSupport::ForbidDiagnostics::handler(): Diagnostic in '" << location << "':\n"
+                   << msg << std::endl;
          return;
       }
 
@@ -54,23 +58,30 @@ static struct ForbidDiagnostics {
         return;
       }
 
-      // FIXME: RNTuple warns that it's in beta stage.
-      if (level == kWarning
-          && strstr(msg, "The RNTuple file format will change. Do not store real data with this version of RNTuple!") != nullptr) {
-        std::cerr << "Warning in " << location << " " << msg << std::endl;
-        return;
-      }
-      if (level == kWarning
-          && strstr(msg, "Pre-release format version: RC ") != nullptr) {
-        std::cerr << "Warning in " << location << " " << msg << std::endl;
-        return;
-      }
-
-      // FIXME: DOAS backend is exprimental.
+      // FIXME: DOAS backend is experimental.
       if (level == kWarning
           && strstr(msg, "The DAOS backend is experimental and still under development") != nullptr) {
         std::cerr << "Warning in " << location << " " << msg << std::endl;
         return;
+      }
+
+      // FIXME: RooNaNPacker warns about not being implemented for big endian
+      if (level == kWarning
+	  && strcmp(msg, "Fast recovery from undefined function values only implemented for little-endian machines. If necessary, request an extension of functionality on https://root.cern") == 0) {
+        std::cerr << "Warning in " << location << " " << msg << std::endl;
+        return;
+      }
+
+      if (level == kWarning && strcmp(location, "RIoUring") == 0 &&
+          strstr(msg, "io_uring is not available because:") != nullptr) {
+         std::cerr << "Warning in " << location << " " << msg << std::endl;
+         return;
+      }
+
+      if (level == kWarning && strcmp(location, "RRawFileUnix") == 0 &&
+          strcmp(msg, "io_uring setup failed, falling back to blocking I/O in ReadV") == 0) {
+         std::cerr << "Warning in " << location << " " << msg << std::endl;
+         return;
       }
 
       FAIL() << "Received unexpected diagnostic of severity "
@@ -90,17 +101,14 @@ CheckDiagsRAII::~CheckDiagsRAII() {
    ::SetErrorHandler(fOldErrorHandler);
    gInterpreter->ReportDiagnosticsToErrorHandler(/*enable=*/false);
 
-   if (!fUnexpectedDiags.empty()) ADD_FAILURE() << "ROOT::TestSupport::CheckDiagsRAII: Unexpected diagnostic messages received.";
+   for (const auto &diag : fExpectedDiags) {
+      if (!diag.optional && diag.receivedCount < 1) {
+         ADD_FAILURE() << "ROOT::TestSupport::CheckDiagsRAII: Expected diagnostic message missing:\n" << diag;
+      }
+   }
 
-   const bool missingDiag = std::any_of(fExpectedDiags.begin(), fExpectedDiags.end(), [](const Diag_t & diag){ return !diag.optional && diag.receivedCount < 1; });
-   if (missingDiag) ADD_FAILURE() << "ROOT::TestSupport::CheckDiagsRAII: Diagnostic message missing.";
-
-   if (!fUnexpectedDiags.empty() || missingDiag) {
-      std::cout << "-------------------------\nPre-registered messages:\n";
-      printDiags(fExpectedDiags);
-      std::cout << "Unexpected messages received:\n";
-      printDiags(fUnexpectedDiags);
-      std::cout << "-------------------------" << std::endl;
+   for (const auto &diag : fUnexpectedDiags) {
+      ADD_FAILURE() << "ROOT::TestSupport::CheckDiagsRAII: Unexpected diagnostic message:\n" << diag;
    }
 }
 
@@ -109,37 +117,40 @@ CheckDiagsRAII::~CheckDiagsRAII() {
 void CheckDiagsRAII::checkDiag(int severity, const char * location, const char * msg) {
    // Check that this received diagnostics was expected
    const std::string message = msg;
-   const auto expectedMatch = std::find_if(fExpectedDiags.begin(), fExpectedDiags.end(), [=](const Diag_t& expectedDiag){
+   const auto expectedMatch =
+      std::find_if(fExpectedDiags.begin(), fExpectedDiags.end(), [=](const Diag_t &expectedDiag) {
          return expectedDiag.severity == severity
          && strstr(location, expectedDiag.location.c_str()) != nullptr
          && (expectedDiag.matchFullString ? expectedDiag.message == message : (message.find(expectedDiag.message) != std::string::npos));
-         });
+      });
 
-    if (expectedMatch != fExpectedDiags.end()) {
-       expectedMatch->receivedCount += 1;
-    } else if (severity <= kInfo) {
-       fOldErrorHandler(severity, false, location, msg);
-    } else {
-       fUnexpectedDiags.push_back({severity, location, std::move(message)});
-    }
-}
-
-void CheckDiagsRAII::printDiags(std::vector<Diag_t> const & diags) const {
-   std::map<int, std::string> dict = {
-      {kInfo, "kInfo"},
-      {kWarning, "kWarning"},
-      {kError, "kError"},
-      {kSysError, "kSysError"}
-   };
-
-   for (auto const & diag : diags) {
-      std::cout << std::setw(10) << dict[diag.severity] << "\t";
-      if (diag.receivedCount >=  0) {
-         std::cout << diag.receivedCount << "x received\t"
-            << "(" << (diag.optional ? "optional" : "required") << ", " << (diag.matchFullString ? "fullMatch" : "subMatch") << ")\t";
-      }
-      std::cout << "'" << diag.location << "' msg='" << diag.message << "'\n";
+   if (expectedMatch != fExpectedDiags.end()) {
+      expectedMatch->receivedCount += 1;
+   } else if (severity <= kInfo) {
+      fOldErrorHandler(severity, false, location, msg);
+   } else {
+      fUnexpectedDiags.push_back({severity, location, std::move(message)});
    }
 }
 
+std::ostream &operator<<(std::ostream &stream, CheckDiagsRAII::Diag_t const &diag)
+{
+   std::map<int, std::string> dict = {
+      {kInfo, "kInfo"}, {kWarning, "kWarning"}, {kError, "kError"}, {kSysError, "kSysError"}};
+
+   constexpr auto indent = 15;
+   stream << std::right << std::setw(indent) << "severity: " << dict[diag.severity];
+   if (diag.receivedCount >= 0) {
+      stream << "\n"
+             << std::setw(indent) << "received: " << diag.receivedCount << " times ("
+             << (diag.optional ? "optional" : "required") << ", " << (diag.matchFullString ? "fullMatch" : "subMatch")
+             << ")\t";
+   }
+   stream << "\n"
+          << std::setw(indent) << "origin: " << '"' << diag.location << "\""
+          << "\n"
+          << std::setw(indent) << "message: " << diag.message << "\n";
+
+   return stream;
+}
 } } //ROOT::TestSupport

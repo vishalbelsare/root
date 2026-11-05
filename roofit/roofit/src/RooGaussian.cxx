@@ -23,24 +23,24 @@ Plain Gaussian p.d.f
 #include "RooGaussian.h"
 #include "RooBatchCompute.h"
 #include "RooHelpers.h"
-#include "RooMath.h"
 #include "RooRandom.h"
+
+#include <RooFit/Detail/MathFuncs.h>
 
 #include <vector>
 
-ClassImp(RooGaussian);
 
 ////////////////////////////////////////////////////////////////////////////////
 
 RooGaussian::RooGaussian(const char *name, const char *title,
-          RooAbsReal& _x, RooAbsReal& _mean,
-          RooAbsReal& _sigma) :
+          RooAbsReal::Ref _x, RooAbsReal::Ref _mean,
+          RooAbsReal::Ref _sigma) :
   RooAbsPdf(name,title),
   x("x","Observable",this,_x),
   mean("mean","Mean",this,_mean),
   sigma("sigma","Width",this,_sigma)
 {
-  RooHelpers::checkRangeOfParameters(this, {&_sigma}, 0);
+  RooHelpers::checkRangeOfParameters(this, {&static_cast<RooAbsReal&>(_sigma)}, 0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -55,19 +55,16 @@ RooGaussian::RooGaussian(const RooGaussian& other, const char* name) :
 
 double RooGaussian::evaluate() const
 {
-  const double arg = x - mean;
-  const double sig = sigma;
-  return std::exp(-0.5*arg*arg/(sig*sig));
+   return RooFit::Detail::MathFuncs::gaussian(x, mean, sigma);
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute multiple values of Gaussian distribution.
-void RooGaussian::computeBatch(cudaStream_t* stream, double* output, size_t nEvents, RooFit::Detail::DataMap const& dataMap) const
+void RooGaussian::doEval(RooFit::EvalContext & ctx) const
 {
-  auto dispatch = stream ? RooBatchCompute::dispatchCUDA : RooBatchCompute::dispatchCPU;
-  dispatch->compute(stream, RooBatchCompute::Gaussian, output, nEvents,
-          {dataMap.at(x), dataMap.at(mean), dataMap.at(sigma)});
+  RooBatchCompute::compute(ctx.config(this), RooBatchCompute::Gaussian, ctx.output(),
+          {ctx.at(x), ctx.at(mean), ctx.at(sigma)});
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,38 +80,12 @@ Int_t RooGaussian::getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars
 
 double RooGaussian::analyticalIntegral(Int_t code, const char* rangeName) const
 {
-  assert(code==1 || code==2);
+   using namespace RooFit::Detail::MathFuncs;
 
-  //The normalisation constant 1./sqrt(2*pi*sigma^2) is left out in evaluate().
-  //Therefore, the integral is scaled up by that amount to make RooFit normalise
-  //correctly.
-  const double resultScale = std::sqrt(TMath::TwoPi()) * sigma;
+   auto& constant  = code == 1 ? mean : x;
+   auto& integrand = code == 1 ? x : mean;
 
-  //Here everything is scaled and shifted into a standard normal distribution:
-  const double xscale = TMath::Sqrt2() * sigma;
-  double max = 0.;
-  double min = 0.;
-  if (code == 1){
-    max = (x.max(rangeName)-mean)/xscale;
-    min = (x.min(rangeName)-mean)/xscale;
-  } else { //No == 2 test because of assert
-    max = (mean.max(rangeName)-x)/xscale;
-    min = (mean.min(rangeName)-x)/xscale;
-  }
-
-
-  //Here we go for maximum precision: We compute all integrals in the UPPER
-  //tail of the Gaussian, because erfc has the highest precision there.
-  //Therefore, the different cases for range limits in the negative hemisphere are mapped onto
-  //the equivalent points in the upper hemisphere using erfc(-x) = 2. - erfc(x)
-  const double ecmin = std::erfc(std::abs(min));
-  const double ecmax = std::erfc(std::abs(max));
-
-
-  return resultScale * 0.5 * (
-      min*max < 0.0 ? 2.0 - (ecmin + ecmax)
-                    : max <= 0. ? ecmax - ecmin : ecmin - ecmax
-  );
+   return gaussianIntegral(integrand.min(rangeName), integrand.max(rangeName), constant, sigma);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,7 +104,7 @@ void RooGaussian::generateEvent(Int_t code)
   assert(code==1 || code==2) ;
   double xgen ;
   if(code==1){
-    while(1) {
+    while(true) {
       xgen = RooRandom::randomGenerator()->Gaus(mean,sigma);
       if (xgen<x.max() && xgen>x.min()) {
    x = xgen ;
@@ -141,7 +112,7 @@ void RooGaussian::generateEvent(Int_t code)
       }
     }
   } else if(code==2){
-    while(1) {
+    while(true) {
       xgen = RooRandom::randomGenerator()->Gaus(x,sigma);
       if (xgen<mean.max() && xgen>mean.min()) {
    mean = xgen ;

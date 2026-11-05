@@ -33,9 +33,7 @@ http://www.slac.stanford.edu/BFROOT/www/Organization/CollabMtgs/2003/detJuly2003
 #include "RooBatchCompute.h"
 
 #include <cmath>
-using namespace std;
 
-ClassImp(RooBukinPdf);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Construct a Bukin PDF.
@@ -87,8 +85,14 @@ RooBukinPdf::RooBukinPdf(const RooBukinPdf& other, const char *name):
 double RooBukinPdf::evaluate() const
 {
   const double consts = 2*sqrt(2*log(2.0));
-  double r1=0,r2=0,r3=0,r4=0,r5=0,hp=0;
-  double x1 = 0,x2 = 0;
+  double r1 = 0;
+  double r2 = 0;
+  double r3 = 0;
+  double r4 = 0;
+  double r5 = 0;
+  double hp = 0;
+  double x1 = 0;
+  double x2 = 0;
   double fit_result = 0;
 
   hp=sigp*consts;
@@ -96,7 +100,7 @@ double RooBukinPdf::evaluate() const
   r4=sqrt(xi*xi+1);
   r1=xi/r4;
 
-  if(fabs(xi) > exp(-6.)){
+  if(std::abs(xi) > exp(-6.)){
     r5=xi/log(r4+xi);
   }
   else
@@ -113,7 +117,7 @@ double RooBukinPdf::evaluate() const
 
   //--- Center
   else if(x < x2) {
-    if(fabs(xi) > exp(-6.)) {
+    if(std::abs(xi) > exp(-6.)) {
       r2=log(1 + 4 * xi * r4 * (x-Xp)/hp)/log(1+2*xi*(xi-r4));
       r2=-r3*r2*r2;
     }
@@ -128,7 +132,7 @@ double RooBukinPdf::evaluate() const
     r2=rho2*(x-x2)*(x-x2)/(Xp-x2)/(Xp-x2)-r3 - 4 * r3 * (x-x2)/hp * r5 * r4/(r4+xi)/(r4+xi);
   }
 
-  if(fabs(r2) > 100){
+  if(std::abs(r2) > 100){
     fit_result = 0;
   }
   else{
@@ -141,9 +145,8 @@ double RooBukinPdf::evaluate() const
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Compute multiple values of Bukin distribution.
-void RooBukinPdf::computeBatch(cudaStream_t* stream, double* output, size_t nEvents, RooFit::Detail::DataMap const& dataMap) const
+void RooBukinPdf::doEval(RooFit::EvalContext & ctx) const
 {
-  auto dispatch = stream ? RooBatchCompute::dispatchCUDA : RooBatchCompute::dispatchCPU;
-  dispatch->compute(stream, RooBatchCompute::Bukin, output, nEvents,
-          {dataMap.at(x), dataMap.at(Xp), dataMap.at(sigp), dataMap.at(xi), dataMap.at(rho1), dataMap.at(rho2)});
+  RooBatchCompute::compute(ctx.config(this), RooBatchCompute::Bukin, ctx.output(),
+          {ctx.at(x), ctx.at(Xp), ctx.at(sigp), ctx.at(xi), ctx.at(rho1), ctx.at(rho2)});
 }

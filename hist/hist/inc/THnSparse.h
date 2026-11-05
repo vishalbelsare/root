@@ -27,6 +27,7 @@
 // needed only for template instantiations of THnSparseT:
 #include "TArrayF.h"
 #include "TArrayL.h"
+#include "TArrayL64.h"
 #include "TArrayI.h"
 #include "TArrayS.h"
 #include "TArrayC.h"
@@ -42,15 +43,10 @@ class THnSparse: public THnBase {
    TExMap     fBinsContinued;               ///<! Filled bins for non-unique hashes, containing pairs of (bin index 0, bin index 1)
    THnSparseCompactBinCoord *fCompactCoord; ///<! Compact coordinate
 
-   THnSparse(const THnSparse&) = delete;
    THnSparse& operator=(const THnSparse&) = delete;
 
  protected:
 
-   THnSparse();
-   THnSparse(const char* name, const char* title, Int_t dim,
-             const Int_t* nbins, const Double_t* xmin, const Double_t* xmax,
-             Int_t chunksize);
    THnSparseCompactBinCoord* GetCompactCoord() const;
    THnSparseArrayChunk* GetChunk(Int_t idx) const {
       return (THnSparseArrayChunk*) fBinContent[idx]; }
@@ -71,6 +67,20 @@ class THnSparse: public THnBase {
    void InitStorage(Int_t* nbins, Int_t chunkSize) override;
 
  public:
+
+   THnSparse();
+   THnSparse(const char* name, const char* title, Int_t dim,
+             const Int_t* nbins, const Double_t* xmin = nullptr, const Double_t* xmax = nullptr,
+             Int_t chunksize = 1024 * 16);
+   THnSparse(const char* name, const char* title,
+             const std::vector<TAxis>& axes,
+             Int_t chunksize = 1024 * 16);
+
+   THnSparse(const char *name, const char *title, Int_t dim, const Int_t *nbins,
+             const std::vector<std::vector<double>> &xbins, Int_t chunksize = 1024 * 16);
+
+   THnSparse(const THnSparse &other);
+
    ~THnSparse() override;
 
    static THnSparse* CreateSparse(const char* name, const char* title,
@@ -99,56 +109,24 @@ class THnSparse: public THnBase {
    Long64_t GetBin(const Double_t* x, Bool_t allocate = kTRUE) override;
    Long64_t GetBin(const char* name[], Bool_t allocate = kTRUE) override;
 
-   /// Forwards to THnBase::SetBinContent().
-   /// Non-virtual, CINT-compatible replacement of a using declaration.
-   void SetBinContent(const Int_t* idx, Double_t v) {
-      THnBase::SetBinContent(idx, v);
-   }
+   using THnBase::SetBinContent; // non-virtual SetBinContent(const Int_t* idx, Double_t v)
    void SetBinContent(Long64_t bin, Double_t v) override;
    void SetBinError2(Long64_t bin, Double_t e2) override;
 
-   /// Forwards to THnBase::SetBinContent().
-   /// Non-virtual, CINT-compatible replacement of a using declaration.
-   void AddBinContent(const Int_t* idx, Double_t v = 1.) {
-      THnBase::AddBinContent(idx, v);
-   }
+   using THnBase::AddBinContent; // non-virtual void AddBinContent(const Int_t* idx, Double_t v = 1.)
    void AddBinContent(Long64_t bin, Double_t v = 1.) override;
    void AddBinError2(Long64_t bin, Double_t e2) override;
 
-   /// Forwards to THnBase::GetBinContent() overload.
-   /// Non-virtual, CINT-compatible replacement of a using declaration.
-   Double_t GetBinContent(const Int_t *idx) const {
-
-      return THnBase::GetBinContent(idx);
-   }
+   using THnBase::GetBinContent; // non-virtual Double_t GetBinContent(const Int_t *idx) const
    Double_t GetBinContent(Long64_t bin, Int_t* idx = nullptr) const override;
    Double_t GetBinError2(Long64_t linidx) const override;
 
    Double_t GetSparseFractionBins() const;
    Double_t GetSparseFractionMem() const;
 
-   /// Forwards to THnBase::Projection().
-   /// Non-virtual, as a CINT-compatible replacement of a using
-   /// declaration.
-   TH1D*      Projection(Int_t xDim, Option_t* option = "") const{
-      return THnBase::Projection(xDim, option);
-   }
-
-   /// Forwards to THnBase::Projection().
-   /// Non-virtual, as a CINT-compatible replacement of a using
-   /// declaration.
-   TH2D*      Projection(Int_t yDim, Int_t xDim,
-                         Option_t* option = "") const {
-      return THnBase::Projection(yDim, xDim, option);
-   }
-
-   /// Forwards to THnBase::Projection().
-   /// Non-virtual, as a CINT-compatible replacement of a using
-   /// declaration.
-   TH3D*      Projection(Int_t xDim, Int_t yDim, Int_t zDim,
-                         Option_t* option = "") const {
-      return THnBase::Projection(xDim, yDim, zDim, option);
-   }
+   using THnBase::Projection; // non-virtual TH1D* Projection(Int_t xDim, Option_t* option = "") const
+                              //             TH2D* Projection(Int_t yDim, Int_t xDim, Option_t* option = "") const
+                              //             TH3D* Projection(Int_t xDim, Int_t yDim, Int_t zDim, Option_t* option = "") const
 
    THnSparse* Projection(Int_t ndim, const Int_t* dim,
                          Option_t* option = "") const {
@@ -182,14 +160,14 @@ class THnSparse: public THnBase {
 
  Typedefs exist for template parameters with ROOT's generic types:
 
- Templated name      |    Typedef   |    Bin content type
- --------------------|--------------|--------------------
- THnSparseT<TArrayC> |  THnSparseC  |  Char_t
- THnSparseT<TArrayS> |  THnSparseS  |  Short_t
- THnSparseT<TArrayI> |  THnSparseI  |  Int_t
- THnSparseT<TArrayL> |  THnSparseL  |  Long_t
- THnSparseT<TArrayF> |  THnSparseF  |  Float_t
- THnSparseT<TArrayD> |  THnSparseD  |  Double_t
+ Templated name        |    Typedef    |    Bin content type
+ ----------------------|---------------|--------------------
+ THnSparseT<TArrayC>   |  THnSparseC   |  Char_t
+ THnSparseT<TArrayS>   |  THnSparseS   |  Short_t
+ THnSparseT<TArrayI>   |  THnSparseI   |  Int_t
+ THnSparseT<TArrayL64> |  THnSparseL   |  Long64_t
+ THnSparseT<TArrayF>   |  THnSparseF   |  Float_t
+ THnSparseT<TArrayD>   |  THnSparseD   |  Double_t
 
  We recommend to use THnSparseC wherever possible, and to map its value space
  of 256 possible values to e.g. float values outside the class. This saves an
@@ -205,11 +183,7 @@ class THnSparse: public THnBase {
 template <class CONT>
 class THnSparseT: public THnSparse {
  public:
-   THnSparseT() {}
-   THnSparseT(const char* name, const char* title, Int_t dim,
-              const Int_t* nbins, const Double_t* xmin = 0,
-              const Double_t* xmax = 0, Int_t chunksize = 1024 * 16):
-      THnSparse(name, title, dim, nbins, xmin, xmax, chunksize) {}
+   using THnSparse::THnSparse;
 
    TArray* GenerateArray() const override { return new CONT(GetChunkSize()); }
  private:
@@ -218,7 +192,7 @@ class THnSparseT: public THnSparse {
 
 typedef THnSparseT<TArrayD> THnSparseD;
 typedef THnSparseT<TArrayF> THnSparseF;
-typedef THnSparseT<TArrayL> THnSparseL;
+typedef THnSparseT<TArrayL64> THnSparseL;
 typedef THnSparseT<TArrayI> THnSparseI;
 typedef THnSparseT<TArrayS> THnSparseS;
 typedef THnSparseT<TArrayC> THnSparseC;

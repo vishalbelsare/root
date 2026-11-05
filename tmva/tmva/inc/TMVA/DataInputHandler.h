@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : DataInputHandler                                                      *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Contains all the data information                                         *
@@ -22,7 +22,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_DataInputHandler
@@ -72,7 +72,7 @@ namespace TMVA {
       Types::ETreeType fTreeType;  ///< tree is for training/testing/both
       Bool_t           fOwner;     ///< true if created from file
    protected:
-       ClassDef(TreeInfo,1);
+       ClassDefOverride(TreeInfo,1);
    };
 
    class DataInputHandler :public TObject {
@@ -131,7 +131,7 @@ namespace TMVA {
       mutable MsgLogger*                                 fLogger;            ///<! message logger
       MsgLogger& Log() const { return *fLogger; }
    protected:
-       ClassDef(DataInputHandler,1);
+       ClassDefOverride(DataInputHandler,1);
    };
 }
 

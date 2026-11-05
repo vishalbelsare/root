@@ -19,7 +19,7 @@
 \class RooAdaptiveGaussKronrodIntegrator1D
 \ingroup Roofitcore
 
-RooAdaptiveGaussKronrodIntegrator1D implements the Gauss-Kronrod integration algorithm.
+Implements the Gauss-Kronrod integration algorithm.
 
 An adaptive Gaussian quadrature method for numerical integration in
 which error is estimated based on evaluation at special points
@@ -43,24 +43,20 @@ For integrands with integrable singularities the Wynn epsilon rule
 can be selected to speed up the convergence of these integrals.
 **/
 
-#include <assert.h>
-#include <stdlib.h>
 #include "TClass.h"
-#include "Riostream.h"
 #include "RooAdaptiveGaussKronrodIntegrator1D.h"
 #include "RooArgSet.h"
 #include "RooRealVar.h"
 #include "RooNumber.h"
 #include "RooNumIntFactory.h"
-#include "RooIntegratorBinding.h"
 #include "TMath.h"
 #include "RooMsgService.h"
 
-using namespace std ;
+#include <cassert>
+#include <cstdlib>
+#include <ostream>
+using std::endl;
 
-
-ClassImp(RooAdaptiveGaussKronrodIntegrator1D);
-;
 
 // --- From GSL_MATH.h -------------------------------------------
 struct gsl_function_struct
@@ -131,6 +127,8 @@ gsl_integration_qagiu (gsl_function * f,
 
 //-------------------------------------------------------------------
 
+/// \cond ROOFIT_INTERNAL
+
 // register integrator class
 // create a derived class in order to call the protected method of the
 // RoodaptiveGaussKronrodIntegrator1D
@@ -147,6 +145,8 @@ struct Roo_internal_AGKInteg1D : public RooAdaptiveGaussKronrodIntegrator1D {
 struct Roo_reg_AGKInteg1D {
    Roo_reg_AGKInteg1D() { Roo_internal_AGKInteg1D::registerIntegrator(); }
 };
+
+/// \endcond
 
 static Roo_reg_AGKInteg1D instance;
 } // namespace RooFit_internal
@@ -165,7 +165,17 @@ void RooAdaptiveGaussKronrodIntegrator1D::registerIntegrator(RooNumIntFactory& f
      method.defineType("51Points", 5);
      method.defineType("61Points", 6);
      method.setIndex(2);
-     fact.storeProtoIntegrator(new RooAdaptiveGaussKronrodIntegrator1D(), RooArgSet(maxSeg, method));
+
+     auto creator = [](const RooAbsFunc &function, const RooNumIntConfig &config) {
+        return std::make_unique<RooAdaptiveGaussKronrodIntegrator1D>(function, config);
+     };
+
+     fact.registerPlugin("RooAdaptiveGaussKronrodIntegrator1D", creator, {maxSeg, method},
+                       /*canIntegrate1D=*/true,
+                       /*canIntegrate2D=*/false,
+                       /*canIntegrateND=*/false,
+                       /*canIntegrateOpenEnded=*/true);
+
      oocoutI(nullptr,Integration)  << "RooAdaptiveGaussKronrodIntegrator1D has been registered " << std::endl;
 }
 
@@ -173,18 +183,15 @@ void RooAdaptiveGaussKronrodIntegrator1D::registerIntegrator(RooNumIntFactory& f
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor taking a function binding and a configuration object
 
-RooAdaptiveGaussKronrodIntegrator1D::RooAdaptiveGaussKronrodIntegrator1D(const RooAbsFunc& function,
-                            const RooNumIntConfig& config) :
-  RooAbsIntegrator(function),
-  _epsAbs(config.epsRel()),
-  _epsRel(config.epsAbs())
+RooAdaptiveGaussKronrodIntegrator1D::RooAdaptiveGaussKronrodIntegrator1D(const RooAbsFunc &function,
+                                                                         const RooNumIntConfig &config)
+   : RooAbsIntegrator(function), _useIntegrandLimits(true), _epsAbs(config.epsRel()), _epsRel(config.epsAbs())
 {
   // Use this form of the constructor to integrate over the function's default range.
-  const RooArgSet& confSet = config.getConfigSection(ClassName()) ;
+  const RooArgSet& confSet = config.getConfigSection("RooAdaptiveGaussKronrodIntegrator1D") ;
   _maxSeg = (Int_t) confSet.getRealValue("maxSeg",100) ;
   _methodKey = confSet.getCatIndex("method",2) ;
 
-  _useIntegrandLimits= true;
   _valid= initialize();
 }
 
@@ -193,34 +200,22 @@ RooAdaptiveGaussKronrodIntegrator1D::RooAdaptiveGaussKronrodIntegrator1D(const R
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor taking a function binding, an integration range and a configuration object
 
-RooAdaptiveGaussKronrodIntegrator1D::RooAdaptiveGaussKronrodIntegrator1D(const RooAbsFunc& function,
-                            double xmin, double xmax,
-                            const RooNumIntConfig& config) :
-  RooAbsIntegrator(function),
-  _epsAbs(config.epsRel()),
-  _epsRel(config.epsAbs()),
-  _xmin(xmin),
-  _xmax(xmax)
+RooAdaptiveGaussKronrodIntegrator1D::RooAdaptiveGaussKronrodIntegrator1D(const RooAbsFunc &function, double xmin,
+                                                                         double xmax, const RooNumIntConfig &config)
+   : RooAbsIntegrator(function),
+     _useIntegrandLimits(false),
+     _epsAbs(config.epsRel()),
+     _epsRel(config.epsAbs()),
+     _xmin(xmin),
+     _xmax(xmax)
 {
   // Use this form of the constructor to integrate over the function's default range.
-  const RooArgSet& confSet = config.getConfigSection(ClassName()) ;
+  const RooArgSet& confSet = config.getConfigSection("RooAdaptiveGaussKronrodIntegrator1D") ;
   _maxSeg = (Int_t) confSet.getRealValue("maxSeg",100) ;
   _methodKey = confSet.getCatIndex("method",2) ;
 
-  _useIntegrandLimits= false;
   _valid= initialize();
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Virtual constructor
-
-RooAbsIntegrator* RooAdaptiveGaussKronrodIntegrator1D::clone(const RooAbsFunc& function, const RooNumIntConfig& config) const
-{
-  return new RooAdaptiveGaussKronrodIntegrator1D(function,config) ;
-}
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -243,7 +238,7 @@ bool RooAdaptiveGaussKronrodIntegrator1D::initialize()
 RooAdaptiveGaussKronrodIntegrator1D::~RooAdaptiveGaussKronrodIntegrator1D()
 {
   if (_workspace) {
-    gsl_integration_workspace_free ((gsl_integration_workspace*) _workspace) ;
+    gsl_integration_workspace_free (reinterpret_cast<gsl_integration_workspace*>(_workspace));
   }
 }
 
@@ -257,7 +252,7 @@ RooAdaptiveGaussKronrodIntegrator1D::~RooAdaptiveGaussKronrodIntegrator1D()
 bool RooAdaptiveGaussKronrodIntegrator1D::setLimits(double* xmin, double* xmax)
 {
   if(_useIntegrandLimits) {
-    coutE(Integration) << "RooAdaptiveGaussKronrodIntegrator1D::setLimits: cannot override integrand's limits" << endl;
+    oocoutE(nullptr, Integration) << "RooAdaptiveGaussKronrodIntegrator1D::setLimits: cannot override integrand's limits" << std::endl;
     return false;
   }
 
@@ -275,7 +270,7 @@ bool RooAdaptiveGaussKronrodIntegrator1D::setLimits(double* xmin, double* xmax)
 bool RooAdaptiveGaussKronrodIntegrator1D::checkLimits() const
 {
   if(_useIntegrandLimits) {
-    assert(0 != integrand() && integrand()->isValid());
+    assert(nullptr != integrand() && integrand()->isValid());
     _xmin= integrand()->getMinLimit(0);
     _xmax= integrand()->getMaxLimit(0);
   }
@@ -305,7 +300,7 @@ bool RooAdaptiveGaussKronrodIntegrator1D::checkLimits() const
 
 double RooAdaptiveGaussKronrodIntegrator1D_GSL_GlueFunction(double x, void *data)
 {
-  RooAdaptiveGaussKronrodIntegrator1D* instance = (RooAdaptiveGaussKronrodIntegrator1D*) data ;
+  auto instance = reinterpret_cast<RooAdaptiveGaussKronrodIntegrator1D*>(data);
   return instance->integrand(instance->xvec(x)) ;
 }
 
@@ -331,25 +326,26 @@ double RooAdaptiveGaussKronrodIntegrator1D::integral(const double *yvec)
   F.params = this ;
 
   // Return values
-  double result, error;
+  double result;
+  double error;
 
   // Call GSL implementation of integeator
   switch(_domainType) {
   case Closed:
     if (_methodKey==0) {
-      gsl_integration_qags (&F, _xmin, _xmax, _epsAbs, _epsRel, _maxSeg, (gsl_integration_workspace*)_workspace,&result, &error);
+      gsl_integration_qags (&F, _xmin, _xmax, _epsAbs, _epsRel, _maxSeg, reinterpret_cast<gsl_integration_workspace*>(_workspace),&result, &error);
     } else {
-      gsl_integration_qag (&F, _xmin, _xmax, _epsAbs, _epsRel, _maxSeg, _methodKey, (gsl_integration_workspace*)_workspace,&result, &error);
+      gsl_integration_qag (&F, _xmin, _xmax, _epsAbs, _epsRel, _maxSeg, _methodKey, reinterpret_cast<gsl_integration_workspace*>(_workspace),&result, &error);
     }
     break ;
   case OpenLo:
-    gsl_integration_qagil (&F, _xmax, _epsAbs, _epsRel, _maxSeg, (gsl_integration_workspace*)_workspace,&result, &error);
+    gsl_integration_qagil (&F, _xmax, _epsAbs, _epsRel, _maxSeg, reinterpret_cast<gsl_integration_workspace*>(_workspace),&result, &error);
     break ;
   case OpenHi:
-    gsl_integration_qagiu (&F, _xmin, _epsAbs, _epsRel, _maxSeg, (gsl_integration_workspace*)_workspace,&result, &error);
+    gsl_integration_qagiu (&F, _xmin, _epsAbs, _epsRel, _maxSeg, reinterpret_cast<gsl_integration_workspace*>(_workspace),&result, &error);
     break ;
   case Open:
-    gsl_integration_qagi (&F, _epsAbs, _epsRel, _maxSeg, (gsl_integration_workspace*)_workspace,&result, &error);
+    gsl_integration_qagi (&F, _epsAbs, _epsRel, _maxSeg, reinterpret_cast<gsl_integration_workspace*>(_workspace),&result, &error);
     break ;
   }
 
@@ -385,7 +381,7 @@ double RooAdaptiveGaussKronrodIntegrator1D::integral(const double *yvec)
 #define GSL_ENOMEM   8  /* malloc failed */
 #define GSL_EBADTOL 13  /* user specified an invalid tolerance */
 #define GSL_ETOL    14  /* failed to reach the specified tolerance */
-#define GSL_ERROR(a,b) oocoutE(nullptr,Integration) << "RooAdaptiveGaussKronrodIntegrator1D::integral() ERROR: " << a << endl ; return b ;
+#define GSL_ERROR(a,b) oocoutE(nullptr,Integration) << "RooAdaptiveGaussKronrodIntegrator1D::integral() ERROR: " << a << std::endl ; return b ;
 #define GSL_DBL_MIN        2.2250738585072014e-308
 #define GSL_DBL_MAX        1.7976931348623157e+308
 #define GSL_DBL_EPSILON    2.2204460492503131e-16
@@ -538,7 +534,9 @@ void qpsrt (gsl_integration_workspace * workspace)
 
   double errmax ;
   double errmin ;
-  int i, k, top;
+  int i;
+  int k;
+  int top;
 
   size_t i_nrmax = workspace->nrmax;
   size_t i_maxerr = order[i_nrmax] ;
@@ -731,9 +729,9 @@ subinterval_too_small (double a1, double a2, double b2)
   const double e = GSL_DBL_EPSILON;
   const double u = GSL_DBL_MIN;
 
-  double tmp = (1 + 100 * e) * (fabs (a2) + 1000 * u);
+  double tmp = (1 + 100 * e) * (std::abs(a2) + 1000 * u);
 
-  int status = fabs (a1) <= tmp && fabs (b2) <= tmp;
+  int status = std::abs(a1) <= tmp && std::abs(b2) <= tmp;
 
   return status;
 }
@@ -807,11 +805,17 @@ qag (const gsl_function * f,
      double *result, double *abserr,
      gsl_integration_rule * q)
 {
-  double area, errsum;
-  double result0, abserr0, resabs0, resasc0;
+  double area;
+  double errsum;
+  double result0;
+  double abserr0;
+  double resabs0;
+  double resasc0;
   double tolerance;
   size_t iteration = 0;
-  int roundoff_type1 = 0, roundoff_type2 = 0, error_type = 0;
+  int roundoff_type1 = 0;
+  int roundoff_type2 = 0;
+  int error_type = 0;
 
   double round_off;
 
@@ -829,7 +833,7 @@ qag (const gsl_function * f,
 
   if (epsabs <= 0 && (epsrel < 50 * GSL_DBL_EPSILON || epsrel < 0.5e-28))
     {
-      GSL_ERROR ("tolerance cannot be acheived with given epsabs and epsrel",
+      GSL_ERROR ("tolerance cannot be acheieved with given epsabs and epsrel",
                  GSL_EBADTOL);
     }
 
@@ -841,7 +845,7 @@ qag (const gsl_function * f,
 
   /* Test on accuracy */
 
-  tolerance = GSL_MAX_DBL (epsabs, epsrel * fabs (result0));
+  tolerance = GSL_MAX_DBL (epsabs, epsrel * std::abs(result0));
 
   /* need IEEE rounding here to match original quadpack behavior */
 
@@ -877,12 +881,24 @@ qag (const gsl_function * f,
 
   do
     {
-      double a1, b1, a2, b2;
-      double a_i, b_i, r_i, e_i;
-      double area1 = 0, area2 = 0, area12 = 0;
-      double error1 = 0, error2 = 0, error12 = 0;
-      double resasc1, resasc2;
-      double resabs1, resabs2;
+      double a1;
+      double b1;
+      double a2;
+      double b2;
+      double a_i;
+      double b_i;
+      double r_i;
+      double e_i;
+      double area1 = 0;
+      double area2 = 0;
+      double area12 = 0;
+      double error1 = 0;
+      double error2 = 0;
+      double error12 = 0;
+      double resasc1;
+      double resasc2;
+      double resabs1;
+      double resabs2;
 
       /* Bisect the subinterval with the largest error estimate */
 
@@ -906,7 +922,7 @@ qag (const gsl_function * f,
         {
           double delta = r_i - area12;
 
-          if (fabs (delta) <= 1.0e-5 * fabs (area12) && error12 >= 0.99 * e_i)
+          if (std::abs(delta) <= 1.0e-5 * std::abs(area12) && error12 >= 0.99 * e_i)
             {
               roundoff_type1++;
             }
@@ -916,7 +932,7 @@ qag (const gsl_function * f,
             }
         }
 
-      tolerance = GSL_MAX_DBL (epsabs, epsrel * fabs (area));
+      tolerance = GSL_MAX_DBL (epsabs, epsrel * std::abs(area));
 
       if (errsum > tolerance)
         {
@@ -975,11 +991,11 @@ static double rescale_error (double err, const double result_abs, const double r
 static double
 rescale_error (double err, const double result_abs, const double result_asc)
 {
-  err = fabs(err) ;
+  err = std::abs(err) ;
 
   if (result_asc != 0 && err != 0)
       {
-        double scale = TMath::Power((200 * err / result_asc), 1.5) ;
+        double scale = std::pow((200 * err / result_asc), 1.5) ;
 
         if (scale < 1)
           {
@@ -1015,15 +1031,16 @@ gsl_integration_qk (const int n,
 
   const double center = 0.5 * (a + b);
   const double half_length = 0.5 * (b - a);
-  const double abs_half_length = fabs (half_length);
+  const double abs_half_length = std::abs(half_length);
   const double f_center = GSL_FN_EVAL (f, center);
 
   double result_gauss = 0;
   double result_kronrod = f_center * wgk[n - 1];
 
-  double result_abs = fabs (result_kronrod);
+  double result_abs = std::abs(result_kronrod);
   double result_asc = 0;
-  double mean = 0, err = 0;
+  double mean = 0;
+  double err = 0;
 
   int j;
 
@@ -1043,7 +1060,7 @@ gsl_integration_qk (const int n,
       fv2[jtw] = fval2;
       result_gauss += wg[j] * fsum;
       result_kronrod += wgk[jtw] * fsum;
-      result_abs += wgk[jtw] * (fabs (fval1) + fabs (fval2));
+      result_abs += wgk[jtw] * (std::abs(fval1) + std::abs(fval2));
     }
 
   for (j = 0; j < n / 2; j++)
@@ -1055,16 +1072,16 @@ gsl_integration_qk (const int n,
       fv1[jtwm1] = fval1;
       fv2[jtwm1] = fval2;
       result_kronrod += wgk[jtwm1] * (fval1 + fval2);
-      result_abs += wgk[jtwm1] * (fabs (fval1) + fabs (fval2));
+      result_abs += wgk[jtwm1] * (std::abs(fval1) + std::abs(fval2));
     };
 
   mean = result_kronrod * 0.5;
 
-  result_asc = wgk[n - 1] * fabs (f_center - mean);
+  result_asc = wgk[n - 1] * std::abs(f_center - mean);
 
   for (j = 0; j < n - 1; j++)
     {
-      result_asc += wgk[j] * (fabs (fv1[j] - mean) + fabs (fv2[j] - mean));
+      result_asc += wgk[j] * (std::abs(fv1[j] - mean) + std::abs(fv2[j] - mean));
     }
 
   /* scale by the width of the integration region */
@@ -1126,7 +1143,8 @@ gsl_integration_qk15 (const gsl_function * f, double a, double b,
       double *result, double *abserr,
       double *resabs, double *resasc)
 {
-  double fv1[8], fv2[8];
+  double fv1[8];
+  double fv2[8];
   // coverity[UNINIT_CTOR]
   gsl_integration_qk (8, xgkA, wgA, wgkA, fv1, fv2, f, a, b, result, abserr, resabs, resasc);
 }
@@ -1183,7 +1201,8 @@ gsl_integration_qk21 (const gsl_function * f, double a, double b,
                       double *result, double *abserr,
                       double *resabs, double *resasc)
 {
-  double fv1[11], fv2[11];
+  double fv1[11];
+  double fv2[11];
   // coverity[UNINIT_CTOR]
   gsl_integration_qk (11, xgkB, wgB, wgkB, fv1, fv2, f, a, b, result, abserr, resabs, resasc);
 }
@@ -1252,7 +1271,8 @@ gsl_integration_qk31 (const gsl_function * f, double a, double b,
       double *result, double *abserr,
       double *resabs, double *resasc)
 {
-  double fv1[16], fv2[16];
+  double fv1[16];
+  double fv2[16];
   // coverity[UNINIT_CTOR]
   gsl_integration_qk (16, xgkC, wgC, wgkC, fv1, fv2, f, a, b, result, abserr, resabs, resasc);
 }
@@ -1333,7 +1353,8 @@ gsl_integration_qk41 (const gsl_function * f, double a, double b,
                       double *result, double *abserr,
                       double *resabs, double *resasc)
 {
-  double fv1[21], fv2[21];
+  double fv1[21];
+  double fv2[21];
   // coverity[UNINIT]
   gsl_integration_qk (21, xgkD, wgD, wgkD, fv1, fv2, f, a, b, result, abserr, resabs, resasc);
 }
@@ -1429,7 +1450,8 @@ gsl_integration_qk51 (const gsl_function * f, double a, double b,
                       double *result, double *abserr,
                       double *resabs, double *resasc)
 {
-  double fv1[26], fv2[26];
+  double fv1[26];
+  double fv2[26];
   //coverity[UNINIT]
   gsl_integration_qk (26, xgkE, wgE, wgkE, fv1, fv2, f, a, b, result, abserr, resabs, resasc);
 }
@@ -1535,7 +1557,8 @@ gsl_integration_qk61 (const gsl_function * f, double a, double b,
                       double *result, double *abserr,
                       double *resabs, double *resasc)
 {
-  double fv1[31], fv2[31];
+  double fv1[31];
+  double fv2[31];
   //coverity[UNINIT]
   gsl_integration_qk (31, xgkF, wgF, wgkF, fv1, fv2, f, a, b, result, abserr, resabs, resasc);
 }
@@ -1548,55 +1571,54 @@ gsl_integration_workspace_alloc (const size_t n)
   if (n == 0)
     {
       GSL_ERROR_VAL ("workspace length n must be positive integer",
-                        GSL_EDOM, 0);
+                        GSL_EDOM, nullptr);
     }
 
-  w = (gsl_integration_workspace *)
-    malloc (sizeof (gsl_integration_workspace));
+  w = reinterpret_cast<gsl_integration_workspace *>(malloc (sizeof (gsl_integration_workspace)));
 
-  if (w == 0)
+  if (w == nullptr)
     {
       GSL_ERROR_VAL ("failed to allocate space for workspace struct",
-                        GSL_ENOMEM, 0);
+                        GSL_ENOMEM, nullptr);
     }
 
-  w->alist = (double *) malloc (n * sizeof (double));
+  w->alist = reinterpret_cast<double *>(malloc (n * sizeof (double)));
 
-  if (w->alist == 0)
+  if (w->alist == nullptr)
     {
       free (w);         /* exception in constructor, avoid memory leak */
 
       GSL_ERROR_VAL ("failed to allocate space for alist ranges",
-                        GSL_ENOMEM, 0);
+                        GSL_ENOMEM, nullptr);
     }
 
-  w->blist = (double *) malloc (n * sizeof (double));
+  w->blist = reinterpret_cast<double *>(malloc (n * sizeof (double)));
 
-  if (w->blist == 0)
+  if (w->blist == nullptr)
     {
       free (w->alist);
       free (w);         /* exception in constructor, avoid memory leak */
 
       GSL_ERROR_VAL ("failed to allocate space for blist ranges",
-                        GSL_ENOMEM, 0);
+                        GSL_ENOMEM, nullptr);
     }
 
-  w->rlist = (double *) malloc (n * sizeof (double));
+  w->rlist = reinterpret_cast<double *>(malloc (n * sizeof (double)));
 
-  if (w->rlist == 0)
+  if (w->rlist == nullptr)
     {
       free (w->blist);
       free (w->alist);
       free (w);         /* exception in constructor, avoid memory leak */
 
       GSL_ERROR_VAL ("failed to allocate space for rlist ranges",
-                        GSL_ENOMEM, 0);
+                        GSL_ENOMEM, nullptr);
     }
 
 
-  w->elist = (double *) malloc (n * sizeof (double));
+  w->elist = reinterpret_cast<double *>(malloc (n * sizeof (double)));
 
-  if (w->elist == 0)
+  if (w->elist == nullptr)
     {
       free (w->rlist);
       free (w->blist);
@@ -1604,12 +1626,12 @@ gsl_integration_workspace_alloc (const size_t n)
       free (w);         /* exception in constructor, avoid memory leak */
 
       GSL_ERROR_VAL ("failed to allocate space for elist ranges",
-                        GSL_ENOMEM, 0);
+                        GSL_ENOMEM, nullptr);
     }
 
-  w->order = (size_t *) malloc (n * sizeof (size_t));
+  w->order = reinterpret_cast<size_t *>(malloc (n * sizeof (size_t)));
 
-  if (w->order == 0)
+  if (w->order == nullptr)
     {
       free (w->elist);
       free (w->rlist);
@@ -1618,12 +1640,12 @@ gsl_integration_workspace_alloc (const size_t n)
       free (w);         /* exception in constructor, avoid memory leak */
 
       GSL_ERROR_VAL ("failed to allocate space for order ranges",
-                        GSL_ENOMEM, 0);
+                        GSL_ENOMEM, nullptr);
     }
 
-  w->level = (size_t *) malloc (n * sizeof (size_t));
+  w->level = reinterpret_cast<size_t *>(malloc (n * sizeof (size_t)));
 
-  if (w->level == 0)
+  if (w->level == nullptr)
     {
       free (w->order);
       free (w->elist);
@@ -1633,7 +1655,7 @@ gsl_integration_workspace_alloc (const size_t n)
       free (w);         /* exception in constructor, avoid memory leak */
 
       GSL_ERROR_VAL ("failed to allocate space for order ranges",
-                        GSL_ENOMEM, 0);
+                        GSL_ENOMEM, nullptr);
     }
 
   w->size = 0 ;
@@ -1790,7 +1812,7 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
   const double current = epstab[n];
 
   double absolute = GSL_DBL_MAX;
-  double relative = 5 * GSL_DBL_EPSILON * fabs (current);
+  double relative = 5 * GSL_DBL_EPSILON * std::abs(current);
 
   const size_t newelm = n / 2;
   const size_t n_orig = n;
@@ -1819,15 +1841,19 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
       double e1 = epstab[n - 2 * i - 1];
       double e2 = res;
 
-      double e1abs = fabs (e1);
+      double e1abs = std::abs(e1);
       double delta2 = e2 - e1;
-      double err2 = fabs (delta2);
-      double tol2 = GSL_MAX_DBL (fabs (e2), e1abs) * GSL_DBL_EPSILON;
+      double err2 = std::abs(delta2);
+      double tol2 = GSL_MAX_DBL (std::abs(e2), e1abs) * GSL_DBL_EPSILON;
       double delta3 = e1 - e0;
-      double err3 = fabs (delta3);
-      double tol3 = GSL_MAX_DBL (e1abs, fabs (e0)) * GSL_DBL_EPSILON;
+      double err3 = std::abs(delta3);
+      double tol3 = GSL_MAX_DBL (e1abs, std::abs(e0)) * GSL_DBL_EPSILON;
 
-      double e3, delta1, err1, tol1, ss;
+      double e3;
+      double delta1;
+      double err1;
+      double tol1;
+      double ss;
 
       if (err2 <= tol2 && err3 <= tol3)
         {
@@ -1836,7 +1862,7 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
 
           *result = res;
           absolute = err2 + err3;
-          relative = 5 * GSL_DBL_EPSILON * fabs (res);
+          relative = 5 * GSL_DBL_EPSILON * std::abs(res);
           *abserr = GSL_MAX_DBL (absolute, relative);
           return;
         }
@@ -1844,8 +1870,8 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
       e3 = epstab[n - 2 * i];
       epstab[n - 2 * i] = e1;
       delta1 = e1 - e3;
-      err1 = fabs (delta1);
-      tol1 = GSL_MAX_DBL (e1abs, fabs (e3)) * GSL_DBL_EPSILON;
+      err1 = std::abs(delta1);
+      tol1 = GSL_MAX_DBL (e1abs, std::abs(e3)) * GSL_DBL_EPSILON;
 
       /* If two elements are very close to each other, omit a part of
          the table by adjusting the value of n */
@@ -1862,7 +1888,7 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
          eventually omit a part of the table by adjusting the value of
          n. */
 
-      if (fabs (ss * e1) <= 0.0001)
+      if (std::abs(ss * e1) <= 0.0001)
         {
           n_final = 2 * i;
           break;
@@ -1875,7 +1901,7 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
       epstab[n - 2 * i] = res;
 
       {
-        const double error = err2 + fabs (res - e2) + err3;
+        const double error = err2 + std::abs(res - e2) + err3;
 
         if (error <= *abserr)
           {
@@ -1928,8 +1954,8 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
     }
   else
     {                           /* Compute error estimate */
-      *abserr = (fabs (*result - res3la[2]) + fabs (*result - res3la[1])
-                 + fabs (*result - res3la[0]));
+      *abserr = (std::abs(*result - res3la[2]) + std::abs(*result - res3la[1])
+                 + std::abs(*result - res3la[0]));
 
       res3la[0] = res3la[1];
       res3la[1] = res3la[2];
@@ -1944,7 +1970,7 @@ qelg (struct extrapolation_table *table, double *result, double *abserr)
 
   table->nres = nres_orig + 1;
 
-  *abserr = GSL_MAX_DBL (*abserr, 5 * GSL_DBL_EPSILON * fabs (*result));
+  *abserr = GSL_MAX_DBL (*abserr, 5 * GSL_DBL_EPSILON * std::abs(*result));
 
   return;
 }
@@ -1960,7 +1986,7 @@ test_positivity (double result, double resabs);
 static inline int
 test_positivity (double result, double resabs)
 {
-  int status = (fabs (result) >= (1 - 50 * GSL_DBL_EPSILON) * resabs);
+  int status = (std::abs(result) >= (1 - 50 * GSL_DBL_EPSILON) * resabs);
 
   return status;
 }
@@ -2018,7 +2044,7 @@ gsl_integration_qagi (gsl_function * f,
 static double
 i_transform (double t, void *params)
 {
-  gsl_function *f = (gsl_function *) params;
+  gsl_function *f = reinterpret_cast<gsl_function *>(params);
   double x = (1 - t) / t;
   double y = GSL_FN_EVAL (f, x) + GSL_FN_EVAL (f, -x);
   return (y / t) / t;
@@ -2066,7 +2092,7 @@ gsl_integration_qagil (gsl_function * f,
 static double
 il_transform (double t, void *params)
 {
-  struct il_params *p = (struct il_params *) params;
+  struct il_params *p = reinterpret_cast<struct il_params *>(params);
   double b = p->b;
   gsl_function * f = p->f;
   double x = b - (1 - t) / t;
@@ -2115,7 +2141,7 @@ gsl_integration_qagiu (gsl_function * f,
 static double
 iu_transform (double t, void *params)
 {
-  struct iu_params *p = (struct iu_params *) params;
+  struct iu_params *p = reinterpret_cast<struct iu_params *>(params);
   double a = p->a;
   gsl_function * f = p->f;
   double x = a + (1 - t) / t;
@@ -2134,17 +2160,27 @@ qags (const gsl_function * f,
       double *result, double *abserr,
       gsl_integration_rule * q)
 {
-  double area, errsum;
-  double res_ext, err_ext;
-  double result0, abserr0, resabs0, resasc0;
+  double area;
+  double errsum;
+  double res_ext;
+  double err_ext;
+  double result0;
+  double abserr0;
+  double resabs0;
+  double resasc0;
   double tolerance;
 
   double ertest = 0;
   double error_over_large_intervals = 0;
-  double reseps = 0, abseps = 0, correc = 0;
+  double reseps = 0;
+  double abseps = 0;
+  double correc = 0;
   size_t ktmin = 0;
-  int roundoff_type1 = 0, roundoff_type2 = 0, roundoff_type3 = 0;
-  int error_type = 0, error_type2 = 0;
+  int roundoff_type1 = 0;
+  int roundoff_type2 = 0;
+  int roundoff_type3 = 0;
+  int error_type = 0;
+  int error_type2 = 0;
 
   size_t iteration = 0;
 
@@ -2170,7 +2206,7 @@ qags (const gsl_function * f,
 
   if (epsabs <= 0 && (epsrel < 50 * GSL_DBL_EPSILON || epsrel < 0.5e-28))
     {
-      GSL_ERROR ("tolerance cannot be acheived with given epsabs and epsrel",
+      GSL_ERROR ("tolerance cannot be achieved with given epsabs and epsrel",
                  GSL_EBADTOL);
     }
 
@@ -2180,7 +2216,7 @@ qags (const gsl_function * f,
 
   set_initial_result (workspace, result0, abserr0);
 
-  tolerance = GSL_MAX_DBL (epsabs, epsrel * fabs (result0));
+  tolerance = GSL_MAX_DBL (epsabs, epsrel * std::abs(result0));
 
   if (abserr0 <= 100 * GSL_DBL_EPSILON * resabs0 && abserr0 > tolerance)
     {
@@ -2223,12 +2259,24 @@ qags (const gsl_function * f,
   do
     {
       size_t current_level;
-      double a1, b1, a2, b2;
-      double a_i, b_i, r_i, e_i;
-      double area1 = 0, area2 = 0, area12 = 0;
-      double error1 = 0, error2 = 0, error12 = 0;
-      double resasc1, resasc2;
-      double resabs1, resabs2;
+      double a1;
+      double b1;
+      double a2;
+      double b2;
+      double a_i;
+      double b_i;
+      double r_i;
+      double e_i;
+      double area1 = 0;
+      double area2 = 0;
+      double area12 = 0;
+      double error1 = 0;
+      double error2 = 0;
+      double error12 = 0;
+      double resasc1;
+      double resasc2;
+      double resabs1;
+      double resabs2;
       double last_e_i;
 
       /* Bisect the subinterval with the largest error estimate */
@@ -2261,13 +2309,13 @@ qags (const gsl_function * f,
       errsum = errsum + error12 - e_i;
       area = area + area12 - r_i;
 
-      tolerance = GSL_MAX_DBL (epsabs, epsrel * fabs (area));
+      tolerance = GSL_MAX_DBL (epsabs, epsrel * std::abs(area));
 
       if (resasc1 != error1 && resasc2 != error2)
         {
           double delta = r_i - area12;
 
-          if (fabs (delta) <= 1.0e-5 * fabs (area12) && error12 >= 0.99 * e_i)
+          if (std::abs(delta) <= 1.0e-5 * std::abs(area12) && error12 >= 0.99 * e_i)
             {
               if (!extrapolate)
                 {
@@ -2381,7 +2429,7 @@ qags (const gsl_function * f,
           err_ext = abseps;
           res_ext = reseps;
           correc = error_over_large_intervals;
-          ertest = GSL_MAX_DBL (epsabs, epsrel * fabs (reseps));
+          ertest = GSL_MAX_DBL (epsabs, epsrel * std::abs(reseps));
           if (err_ext <= ertest)
             break;
         }
@@ -2425,7 +2473,7 @@ qags (const gsl_function * f,
 
       if (res_ext != 0.0 && area != 0.0)
         {
-          if (err_ext / fabs (res_ext) > errsum / fabs (area))
+          if (err_ext / std::abs(res_ext) > errsum / std::abs(area))
             goto compute_result;
         }
       else if (err_ext > errsum)
@@ -2441,7 +2489,7 @@ qags (const gsl_function * f,
   /*  Test on divergence. */
 
   {
-    double max_area = GSL_MAX_DBL (fabs (res_ext), fabs (area));
+    double max_area = GSL_MAX_DBL (std::abs(res_ext), std::abs(area));
 
     if (!positive_integrand && max_area < 0.01 * resabs0)
       goto return_error;
@@ -2450,7 +2498,7 @@ qags (const gsl_function * f,
   {
     double ratio = res_ext / area;
 
-    if (ratio < 0.01 || ratio > 100.0 || errsum > fabs (area))
+    if (ratio < 0.01 || ratio > 100.0 || errsum > std::abs(area))
       error_type = 6;
   }
 

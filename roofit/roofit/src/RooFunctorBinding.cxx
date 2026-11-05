@@ -39,13 +39,11 @@ class cannot be persisted in a RooWorkspace without registering the function
 pointer first using RooCFunction1Binding<T1,T2>::register().
 **/
 
-#include "Riostream.h"
 #include "RooFunctorBinding.h"
+#include <iostream>
 
-using namespace std ;
+using std::endl, std::ostream, std::string;
 
-ClassImp(RooFunctorBinding);
-ClassImp(RooFunctorPdfBinding);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a RooFit function that makes `ftor` usable in RooFit.
@@ -59,9 +57,9 @@ RooFunctorBinding::RooFunctorBinding(const char *name, const char *title, const 
   vars("vars","vars",this)
 {
   // Check that function dimension and number of variables match
-  if (ftor.NDim()!=UInt_t(v.getSize())) {
-    coutE(InputArguments) << "RooFunctorBinding::ctor(" << GetName() << ") ERROR number of provided variables (" << v.getSize()
-           << ") does not match dimensionality of function (" << ftor.NDim() << ")" << endl ;
+  if (ftor.NDim()!=UInt_t(v.size())) {
+    coutE(InputArguments) << "RooFunctorBinding::ctor(" << GetName() << ") ERROR number of provided variables (" << v.size()
+           << ") does not match dimensionality of function (" << ftor.NDim() << ")" << std::endl ;
     throw string("RooFunctor::ctor ERROR") ;
   }
   x = new double[func->NDim()] ;
@@ -69,13 +67,10 @@ RooFunctorBinding::RooFunctorBinding(const char *name, const char *title, const 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-RooFunctorBinding::RooFunctorBinding(const RooFunctorBinding& other, const char* name) :
-  RooAbsReal(other,name),
-  func(other.func),
-  vars("vars",this,other.vars)
+RooFunctorBinding::RooFunctorBinding(const RooFunctorBinding &other, const char *name)
+   : RooAbsReal(other, name), func(other.func), vars("vars", this, other.vars), x(new double[func->NDim()])
 {
   // Copy constructor
-  x = new double[func->NDim()] ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,8 +90,8 @@ void RooFunctorBinding::printArgs(ostream& os) const {
 ////////////////////////////////////////////////////////////////////////////////
 double RooFunctorBinding::evaluate() const {
     // Return value of embedded function using value of referenced variable x
-    for (int i=0 ; i<vars.getSize() ; i++) {
-      x[i] = ((RooAbsReal*)vars.at(i))->getVal() ;
+    for (std::size_t i=0 ; i<vars.size() ; i++) {
+      x[i] = static_cast<RooAbsReal*>(vars.at(i))->getVal();
     }
     return (*func)(x) ;
 }
@@ -114,9 +109,9 @@ RooFunctorPdfBinding::RooFunctorPdfBinding(const char *name, const char *title, 
   vars("vars","vars",this)
 {
   // Check that function dimension and number of variables match
-  if (ftor.NDim()!=UInt_t(v.getSize())) {
-    coutE(InputArguments) << "RooFunctorPdfBinding::ctor(" << GetName() << ") ERROR number of provided variables (" << v.getSize()
-           << ") does not match dimensionality of function (" << ftor.NDim() << ")" << endl ;
+  if (ftor.NDim()!=UInt_t(v.size())) {
+    coutE(InputArguments) << "RooFunctorPdfBinding::ctor(" << GetName() << ") ERROR number of provided variables (" << v.size()
+           << ") does not match dimensionality of function (" << ftor.NDim() << ")" << std::endl ;
     throw string("RooFunctor::ctor ERROR") ;
   }
   x = new double[func->NDim()] ;
@@ -124,13 +119,10 @@ RooFunctorPdfBinding::RooFunctorPdfBinding(const char *name, const char *title, 
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-RooFunctorPdfBinding::RooFunctorPdfBinding(const RooFunctorPdfBinding& other, const char* name) :
-  RooAbsPdf(other,name),
-  func(other.func),
-  vars("vars",this,other.vars)
+RooFunctorPdfBinding::RooFunctorPdfBinding(const RooFunctorPdfBinding &other, const char *name)
+   : RooAbsPdf(other, name), func(other.func), vars("vars", this, other.vars), x(new double[func->NDim()])
 {
   // Copy constructor
-  x = new double[func->NDim()] ;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,8 +142,8 @@ void RooFunctorPdfBinding::printArgs(ostream& os) const {
 ////////////////////////////////////////////////////////////////////////////////
 double RooFunctorPdfBinding::evaluate() const {
     // Return value of embedded function using value of referenced variable x
-    for (int i=0 ; i<vars.getSize() ; i++) {
-      x[i] = ((RooAbsReal*)vars.at(i))->getVal() ;
+    for (std::size_t i=0 ; i<vars.size() ; i++) {
+      x[i] = static_cast<RooAbsReal*>(vars.at(i))->getVal();
     }
     return (*func)(x) ;
   }

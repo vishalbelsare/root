@@ -30,8 +30,7 @@ namespace ROOT {
 
 // GSLSimAnMinimizer implementation
 
-GSLSimAnMinimizer::GSLSimAnMinimizer( int /* ROOT::Math::EGSLSimAnMinimizerType type */ ) :
-   BasicMinimizer()
+GSLSimAnMinimizer::GSLSimAnMinimizer( int /* ROOT::Math::EGSLSimAnMinimizerType type */ )
 {
    // Constructor implementation : create GSLMultiFit wrapper object
 
@@ -63,7 +62,7 @@ bool GSLSimAnMinimizer::Minimize() {
 
 
    const ROOT::Math::IMultiGenFunction * function = ObjFunction();
-   if (function == 0) {
+   if (function == nullptr) {
       MATH_ERROR_MSG("GSLSimAnMinimizer::Minimize","Function has not been set");
       return false;
    }

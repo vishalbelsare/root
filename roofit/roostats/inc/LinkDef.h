@@ -8,7 +8,7 @@
  * For the list of contributors see $ROOTSYS/README/CREDITS.             *
  *************************************************************************/
 
-#ifdef __CINT__
+#ifdef __CLING__
 
 #pragma link off all globals;
 #pragma link off all classes;
@@ -16,12 +16,6 @@
 
 #pragma link C++ namespace RooStats;
 #pragma link C++ namespace RooStats::NumberCountingUtils;
-
-// for auto-loading namespaces
-#ifdef USE_FOR_AUTLOADING
-#pragma link C++ class RooStats::NumberCountingUtils;
-#pragma link C++ class RooStats;
-#endif
 
 #pragma link C++ class RooStats::SPlot+;
 #pragma link C++ class RooStats::NumberCountingPdfFactory+;
@@ -33,8 +27,6 @@
 #pragma link C++ class RooStats::SimpleInterval+;
 #pragma link C++ class RooStats::LikelihoodInterval+;
 #pragma link C++ class RooStats::PointSetInterval+;
-
-#pragma link C++ class RooStats::ModelConfig+;
 
 #pragma link C++ class RooStats::IntervalCalculator+; // interface, not concrete
 #pragma link C++ class RooStats::HypoTestCalculator+; // interface, not concrete
@@ -57,27 +49,20 @@
 #pragma link C++ class RooStats::HybridCalculator+;
 #pragma link C++ class RooStats::FrequentistCalculator+;
 #pragma link C++ class RooStats::AsymptoticCalculator+;
-#pragma link C++ class RooStats::HybridPlot+;
 #pragma link C++ class RooStats::HybridResult+;
 
 #pragma link C++ class RooStats::DetailedOutputAggregator+;
 
 #pragma link C++ class RooStats::TestStatSampler+; // interface, not concrete
-#pragma link C++ class RooStats::DebuggingSampler+;
 #pragma link C++ class RooStats::ToyMCSampler+;
-#pragma link C++ class RooStats::ToyMCStudy+;
-#pragma link C++ class RooStats::ProofConfig+;
 #pragma link C++ class RooStats::ToyMCImportanceSampler+;
-#pragma link C++ class RooStats::ToyMCPayload+;
 
 #pragma link C++ class RooStats::TestStatistic+; // interface
-#pragma link C++ class RooStats::DebuggingTestStat+;
 #pragma link C++ class RooStats::ProfileLikelihoodTestStat+;
 #pragma link C++ class RooStats::RatioOfProfiledLikelihoodsTestStat+;
 #pragma link C++ class RooStats::NumEventsTestStat+;
 #pragma link C++ class RooStats::SimpleLikelihoodRatioTestStat+;
 #pragma link C++ class RooStats::MaxLikelihoodEstimateTestStat+;
-#pragma link C++ class RooStats::MinNLLTestStat+;
 
 #pragma link C++ class RooStats::SamplingDistribution+;
 #pragma link C++ class RooStats::NeymanConstruction+;
@@ -87,7 +72,6 @@
 #pragma link C++ class RooStats::HypoTestInverter+;
 #pragma link C++ class RooStats::HypoTestInverterResult+;
 #pragma link C++ class RooStats::HypoTestInverterPlot+;
-#pragma link C++ class RooStats::HLFactory+;
 
 // in progress
 #pragma link C++ class RooStats::ConfidenceBelt+;
@@ -104,25 +88,6 @@
 #pragma link C++ class RooStats::LikelihoodIntervalPlot+;
 
 #pragma link C++ class RooStats::UpperLimitMCSModule+;
-
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialExpZ(double , double ,double);
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialWithTauExpZ(double,double,double);
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialObsZ(double,double,double);
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialWithTauObsZ(double,double,double);
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialExpP(double,double,double);
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialWithTauExpP(double,double,double);
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialObsP(double,double,double);
-#pragma link C++ function RooStats::NumberCountingUtils::BinomialWithTauObsP(double,double,double);
-
-#pragma link C++ function RooStats::PValueToSignificance(double);
-#pragma link C++ function RooStats::SignificanceToPValue(double);
-#pragma link C++ function RooStats::RemoveConstantParameters(RooArgSet* set);
-#pragma link C++ function RooStats::RemoveConstantParameters(RooArgList& set);
-#pragma link C++ function RooStats::SetParameters(const RooArgSet* , RooArgSet* );
-#pragma link C++ function RooStats::SetAllConstant(const RooAbsCollection & , bool );
-#pragma link C++ function RooStats::MakeNuisancePdf(RooAbsPdf & , const RooArgSet &, const char * );
-#pragma link C++ function RooStats::MakeNuisancePdf(const RooStats::ModelConfig & , const char * );
-#pragma link C++ function RooStats::GetAsTTree(TString, TString, const RooDataSet&);
 
 
 // need for unique_ptr object in Likelihoodinterval since they are forwd declared

@@ -39,8 +39,9 @@ class R__CLING_PTRCHECK(off) RDefinePerSample final : public RDefineBase {
 
 public:
    RDefinePerSample(std::string_view name, std::string_view type, F expression, RLoopManager &lm)
-      : RDefineBase(name, type, RDFInternal::RColumnRegister{nullptr}, lm, /*columnNames*/ {}),
-        fExpression(std::move(expression)), fLastResults(lm.GetNSlots() * RDFInternal::CacheLineStep<RetType_t>())
+      : RDefineBase(name, type, RDFInternal::RColumnRegister{&lm}, lm, /*columnNames*/ {}),
+        fExpression(std::move(expression)),
+        fLastResults(lm.GetNSlots() * RDFInternal::CacheLineStep<RetType_t>())
    {
       fLoopManager->Register(this);
       auto callUpdate = [this](unsigned int slot, const ROOT::RDF::RSampleInfo &id) { this->Update(slot, id); };
@@ -80,7 +81,10 @@ public:
 
    RDefineBase &GetVariedDefine(const std::string &) final
    {
-      R__ASSERT(false && "This should never be called");
+      // RDefinePerSample cannot depend on varied columns, so we return itself.
+      // This supports the use case of a downstream defined variable that depends on variations and also on a column
+      // created via DefinePerSample. The request for an action depending on that defined variable will end up here when
+      // looking for a variation of the dependant column.
       return *this;
    }
 };

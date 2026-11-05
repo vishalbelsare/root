@@ -54,8 +54,8 @@ public:
    }
 
    /// Constructor at the end of a minimization from seed and vector of states
-   FunctionMinimum(const MinimumSeed &seed, const std::vector<MinimumState> &states, double up, Status status = MnValid)
-      : fPtr{new Data{seed, states, up, status == MnAboveMaxEdm, status == MnReachedCallLimit, {}}}
+   FunctionMinimum(const MinimumSeed &seed, std::span<const MinimumState> states, double up, Status status = MnValid)
+      : fPtr{new Data{seed, {states.begin(), states.end()}, up, status == MnAboveMaxEdm, status == MnReachedCallLimit, {}}}
    {
    }
 
@@ -107,7 +107,7 @@ public:
    void SetErrorDef(double up)
    {
       fPtr->fErrorDef = up;
-      // update user state for new valeu of up (scaling of errors)
+      // update user state for new value of up (scaling of errors)
       fPtr->fUserState = MnUserParameterState(State(), up, Seed().Trafo());
    }
 

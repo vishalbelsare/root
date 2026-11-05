@@ -34,7 +34,6 @@ It contains information on the real remote object as:
 #include "TList.h"
 #include "TClass.h"
 
-ClassImp(TRemoteObject);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a remote object.
@@ -89,10 +88,10 @@ void TRemoteObject::Browse(TBrowser *b)
       if (b->GetRefreshFlag())
          b->SetRefreshFlag(kFALSE);
       gApplication->SetBit(TApplication::kProcessRemotely);
-      TObject *obj = (TObject *)gROOT->ProcessLine(Form("((TApplicationServer *)gApplication)->BrowseKey(\"%s\");", GetName()));
+      TObject *obj = (TObject *)gROOT->ProcessLine(TString::Format("((TApplicationServer *)gApplication)->BrowseKey(\"%s\");", GetName()));
       if (obj) {
          if (obj->IsA()->GetMethodWithPrototype("SetDirectory", "TDirectory*"))
-            gROOT->ProcessLine(Form("((%s *)0x%zx)->SetDirectory(0);", obj->ClassName(), (size_t)obj));
+            gROOT->ProcessLine(TString::Format("((%s *)0x%zx)->SetDirectory(0);", obj->ClassName(), (size_t)obj));
          obj->Browse(b);
          b->SetRefreshFlag(kTRUE);
       }
@@ -101,7 +100,7 @@ void TRemoteObject::Browse(TBrowser *b)
       if (b->GetRefreshFlag())
          b->SetRefreshFlag(kFALSE);
       gApplication->SetBit(TApplication::kProcessRemotely);
-      ret = (TList *)gROOT->ProcessLine(Form("((TApplicationServer *)gApplication)->BrowseDirectory(\"%s\");", GetTitle()));
+      ret = (TList *)gROOT->ProcessLine(TString::Format("((TApplicationServer *)gApplication)->BrowseDirectory(\"%s\");", GetTitle()));
       if (ret) {
          TIter next(ret);
          while ((robj = (TRemoteObject *)next())) {
@@ -117,7 +116,7 @@ void TRemoteObject::Browse(TBrowser *b)
       if (b->GetRefreshFlag())
          b->SetRefreshFlag(kFALSE);
       gApplication->SetBit(TApplication::kProcessRemotely);
-      ret = (TList *)gROOT->ProcessLine(Form("((TApplicationServer *)gApplication)->BrowseFile(\"%s\");", GetName()));
+      ret = (TList *)gROOT->ProcessLine(TString::Format("((TApplicationServer *)gApplication)->BrowseFile(\"%s\");", GetName()));
       if (ret) {
          TIter next(ret);
          while ((robj = (TRemoteObject *)next())) {

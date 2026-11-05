@@ -33,7 +33,7 @@ public:
   }
   RooErrorVar(const char *name, const char *title, const RooRealVar& input) ;
   RooErrorVar(const RooErrorVar& other, const char* name=nullptr);
-  TObject* clone(const char* newname) const override { return new RooErrorVar(*this,newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooErrorVar(*this,newname); }
   ~RooErrorVar() override ;
 
   double getValV(const RooArgSet* set=nullptr) const override ;
@@ -76,15 +76,14 @@ public:
 
   void setBins(Int_t nBins);
   void setBinning(const RooAbsBinning& binning, const char* name=nullptr) ;
-  const RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false) const override ;
-  RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false) override ;
+  const RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false, bool shared=true) const override ;
+  RooAbsBinning& getBinning(const char* name=nullptr, bool verbose=true, bool createOnTheFly=false, bool shared=true) override ;
   bool hasBinning(const char* name) const override ;
   std::list<std::string> getBinningNames() const override ;
 
   // Set infinite fit range limits
   void removeMin(const char* name=nullptr);
-  void removeMax(const char* name=nullptr);
-  void removeRange(const char* name=nullptr);
+  void removeMax(const char *name = nullptr);
 
   using RooAbsRealLValue::operator= ;
   using RooAbsRealLValue::setVal ;
@@ -96,7 +95,7 @@ protected:
   void syncCache(const RooArgSet* set=nullptr) override ;
 
   RooRealProxy _realVar ;   ///< RealVar with the original error
-  RooAbsBinning* _binning ; ///<! Pointer to default binning definition
+  std::unique_ptr<RooAbsBinning> _binning ; ///<! Pointer to default binning definition
 
   ClassDefOverride(RooErrorVar,1) // RooAbsRealLValue representation of an error of a RooRealVar
 };

@@ -31,7 +31,7 @@ private:
 
 public:
    TRootContextMenu(TContextMenu *c = nullptr, const char *name = "ROOT Context Menu");
-   virtual ~TRootContextMenu();
+   ~TRootContextMenu() override;
 
    void   DisplayPopup(Int_t x, Int_t y) override;
    void   Dialog(TObject *object, TMethod *method) override;
@@ -43,7 +43,8 @@ public:
    Bool_t HandleMotion(Event_t *event) override;
    virtual void   OnlineHelp();
    void   RecursiveRemove(TObject *obj) override;
-
+   using TGPopupMenu::Resize;
+   void   Resize(UInt_t w = 0, UInt_t h = 0) override;
    Bool_t ProcessMessage(Longptr_t msg, Longptr_t parm1, Longptr_t parm2) override;
 
 protected:

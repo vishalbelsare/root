@@ -1,3 +1,5 @@
+/// \cond ROOFIT_INTERNAL
+
 /*****************************************************************************
  * Project: RooFit                                                           *
  * Package: RooFitCore                                                       *
@@ -19,31 +21,24 @@
 \class RooMCIntegrator
 \ingroup Roofitcore
 
-RooMCIntegrator implements an adaptive multi-dimensional Monte Carlo
+Implements an adaptive multi-dimensional Monte Carlo
 numerical integration, following the VEGAS algorithm originally described
 in G. P. Lepage, J. Comp. Phys. 27, 192(1978). This implementation is
 based on a C version from the 0.9 beta release of the GNU scientific library.
 **/
 
-#include "Riostream.h"
-
-#include "TMath.h"
 #include "RooMCIntegrator.h"
 #include "RooArgSet.h"
-#include "RooNumber.h"
 #include "RooNumIntFactory.h"
 #include "RooRealVar.h"
 #include "RooCategory.h"
 #include "RooMsgService.h"
 
-#include <math.h>
+#include <cmath>
+#include <ostream>
 
+using std::endl;
 
-
-using namespace std;
-
-ClassImp(RooMCIntegrator);
-;
 
 // Register this class with RooNumIntFactory
 
@@ -76,26 +71,21 @@ void RooMCIntegrator::registerIntegrator(RooNumIntFactory& fact)
   RooRealVar nIntPerDim("nIntPerDim","Number of integration samples (per dimension)",5000) ;
 
   // Create prototype integrator
-  RooMCIntegrator* proto = new RooMCIntegrator() ;
+  auto creator = [](const RooAbsFunc& function, const RooNumIntConfig& config) {
+    return std::make_unique<RooMCIntegrator>(function,config);
+  };
 
   // Register prototype and default config with factory
-  fact.storeProtoIntegrator(proto,RooArgSet(samplingMode,genType,verbose,alpha,nRefineIter,nRefinePerDim,nIntPerDim)) ;
+  std::string name = "RooMCIntegrator";
+  fact.registerPlugin(name, creator, {samplingMode,genType,verbose,alpha,nRefineIter,nRefinePerDim,nIntPerDim},
+                    /*canIntegrate1D=*/true,
+                    /*canIntegrate2D=*/true,
+                    /*canIntegrateND=*/true,
+                    /*canIntegrateOpenEnded=*/false);
 
   // Make this method the default for all N>2-dim integrals
-  RooNumIntConfig::defaultConfig().methodND().setLabel(proto->ClassName()) ;
+  RooNumIntConfig::defaultConfig().methodND().setLabel(name) ;
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
-///
-/// coverity[UNINIT_CTOR]
-
- RooMCIntegrator::RooMCIntegrator()
-{
-}
-
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,7 +103,7 @@ RooMCIntegrator::RooMCIntegrator(const RooAbsFunc& function, SamplingMode mode,
 {
   // coverity[UNINIT_CTOR]
   if(!(_valid= _grid.isValid())) return;
-  if(_verbose) _grid.Print();
+  if(_verbose) _grid.print(std::cout);
 }
 
 
@@ -125,7 +115,7 @@ RooMCIntegrator::RooMCIntegrator(const RooAbsFunc& function, SamplingMode mode,
 RooMCIntegrator::RooMCIntegrator(const RooAbsFunc& function, const RooNumIntConfig& config) :
   RooAbsIntegrator(function), _grid(function)
 {
-  const RooArgSet& configSet = config.getConfigSection(ClassName()) ;
+  const RooArgSet& configSet = config.getConfigSection("RooMCIntegrator") ;
   _verbose = (bool) configSet.getCatIndex("verbose",0) ;
   _alpha = configSet.getRealValue("alpha",1.5) ;
   _mode = (SamplingMode) configSet.getCatIndex("samplingMode",Importance) ;
@@ -136,30 +126,8 @@ RooMCIntegrator::RooMCIntegrator(const RooAbsFunc& function, const RooNumIntConf
 
   // check that our grid initialized without errors
   if(!(_valid= _grid.isValid())) return;
-  if(_verbose) _grid.Print();
+  if(_verbose) _grid.print(std::cout);
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Return clone of this generator operating on given function with given configuration
-/// Needed to support RooNumIntFactory
-
-RooAbsIntegrator* RooMCIntegrator::clone(const RooAbsFunc& function, const RooNumIntConfig& config) const
-{
-  return new RooMCIntegrator(function,config) ;
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooMCIntegrator::~RooMCIntegrator()
-{
-}
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Check if we can integrate over the current domain. If return value
@@ -198,7 +166,7 @@ double RooMCIntegrator::integral(const double* /*yvec*/)
 
 double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, double *absError)
 {
-  //cout << "VEGAS stage = " << stage << " calls = " << calls << " iterations = " << iterations << endl ;
+  //cout << "VEGAS stage = " << stage << " calls = " << calls << " iterations = " << iterations << std::endl ;
 
   // reset the grid to its initial state if we are starting from scratch
   if(stage == AllStages) _grid.initialize(*_function);
@@ -222,7 +190,7 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
     if(_mode != ImportanceOnly) {
       // calculate the largest number of equal subdivisions ("boxes") along each
       // axis that results in an average of no more than 2 integrand calls per cell
-      boxes = (UInt_t)floor(TMath::Power(calls/2.0,1.0/dim));
+      boxes = (UInt_t)floor(std::pow(calls/2.0,1.0/dim));
       // use stratified sampling if we are allowed enough calls (or equivalently,
       // if the dimension is low enough)
       _mode = Importance;
@@ -233,17 +201,17 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
    bins= boxes/box_per_bin;
    if(bins > RooGrid::maxBins) bins= RooGrid::maxBins;
    boxes = box_per_bin * bins;
-   oocxcoutD((TObject*)0,Integration) << "RooMCIntegrator: using stratified sampling with " << bins << " bins and "
-                << box_per_bin << " boxes/bin" << endl;
+   oocxcoutD((TObject*)nullptr,Integration) << "RooMCIntegrator: using stratified sampling with " << bins << " bins and "
+                << box_per_bin << " boxes/bin" << std::endl;
       }
       else {
-   oocxcoutD((TObject*)0,Integration) << "RooMCIntegrator: using importance sampling with " << bins << " bins and "
-                << boxes << " boxes" << endl;
+   oocxcoutD((TObject*)nullptr,Integration) << "RooMCIntegrator: using importance sampling with " << bins << " bins and "
+                << boxes << " boxes" << std::endl;
       }
     }
 
     // calculate the total number of n-dim boxes for this step
-    double tot_boxes = TMath::Power((double)boxes,(double)dim);
+    double tot_boxes = std::pow((double)boxes,(double)dim);
 
     // increase the total number of calls to get at least 2 calls per box, if necessary
     _calls_per_box = (UInt_t)(calls/tot_boxes);
@@ -251,7 +219,7 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
     calls= (UInt_t)(_calls_per_box*tot_boxes);
 
     // calculate the Jacobean factor: volume/(avg # of calls/bin)
-    _jac = _grid.getVolume()*TMath::Power((double)bins,(double)dim)/calls;
+    _jac = _grid.getVolume()*std::pow((double)bins,(double)dim)/calls;
 
     // setup our grid to use the calculated number of boxes and bins
     _grid.setNBoxes(boxes);
@@ -265,11 +233,15 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
 
 
   // loop over iterations for this step
-  double cum_int(0),cum_sig(0);
+  double cum_int(0);
+  double cum_sig(0);
   _it_start = _it_num;
   _chisq = 0.0;
   for (UInt_t it = 0; it < iterations; it++) {
-    double intgrl(0),intgrl_sq(0),sig(0),jacbin(_jac);
+    double intgrl(0);
+    double intgrl_sq(0);
+    double sig(0);
+    double jacbin(_jac);
 
     _it_num = _it_start + it;
 
@@ -279,7 +251,8 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
     // loop over grid boxes
     _grid.firstBox(box.data());
     do {
-      double m(0),q(0);
+      double m(0);
+      double q(0);
       // loop over integrand evaluations within this grid box
       for(UInt_t k = 0; k < _calls_per_box; k++) {
         // generate a random point in this box
@@ -310,8 +283,8 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
           index += box[i] * sizeOfDim;
           sizeOfDim *= _grid.getNBoxes();
         }
-        coutP(Integration) << "RooMCIntegrator: still working ... iteration "
-            << it << '/' << iterations << "  box " << index << "/"<< std::pow(_grid.getNBoxes(), _grid.getDimension()) << endl;
+        oocoutP(nullptr, Integration) << "RooMCIntegrator: still working ... iteration "
+            << it << '/' << iterations << "  box " << index << "/"<< std::pow(_grid.getNBoxes(), _grid.getDimension()) << std::endl;
         _timer.Start(true);
       }
       else {
@@ -353,12 +326,12 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
       cum_int += (intgrl - cum_int) / (it + 1.0);
       cum_sig = 0.0;
     }
-    oocxcoutD((TObject*)0,Integration) << "=== Iteration " << _it_num << " : I = " << intgrl << " +/- " << sqrt(sig) << endl
+    oocxcoutD((TObject*)nullptr,Integration) << "=== Iteration " << _it_num << " : I = " << intgrl << " +/- " << sqrt(sig) << std::endl
                  << "    Cumulative : I = " << cum_int << " +/- " << cum_sig << "( chi2 = " << _chisq
-                 << ")" << endl;
+                 << ")" << std::endl;
     // print the grid after the final iteration
-    if (oodologD((TObject*)0,Integration)) {
-      if(it + 1 == iterations) _grid.Print("V");
+    if (oodologD((TObject*)nullptr,Integration)) {
+      if(it + 1 == iterations) _grid.print(std::cout, true);
     }
     _grid.refine(_alpha);
   }
@@ -366,3 +339,5 @@ double RooMCIntegrator::vegas(Stage stage, UInt_t calls, UInt_t iterations, doub
   if(absError) *absError = cum_sig;
   return cum_int;
 }
+
+/// \endcond

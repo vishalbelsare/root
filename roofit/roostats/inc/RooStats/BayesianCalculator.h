@@ -151,8 +151,6 @@ namespace RooStats {
 
       void ComputeIntervalFromCdf(double c1, double c2) const;
 
-      void ComputeIntervalUsingRooFit(double c1, double c2) const;
-
       void ComputeShortestInterval() const;
 
    private:
@@ -171,7 +169,7 @@ namespace RooStats {
       RooArgSet fGlobalObs;                      ///< global observables
 
       mutable RooAbsPdf* fProductPdf;            ///< internal pointer to model * prior
-      mutable RooAbsReal* fLogLike;              ///< internal pointer to log likelihood function
+      mutable std::unique_ptr<RooAbsReal> fLogLike; ///< internal pointer to log likelihood function
       mutable RooAbsReal* fLikelihood;           ///< internal pointer to likelihood function
       mutable RooAbsReal* fIntegratedLikelihood; ///< integrated likelihood function, i.e - unnormalized posterior function
       mutable RooAbsPdf* fPosteriorPdf;          ///< normalized (on the poi) posterior pdf
@@ -191,7 +189,7 @@ namespace RooStats {
 
    protected:
 
-      ClassDefOverride(BayesianCalculator,2)  // BayesianCalculator class
+      ClassDefOverride(BayesianCalculator,3)  // BayesianCalculator class
 
    };
 }

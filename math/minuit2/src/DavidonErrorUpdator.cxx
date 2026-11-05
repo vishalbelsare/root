@@ -9,17 +9,11 @@
 
 #include "Minuit2/DavidonErrorUpdator.h"
 #include "Minuit2/MinimumState.h"
-#include "Minuit2/LaSum.h"
-#include "Minuit2/LaProd.h"
 #include "Minuit2/MnPrint.h"
 
 namespace ROOT {
 
 namespace Minuit2 {
-
-double inner_product(const LAVector &, const LAVector &);
-double similarity(const LAVector &, const LASymMatrix &);
-double sum_of_elements(const LASymMatrix &);
 
 MinimumError
 DavidonErrorUpdator::Update(const MinimumState &s0, const MinimumParameters &p1, const FunctionGradient &g1) const
@@ -85,11 +79,16 @@ DavidonErrorUpdator::Update(const MinimumState &s0, const MinimumParameters &p1,
 
    MnAlgebraicVector vg = v0 * dg;
 
+   // use rank 2 formula (Davidon)
    MnAlgebraicSymMatrix vUpd = Outer_product(dx) / delgam - Outer_product(vg) / gvg;
 
    if (delgam > gvg) {
-      // use rank 1 formula
+      // use dual formula formula (BFGS)
       vUpd += gvg * Outer_product(MnAlgebraicVector(dx / delgam - vg / gvg));
+      print.Debug("delgam<gvg : use dual (BFGS)  formula");
+   }
+   else {
+    print.Debug("delgam<gvg : use rank 2 Davidon formula");
    }
 
    double sum_upd = sum_of_elements(vUpd);

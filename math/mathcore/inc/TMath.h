@@ -15,9 +15,12 @@
 #include "TMathBase.h"
 
 #include "TError.h"
+#include "ROOT/RSpan.hxx"
+
 #include <algorithm>
 #include <limits>
 #include <cmath>
+#include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -416,14 +419,16 @@ struct Limits {
    /// Comparing floating points.
    /// Returns `kTRUE` if the absolute difference between `af` and `bf` is less than `epsilon`.
    inline Bool_t AreEqualAbs(Double_t af, Double_t bf, Double_t epsilon) {
-      return TMath::Abs(af-bf) < epsilon ||
+      return af == bf || // shortcut for exact equality (necessary because otherwise (inf != inf))
+             TMath::Abs(af-bf) < epsilon ||
              TMath::Abs(af - bf) < Limits<Double_t>::Min(); // handle 0 < 0 case
 
    }
    /// Comparing floating points.
    /// Returns `kTRUE` if the relative difference between `af` and `bf` is less than `relPrec`.
    inline Bool_t AreEqualRel(Double_t af, Double_t bf, Double_t relPrec) {
-      return TMath::Abs(af - bf) <= 0.5 * relPrec * (TMath::Abs(af) + TMath::Abs(bf)) ||
+      return af == bf || // shortcut for exact equality (necessary because otherwise (inf != inf))
+             TMath::Abs(af - bf) <= 0.5 * relPrec * (TMath::Abs(af) + TMath::Abs(bf)) ||
              TMath::Abs(af - bf) < Limits<Double_t>::Min(); // handle denormals
    }
 
@@ -439,6 +444,12 @@ struct Limits {
    template <typename Iterator> Iterator LocMin(Iterator first, Iterator last);
    template <typename T> Long64_t  LocMax(Long64_t n, const T *a);
    template <typename Iterator> Iterator LocMax(Iterator first, Iterator last);
+
+   // Derivatives of an array
+   template <typename T>
+   T *Gradient(Long64_t n, T const *f, double h = 1);
+   template <typename T>
+   T *Laplacian(Long64_t n, T const *f, double h = 1);
 
    // Hashing
    ULong_t Hash(const void *txt, Int_t ntxt);
@@ -509,24 +520,25 @@ struct Limits {
    /////////////////////////////////////////////////////////////////////////////
    // Statistics over arrays
 
-   //Mean, Geometric Mean, Median, RMS(sigma)
+   // Mean, Geometric Mean, Median, RMS(sigma), ModeHalfSample
 
-   template <typename T> Double_t Mean(Long64_t n, const T *a, const Double_t *w=0);
+   template <typename T> Double_t Mean(Long64_t n, const T *a, const Double_t *w=nullptr);
    template <typename Iterator> Double_t Mean(Iterator first, Iterator last);
    template <typename Iterator, typename WeightIterator> Double_t Mean(Iterator first, Iterator last, WeightIterator wfirst);
 
    template <typename T> Double_t GeomMean(Long64_t n, const T *a);
    template <typename Iterator> Double_t GeomMean(Iterator first, Iterator last);
 
-   template <typename T> Double_t RMS(Long64_t n, const T *a, const Double_t *w=0);
+   template <typename T> Double_t RMS(Long64_t n, const T *a, const Double_t *w=nullptr);
    template <typename Iterator> Double_t RMS(Iterator first, Iterator last);
    template <typename Iterator, typename WeightIterator> Double_t RMS(Iterator first, Iterator last, WeightIterator wfirst);
 
-   template <typename T> Double_t StdDev(Long64_t n, const T *a, const Double_t * w = 0) { return RMS<T>(n,a,w); } /// Same as RMS
-   template <typename Iterator> Double_t StdDev(Iterator first, Iterator last) { return RMS<Iterator>(first,last); } /// Same as RMS
-   template <typename Iterator, typename WeightIterator> Double_t StdDev(Iterator first, Iterator last, WeightIterator wfirst) { return RMS<Iterator,WeightIterator>(first,last,wfirst); } /// Same as RMS
+   template <typename T> Double_t StdDev(Long64_t n, const T *a, const Double_t * w = nullptr) { return RMS<T>(n,a,w); } ///< Same as RMS
+   template <typename Iterator> Double_t StdDev(Iterator first, Iterator last) { return RMS<Iterator>(first,last); } ///< Same as RMS
+   template <typename Iterator, typename WeightIterator> Double_t StdDev(Iterator first, Iterator last, WeightIterator wfirst) { return RMS<Iterator,WeightIterator>(first,last,wfirst); } ///< Same as RMS
 
-   template <typename T> Double_t Median(Long64_t n, const T *a,  const Double_t *w=0, Long64_t *work=0);
+   template <typename T> Double_t Median(Long64_t n, const T *a, const Double_t *w=nullptr, Long64_t *work=nullptr);
+   template <typename T> Double_t ModeHalfSample(Long64_t n, const T *a, const Double_t *w = nullptr);
 
    //k-th order statistic
    template <class Element, typename Size> Element KOrdStat(Size n, const Element *a, Size k, Size *work = 0);
@@ -566,15 +578,18 @@ struct Limits {
    Double_t Gamma(Double_t a,Double_t x);
    Double_t GammaDist(Double_t x, Double_t gamma, Double_t mu=0, Double_t beta=1);
    Double_t LnGamma(Double_t z);
+
+   void KNNDensity(std::span<const double> observations, std::span<const double> queries, std::span<double> result,
+                   int k, double dmin = 0.0);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Trig and other functions
 
-#include <float.h>
-#include <math.h>
+#include <cfloat>
+#include <cmath>
 
-#if defined(R__WIN32) && !defined(__CINT__)
+#if defined(R__WIN32)
 #   ifndef finite
 #      define finite _finite
 #   endif
@@ -599,7 +614,7 @@ inline Double_t TMath::Tan(Double_t x)
    { return tan(x); }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns the hyperbolic sine of `x.
+/// Returns the hyperbolic sine of `x`.
 
 inline Double_t TMath::SinH(Double_t x)
    { return sinh(x); }
@@ -821,7 +836,7 @@ namespace Math {
 //   math/math_private.h
 //   sysdeps/ieee754/ldbl-96/math_ldbl.h
 
-// part of ths file:
+// part of this file:
    /*
     * ====================================================
     * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved.
@@ -903,7 +918,7 @@ inline Double_t TMath::QuietNaN() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Returns a signaling NaN as defined by IEEE 754](http://en.wikipedia.org/wiki/NaN#Signaling_NaN).
+/// Returns a signaling NaN [as defined by IEEE 754](http://en.wikipedia.org/wiki/NaN#Signaling_NaN).
 
 inline Double_t TMath::SignalingNaN() {
    return std::numeric_limits<Double_t>::signaling_NaN();
@@ -921,7 +936,7 @@ inline Double_t TMath::Infinity() {
 
 template<typename T>
 inline T TMath::Limits<T>::Min() {
-   return (std::numeric_limits<T>::min)();    //N.B. use this signature to avoid class with macro min() on Windows
+   return (std::numeric_limits<T>::min)();    //N.B. use this signature to avoid clashes with macro min() on Windows
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -929,7 +944,7 @@ inline T TMath::Limits<T>::Min() {
 
 template<typename T>
 inline T TMath::Limits<T>::Max() {
-   return (std::numeric_limits<T>::max)();  //N.B. use this signature to avoid class with macro max() on Windows
+   return (std::numeric_limits<T>::max)();  //N.B. use this signature to avoid clashes with macro max() on Windows
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -998,6 +1013,86 @@ template <typename Iterator>
 Iterator TMath::LocMin(Iterator first, Iterator last) {
 
    return std::min_element(first, last);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Calculate the one-dimensional finite gradient of an array with length n.
+/// It is assumed that the values in the array are spaced uniformly in "x", which
+/// would amount to taking the derivative w.r.t. x with an infinitesimal step size `h`.
+///
+/// The first value in the returned array is a forward difference,
+/// the next n-2 values are central differences, and the last is a backward difference.
+///
+/// \param n the number of points in the array
+/// \param f the array of points.  It is assumed that these are spaced uniformly in "x".
+/// \param h the distance between the points in `f`.
+/// \return an array of size n with the gradient. Returns nullptr if n < 2 or f empty. Ownership is transferred to the
+/// caller.
+
+template <typename T>
+T *TMath::Gradient(const Long64_t n, T const *f, const double h)
+{
+   if (!f) {
+      ::Error("TMath::Gradient", "Input parameter f is empty.");
+      return nullptr;
+   } else if (n < 2) {
+      ::Error("TMath::Gradient", "Input parameter n=%lld is smaller than 2.", n);
+      return nullptr;
+   }
+   Long64_t i = 1;
+   T *result = new T[n];
+
+   // Forward difference
+   result[0] = (f[1] - f[0]) / h;
+
+   // Central difference
+   while (i < n - 1) {
+      result[i] = (f[i + 1] - f[i - 1]) / (2 * h);
+      i++;
+   }
+   // Backward difference
+   result[i] = (f[i] - f[i - 1]) / h;
+   return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Calculate second-order finite differences of an array with length n at second-order accuracy.
+/// It is assumed that the values in the array are spaced uniformly in "x", where
+/// the spacing is represented by the argument `h`.
+///
+/// The first value in the returned array is a forward difference at 2nd order accuracy,
+/// the next n-2 values are central differences, and the last is the backward difference.
+///
+/// \param n the number of points in the array
+/// \param f the array of points. It is assumed that these are spaced uniformly in "x".
+/// \param h the distance between the points in `f`.
+/// \return an array of size n with the laplacian. Returns nullptr if n < 4 or f empty. Ownership is transferred to the
+/// caller.
+
+template <typename T>
+T *TMath::Laplacian(const Long64_t n, T const *f, const double h)
+{
+   if (!f) {
+      ::Error("TMath::Laplacian", "Input parameter f is empty.");
+      return nullptr;
+   } else if (n < 4) {
+      ::Error("TMath::Laplacian", "Need at least four elements, got %lld", n);
+      return nullptr;
+   }
+   Long64_t i = 1;
+   T *result = new T[n];
+
+   // Forward difference
+   result[0] = (4 * f[2] + 2 * f[0] - 5 * f[1] - f[3]) / (h * h);
+
+   // Central difference
+   while (i < n - 1) {
+      result[i] = (f[i + 1] + f[i - 1] - 2 * f[i]) / (h * h);
+      i++;
+   }
+   // Backward difference
+   result[i] = (2 * f[i] - 5 * f[i - 1] + 4 * f[i - 2] - f[i - 3]) / (h * h);
+   return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1235,8 +1330,22 @@ template <typename T> Bool_t TMath::IsInside(T xp, T yp, Int_t np, T *x, T *y)
 
    for (i=0; i<np; i++) {
       if ((y[i]<yp && y[j]>=yp) || (y[j]<yp && y[i]>=yp)) {
-         if (x[i]+(yp-y[i])/(y[j]-y[i])*(x[j]-x[i])<xp) {
-            oddNodes = !oddNodes;
+         if constexpr (std::numeric_limits<T>::is_integer) {
+            const Long64_t dx = static_cast<Long64_t>(x[j]) - x[i];
+            const Long64_t dy = static_cast<Long64_t>(y[j]) - y[i];
+            const Long64_t py = static_cast<Long64_t>(yp) - y[i];
+            const Long64_t px = static_cast<Long64_t>(xp) - x[i];
+
+            const Long64_t lhs = py * dx;
+            const Long64_t rhs = px * dy;
+
+            if ((dy > 0 && lhs < rhs) || (dy < 0 && lhs > rhs)) {
+               oddNodes = !oddNodes;
+            }
+         } else {
+            if (x[i]+(yp-y[i])/(y[j]-y[i])*(x[j]-x[i])<xp) {
+               oddNodes = !oddNodes;
+            }
          }
       }
       j=i;
@@ -1331,6 +1440,128 @@ template <typename T> Double_t TMath::Median(Long64_t n, const T *a,  const Doub
    if (isAllocated)
       delete [] ind;
    return median;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Returns the half-sample mode of the array a where each entry i has weight w[i].
+/// Both arrays must have a length of n. The mode is a number obtained
+/// according to the paper http://arxiv.org/ftp/math/papers/0505/0505419.pdf (page 19).
+/// The algorithm searches for the smallest range of sorted a values that
+/// contains ~n/2 values. Then it re-applies the same algorithm to
+/// that range until the range has <= 3 elements in it.
+///
+/// \note See David R. Bickel: "On a Fast, Robust Estimator of the Mode"
+/// http://arxiv.org/ftp/math/papers/0505/0505419.pdf (page 19)
+/// Initial implementation suggestion by Jean-Fran\c{c}ois Caron, 2014 on JIRA-6849
+///
+/// \tparam T data type of the values array `a`
+/// \param n Number of elements in array `a`
+/// \param a Pointer to array of values (owned by user, preallocated), must have length of n, and none of them should be NaN. The array must not be necessarily sorted nor contain unique values.
+/// \param w Pointer to array of weights (owned by user, preallocated), must have length of n. If the weights are supplied (w not nullptr) all weights must be >= 0 to properly work.
+/// \return NaN if n <= 0, a[0] if n == 1, TMath::Mean(n,a,w) if n == 2,
+/// the (weighted) mean of the closest two if n == 3; for the rest of the cases,
+/// if all values of `a` are unique or have equal weights (or `w` is nullptr), then the Bickel half-sample-mode algorithm is applied; otherwise the
+/// value associated with the highest sum of weights (if `w` is not nullptr)
+/// is returned.
+/// \note If in a given iteration step, there are several equally small subranges, then the first occurrence is chosen.
+template <typename T> Double_t TMath::ModeHalfSample(Long64_t n, const T *a, const Double_t *w)
+{
+   if (n <= 0)
+      return TMath::QuietNaN();
+   else if (n == 1)
+      return a[0];
+   else if (n == 2)
+      return TMath::Mean(n, a, w);
+
+   if (w && std::adjacent_find(w, w + n, std::not_equal_to<>()) == w + n) // If all weights are equal, ignore those
+      w = nullptr;
+
+   // Sort the array and remove duplicates (if w != nullptr)
+   std::vector<T> values;
+   std::vector<Double_t> weights;
+   values.reserve(n);
+   weights.reserve(n);
+   for (Long64_t i = 0; i < n; ++i) {
+      const T value = a[i];
+      const Double_t weight = w ? w[i] : 1;
+      const auto vstart = values.begin();
+      const auto vstop = values.end();
+      const auto viter = std::lower_bound(vstart, vstop, value);
+      const auto vidx = std::distance(vstart, viter);
+      if (viter != vstop && w) {
+         weights[vidx] += weight;
+      } else {
+         values.insert(viter, value);
+         weights.insert(weights.begin() + vidx, weight);
+      }
+   }
+
+   const size_t sn = values.size();
+   if (sn <= 0)
+      return TMath::QuietNaN();
+   else if (sn == 1)
+      return values[0];
+   else if (sn == 2)
+      return TMath::Mean(sn, values.data(), weights.data());
+
+   if (sn == 3) {
+      const double d1_0 = values[1] - values[0];
+      const double d2_1 = values[2] - values[1];
+      if (d2_1 < d1_0)
+         return TMath::Mean(2, values.data() + 1, weights.data() + 1);
+      else if (d2_1 > d1_0)
+         return TMath::Mean(2, values.data(), weights.data());
+      else
+         return values[1];
+   }
+
+   const auto wstart = weights.begin();
+   const auto wstop = weights.end();
+   if (std::adjacent_find(wstart, wstop, std::not_equal_to<>()) != wstop) {
+      // Get highest (sum of) weight element
+      const auto wmaxiter = std::max_element(wstart, wstop);
+      const auto wmaxidx = std::distance(wstart, wmaxiter);
+      return values[wmaxidx];
+   }
+
+   // All elements have equal weights (and are unique if w != nullptr)
+
+   // Initialize search
+   n = sn;
+   size_t jMin = 0;
+
+   // Do recursive calls dividing each time the interval by two
+   while (n > 3) {
+      Double_t min_v_range = values[jMin + n - 1] - values[jMin];
+      const size_t N = std::ceil(n * 0.5);
+      const size_t start = jMin;
+      const size_t stop = start + n - N + 1; // +1 since we use < and not <=
+      // Find sequentially what v_range is smallest by sliding the half-window
+      for (size_t i = start; i < stop; i++) {
+         Double_t range = values[i + N - 1] - values[i];
+         if (range < min_v_range) {
+            min_v_range = range;
+            jMin = i;
+         }
+      }
+      // assert(min_v_range == values[N - 1 + start] - values[start]);
+      n = N;
+   }
+   if (n == 3) {
+      const double d1_0 = values[jMin + 1] - values[jMin + 0];
+      const double d2_1 = values[jMin + 2] - values[jMin + 1];
+      if (d2_1 < d1_0)
+         return (values[jMin + 1] + values[jMin + 2]) * 0.5;
+      else if (d2_1 > d1_0)
+         return (values[jMin] + values[jMin + 1]) * 0.5;
+      else
+         return values[jMin + 1];
+   } else if (n == 2) {
+      return (values[jMin] + values[jMin + 1]) * 0.5;
+   } else {
+      Error("ModeHalfSample", "Error in recursive algorithm, returning NaN"); // this should not happen
+      return TMath::QuietNaN();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

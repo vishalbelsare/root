@@ -5,6 +5,7 @@
 
 #include "ROOT/TestSupport.hxx"
 
+#include <algorithm>
 #include <fstream>
 #include <random>
 #include <thread>
@@ -15,7 +16,7 @@
 
 #ifdef R__USE_IMT
 
-const unsigned maxConcurrency = ROOT::Internal::LogicalCPUBandwithControl();
+const unsigned maxConcurrency = ROOT::Internal::LogicalCPUBandwidthControl();
 std::mt19937 randGenerator(0);                                      // seed the generator
 std::uniform_int_distribution<> plausibleNCores(1, maxConcurrency); // define the range
 

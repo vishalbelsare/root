@@ -34,32 +34,21 @@ MaxLikelihoodEstimateTestStat: TestStatistic that returns maximum likelihood
 estimate of a specified parameter.
 */
 
-class MaxLikelihoodEstimateTestStat: public TestStatistic {
+class MaxLikelihoodEstimateTestStat : public TestStatistic {
 
-   public:
-
-   //__________________________________
-   MaxLikelihoodEstimateTestStat() :
-   fPdf(nullptr),fParameter(nullptr), fUpperLimit(true)
+public:
+   MaxLikelihoodEstimateTestStat()
+      : fStrategy(::ROOT::Math::MinimizerOptions::DefaultStrategy()),
+        fPrintLevel(::ROOT::Math::MinimizerOptions::DefaultPrintLevel())
    {
-     /// constructor
-     ///      fPdf = pdf;
-     ///      fParameter = parameter;
-
-   fStrategy=::ROOT::Math::MinimizerOptions::DefaultStrategy();
-   fPrintLevel=::ROOT::Math::MinimizerOptions::DefaultPrintLevel();
-
    }
-   //__________________________________
-   MaxLikelihoodEstimateTestStat(RooAbsPdf& pdf, RooRealVar& parameter) :
-   fPdf(&pdf),fParameter(&parameter), fUpperLimit(true)
-   {
-      // constructor
-      //      fPdf = pdf;
-      //      fParameter = parameter;
-   fStrategy=::ROOT::Math::MinimizerOptions::DefaultStrategy();
-   fPrintLevel=::ROOT::Math::MinimizerOptions::DefaultPrintLevel();
 
+   MaxLikelihoodEstimateTestStat(RooAbsPdf &pdf, RooRealVar &parameter)
+      : fPdf(&pdf),
+        fParameter(&parameter),
+        fStrategy(::ROOT::Math::MinimizerOptions::DefaultStrategy()),
+        fPrintLevel(::ROOT::Math::MinimizerOptions::DefaultPrintLevel())
+   {
    }
 
   //______________________________
@@ -78,11 +67,11 @@ class MaxLikelihoodEstimateTestStat: public TestStatistic {
     return ret;
     */
 
-    RooArgSet* allParams = fPdf->getParameters(data);
-    RooStats::RemoveConstantParameters(allParams);
+    std::unique_ptr<RooArgSet> allParams{fPdf->getParameters(data)};
+    RooStats::RemoveConstantParameters(&*allParams);
 
     // need to call constrain for RooSimultaneous until stripDisconnected problem fixed
-    RooAbsReal* nll = fPdf->createNLL(data, RooFit::CloneData(false),RooFit::Constrain(*allParams),RooFit::ConditionalObservables(fConditionalObs));
+    std::unique_ptr<RooAbsReal> nll{fPdf->createNLL(data, RooFit::CloneData(false),RooFit::Constrain(*allParams),RooFit::ConditionalObservables(fConditionalObs))};
 
     //RooAbsReal* nll = fPdf->createNLL(data, RooFit::CloneData(false));
 
@@ -91,9 +80,6 @@ class MaxLikelihoodEstimateTestStat: public TestStatistic {
     // RooArgSet* vars = profile->getVariables();
     // RooMsgService::instance().setGlobalKillBelow(msglevel);
     // double ret = vars->getRealValue(fParameter->GetName());
-    // delete vars;
-    // delete nll;
-    // delete profile;
     // return ret;
 
 
@@ -102,7 +88,6 @@ class MaxLikelihoodEstimateTestStat: public TestStatistic {
      //LM: RooMinimizer.setPrintLevel has +1 offset - so subtract  here -1
      minim.setPrintLevel(fPrintLevel-1);
      int status = -1;
-     //   minim.optimizeConst(true);
      for (int tries = 0, maxtries = 4; tries <= maxtries; ++tries) {
      //    status = minim.minimize(fMinimizer, ROOT::Math::MinimizerOptions::DefaultMinimizerAlgo().c_str());
         status = minim.minimize(fMinimizer, "Minimize");
@@ -110,11 +95,11 @@ class MaxLikelihoodEstimateTestStat: public TestStatistic {
            break;
         } else {
            if (tries > 1) {
-         printf("    ----> Doing a re-scan first\n");
+         std::cout << "    ----> Doing a re-scan first\n";
          minim.minimize(fMinimizer,"Scan");
        }
            if (tries > 2) {
-         printf("    ----> trying with strategy = 1\n");
+              std::cout << "    ----> trying with strategy = 1\n";
               minim.setStrategy(1);
            }
         }
@@ -123,7 +108,6 @@ class MaxLikelihoodEstimateTestStat: public TestStatistic {
      //allParams->Print("V");
 
      RooMsgService::instance().setGlobalKillBelow(msglevel);
-     delete nll;
 
      if (status != 0) return -1;
      return fParameter->getVal();
@@ -146,10 +130,10 @@ class MaxLikelihoodEstimateTestStat: public TestStatistic {
 
 
    private:
-      RooAbsPdf *fPdf;
-      RooRealVar *fParameter;
+      RooAbsPdf *fPdf = nullptr;
+      RooRealVar *fParameter = nullptr;
       RooArgSet fConditionalObs;
-      bool fUpperLimit;
+      bool fUpperLimit = true;
       TString fMinimizer;
       Int_t fStrategy;
       Int_t fPrintLevel;

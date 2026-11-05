@@ -19,7 +19,6 @@
 #include <chrono>
 
 /** \class THttpWSHandler
-\ingroup http
 
 Class for user-side handling of websocket with THttpServer
 
@@ -66,7 +65,6 @@ Approximate how-to:
 */
 
 
-ClassImp(THttpWSHandler);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// normal constructor
@@ -279,7 +277,7 @@ Int_t THttpWSHandler::RunSendingThrd(std::shared_ptr<THttpWSEngine> engine)
       // now we should wait until next polling requests is processed
       // or when connection is closed or handler is shutdown
 
-      Int_t sendcnt = fSendCnt, loopcnt(0);
+      Int_t sendcnt = fSendCnt, loopcnt = 0;
 
       while (!IsDisabled() && !engine->fDisabled) {
          gSystem->ProcessEvents();

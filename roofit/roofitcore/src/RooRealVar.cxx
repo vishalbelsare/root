@@ -19,7 +19,7 @@
 \class RooRealVar
 \ingroup Roofitcore
 
-RooRealVar represents a variable that can be changed from the outside.
+Variable that can be changed from the outside.
 For example by the user or a fitter.
 
 It can be written into datasets, can hold a (possibly asymmetric) error, and
@@ -36,20 +36,18 @@ or integrals to sub ranges. The range without any name is used as default range.
 #include "RooMsgService.h"
 #include "RooParamBinning.h"
 #include "RooVectorDataStore.h"
-#include "RooTrace.h"
 #include "RooRealVarSharedProperties.h"
 #include "RooUniformBinning.h"
-#include "RunContext.h"
 #include "RooSentinel.h"
 
 #include "TTree.h"
 #include "TBuffer.h"
 #include "TBranch.h"
-#include "snprintf.h"
 
-using namespace std;
+#include <iomanip>
 
-ClassImp(RooRealVar);
+using std::endl, std::ostream, std::istream;
+
 
 
 bool RooRealVar::_printScientific(false) ;
@@ -69,7 +67,7 @@ RooRealVar::SharedPropertiesMap* RooRealVar::sharedPropList()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Explicitely deletes the shared properties list on exit to avoid problems
+/// Explicitly deletes the shared properties list on exit to avoid problems
 /// with the initialization order. Meant to be only used internally in RooFit
 /// by RooSentinel.
 
@@ -80,6 +78,8 @@ void RooRealVar::cleanup()
     staticSharedPropListCleanedUp = true;
   }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 /// Return a dummy object to use when properties are not initialised.
 RooRealVarSharedProperties& RooRealVar::_nullProp()
@@ -94,7 +94,6 @@ RooRealVarSharedProperties& RooRealVar::_nullProp()
 RooRealVar::RooRealVar()  :  _error(0), _asymErrLo(0), _asymErrHi(0), _binning(new RooUniformBinning())
 {
   _fast = true ;
-  TRACE_CREATE
 }
 
 
@@ -103,13 +102,13 @@ RooRealVar::RooRealVar()  :  _error(0), _asymErrLo(0), _asymErrHi(0), _binning(n
 RooRealVar::RooRealVar(const char *name, const char *title,
              double value, const char *unit) :
   RooAbsRealLValue(name, title, unit), _error(-1), _asymErrLo(1), _asymErrHi(-1),
-  _binning(new RooUniformBinning(-1,1,100))
+  _binning(new RooUniformBinning(-1,1))
 {
   _value = value ;
   _fast = true ;
-  removeRange();
+  removeMin();
+  removeMax();
   setConstant(true) ;
-  TRACE_CREATE
 }
 
 
@@ -120,7 +119,7 @@ RooRealVar::RooRealVar(const char *name, const char *title,
              double minValue, double maxValue,
              const char *unit) :
   RooAbsRealLValue(name, title, unit), _error(-1), _asymErrLo(1), _asymErrHi(-1),
-  _binning(new RooUniformBinning(minValue,maxValue,100))
+  _binning(new RooUniformBinning(minValue,maxValue))
 {
   _fast = true ;
 
@@ -144,7 +143,6 @@ RooRealVar::RooRealVar(const char *name, const char *title,
 
   //   setPlotRange(minValue,maxValue) ;
   setRange(minValue,maxValue) ;
-  TRACE_CREATE
 }
 
 
@@ -155,16 +153,15 @@ RooRealVar::RooRealVar(const char *name, const char *title,
              double value, double minValue, double maxValue,
              const char *unit) :
   RooAbsRealLValue(name, title, unit), _error(-1), _asymErrLo(1), _asymErrHi(-1),
-  _binning(new RooUniformBinning(minValue,maxValue,100))
+  _binning(new RooUniformBinning(minValue,maxValue))
 {
     _fast = true ;
     setRange(minValue,maxValue) ;
 
     double clipValue ;
-    inRange(value,0,&clipValue) ;
+    inRange(value,nullptr,&clipValue) ;
     _value = clipValue ;
 
-    TRACE_CREATE
 }
 
 
@@ -190,8 +187,6 @@ RooRealVar::RooRealVar(const RooRealVar& other, const char* name) :
     _altNonSharedBinning[item.first] = std::move(abc);
   }
 
-  TRACE_CREATE
-
 }
 
 
@@ -200,12 +195,11 @@ RooRealVar::RooRealVar(const RooRealVar& other, const char* name) :
 
 RooRealVar::~RooRealVar()
 {
-  // We should not forget to explicitely call deleteSharedProperties() in the
+  // We should not forget to explicitly call deleteSharedProperties() in the
   // destructor, because this is where the expired weak_ptrs in the
   // _sharedPropList get erased.
   deleteSharedProperties();
 
-  TRACE_DESTROY
 }
 
 
@@ -219,31 +213,59 @@ double RooRealVar::getValV(const RooArgSet*) const
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Retrieve data column of this variable.
-/// \param inputData Struct with data arrays.
-/// 1. Check if `inputData` has a column of data registered for this variable (checks the pointer).
-/// 2. If not, check if there's an object with the same name, and use this object's values.
-/// 3. If there is no such object, return a batch of size one with the current value of the variable.
-/// For cases 2. and 3., the data column in `inputData` is associated to this object, so the next call can return it immediately.
-RooSpan<const double> RooRealVar::getValues(RooBatchCompute::RunContext& inputData, const RooArgSet*) const {
-  auto item = inputData.spans.find(this);
-  if (item != inputData.spans.end()) {
-    return item->second;
-  }
+/// Enable or disable the silent clipping behavior of `RooRealVar::setVal()`
+/// that was the default in ROOT versions before 6.38. It is not recommended to
+/// enable this, as silently mutating data can be dangerous.
+void RooRealVar::enableSilentClipping(bool flag)
+{
+   isSilentClippingEnabled() = flag;
+   if (flag) {
+      oocoutI(static_cast<TObject *>(nullptr), InputArguments)
+         << "Silent clipping of values to range in `RooRealVar::setVal()` enabled." << std::endl;
+   }
+}
 
-  for (const auto& var_span : inputData.spans) {
-    auto var = var_span.first;
-    if (var == RooFit::Detail::DataKey{this}) {
-      // A variable with the same name exists in the input data. Use their values as ours.
-      inputData.spans[this] = var_span.second;
-      return var_span.second;
-    }
-  }
+bool &RooRealVar::isSilentClippingEnabled()
+{
+   static bool isEnabled = false;
+   return isEnabled;
+}
 
-  auto output = inputData.makeBatch(this, 1);
-  output[0] = _value;
+namespace {
 
-  return output;
+inline void throwOutOfRangeError(RooRealVar const &var, double value, const char *rangeName)
+{
+   std::stringstream ss;
+   ss << "Value " << value;
+   if (rangeName) {
+      ss << " is outside the range \"" << rangeName << "\" ";
+   } else {
+      ss << " is outside the default range ";
+   }
+   ss << "[" << var.getMin() << ", " << var.getMax() << "] of the variable \"";
+   ss << var.GetName() << "\"!";
+   ss << "\nTo restore the dangerous old behavior of silently clipping the value to the range,"
+      << " call `RooRealVar::enableSilentClipping()`.";
+   throw std::invalid_argument(ss.str());
+}
+
+void printOutOfRangeWarning(RooRealVar const &var, double value, const char *rangeName)
+{
+   std::stringstream ss;
+   ss << "Value " << value;
+   if (rangeName) {
+      ss << " is slightly outside the range \"" << rangeName << "\" ";
+   } else {
+      ss << " is slightly outside the default range ";
+   }
+   ss << "[" << var.getMin() << ", " << var.getMax() << "] of the variable \"";
+   ss << var.GetName() << "\"!";
+   ss << "\nThe value will be clipped. To restore the dangerous old behavior of silently clipping the value to the "
+         "range,"
+      << " call `RooRealVar::enableSilentClipping()`.";
+   oocoutW(&var, InputArguments) << ss.str() << std::endl;
+}
+
 }
 
 
@@ -254,7 +276,15 @@ RooSpan<const double> RooRealVar::getValues(RooBatchCompute::RunContext& inputDa
 void RooRealVar::setVal(double value)
 {
   double clipValue ;
-  inRange(value,0,&clipValue) ;
+  bool isInRange = inRange(value,0,&clipValue) ;
+
+  if(!isInRange && !isSilentClippingEnabled()) {
+      if (std::abs(clipValue - value) > std::numeric_limits<double>::epsilon()) {
+         throwOutOfRangeError(*this, value, nullptr);
+      } else {
+         printOutOfRangeWarning(*this, value, nullptr);
+      }
+  }
 
   if (clipValue != _value) {
     setValueDirty() ;
@@ -271,7 +301,15 @@ void RooRealVar::setVal(double value)
 void RooRealVar::setVal(double value, const char* rangeName)
 {
   double clipValue ;
-  inRange(value,rangeName,&clipValue) ;
+  bool isInRange = inRange(value,rangeName,&clipValue) ;
+
+  if(!isInRange && !isSilentClippingEnabled()) {
+      if (std::abs(clipValue - value) > std::numeric_limits<double>::epsilon()) {
+         throwOutOfRangeError(*this, value, rangeName);
+      } else {
+         printOutOfRangeWarning(*this, value, rangeName);
+      }
+  }
 
   if (clipValue != _value) {
     setValueDirty() ;
@@ -289,7 +327,8 @@ void RooRealVar::setVal(double value, const char* rangeName)
 
 RooErrorVar* RooRealVar::errorVar() const
 {
-  TString name(GetName()), title(GetTitle()) ;
+  TString name(GetName());
+  TString title(GetTitle());
   name.Append("err") ;
   title.Append(" Error") ;
 
@@ -303,7 +342,7 @@ RooErrorVar* RooRealVar::errorVar() const
 
 bool RooRealVar::hasBinning(const char* name) const
 {
-  return sharedProp()->_altBinning.find(name) != sharedProp()->_altBinning.end();
+  return sharedProp()->_altBinning.find(name) != sharedProp()->_altBinning.end() || _altNonSharedBinning.find(name) != _altNonSharedBinning.end();
 }
 
 
@@ -314,9 +353,9 @@ bool RooRealVar::hasBinning(const char* name) const
 /// a reference to the default binning is returned. If verbose is true a message
 /// is printed if a binning is created on the fly.
 
-const RooAbsBinning& RooRealVar::getBinning(const char* name, bool verbose, bool createOnTheFly) const
+const RooAbsBinning& RooRealVar::getBinning(const char* name, bool verbose, bool createOnTheFly, bool shared) const
 {
-  return const_cast<RooRealVar*>(this)->getBinning(name, verbose, createOnTheFly) ;
+  return const_cast<RooRealVar*>(this)->getBinning(name, verbose, createOnTheFly, shared) ;
 }
 
 
@@ -327,10 +366,10 @@ const RooAbsBinning& RooRealVar::getBinning(const char* name, bool verbose, bool
 /// a reference to the default binning is returned. If verbose is true a message
 /// is printed if a binning is created on the fly.
 
-RooAbsBinning& RooRealVar::getBinning(const char* name, bool verbose, bool createOnTheFly)
+RooAbsBinning& RooRealVar::getBinning(const char* name, bool verbose, bool createOnTheFly, bool shared)
 {
   // Return default (normalization) binning and range if no name is specified
-  if (name==0) {
+  if (name==nullptr) {
     return *_binning ;
   }
 
@@ -361,9 +400,13 @@ RooAbsBinning& RooRealVar::getBinning(const char* name, bool verbose, bool creat
   auto binning = new RooRangeBinning(getMin(),getMax(),name) ;
   if (verbose) {
     coutI(Eval) << "RooRealVar::getBinning(" << GetName() << ") new range named '"
-      << name << "' created with default bounds" << endl ;
+      << name << "' created with default bounds" << std::endl ;
   }
-  sharedProp()->_altBinning[name] = binning;
+  if(shared) {
+    sharedProp()->_altBinning[name] = binning;
+  } else {
+    _altNonSharedBinning[name].reset(binning);
+  }
 
   return *binning ;
 }
@@ -389,29 +432,48 @@ std::list<std::string> RooRealVar::getBinningNames() const
   return binningNames;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Remove a named binning (or a named range, which are stored internally as binnings)
+
+void RooRealVar::removeBinning(const char* name) {
+  // Remove any old binning with this name
+  auto sharedProps = sharedProp();
+  auto item = sharedProps->_altBinning.find(name);
+  if (item != sharedProps->_altBinning.end()) {
+    item->second->removeHook(*this);
+    if (sharedProps->_ownBinnings)
+         delete item->second;
+
+    sharedProps->_altBinning.erase(item);
+  }
+  auto item2 = _altNonSharedBinning.find(name);
+  if (item2 != _altNonSharedBinning.end()) {
+    item2->second->removeHook(*this);
+    _altNonSharedBinning.erase(item2);
+  }
+}
+
+
+
 void RooRealVar::removeMin(const char* name) {
   getBinning(name).setMin(-RooNumber::infinity());
 }
 void RooRealVar::removeMax(const char* name) {
   getBinning(name).setMax(RooNumber::infinity());
 }
-void RooRealVar::removeRange(const char* name) {
-  getBinning(name).setRange(-RooNumber::infinity(),RooNumber::infinity());
-}
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Create a uniform binning under name 'name' for this variable.
 /// \param[in] nBins Number of bins. The limits are taken from the currently set limits.
 /// \param[in] name Optional name. If name is null, install as default binning.
-void RooRealVar::setBins(Int_t nBins, const char* name) {
-  setBinning(RooUniformBinning(getMin(name),getMax(name),nBins),name);
+void RooRealVar::setBins(Int_t nBins, const char* name, bool shared) {
+  setBinning(RooUniformBinning(getMin(name),getMax(name),nBins),name,shared);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Add given binning under name 'name' with this variable. If name is null,
 /// the binning is installed as the default binning.
-void RooRealVar::setBinning(const RooAbsBinning& binning, const char* name)
+void RooRealVar::setBinning(const RooAbsBinning& binning, const char* name, bool shared)
 {
   std::unique_ptr<RooAbsBinning> newBinning( binning.clone() );
 
@@ -424,26 +486,13 @@ void RooRealVar::setBinning(const RooAbsBinning& binning, const char* name)
     _binning = std::move(newBinning);
   } else {
     // Remove any old binning with this name
-    auto sharedProps = sharedProp();
-    auto item = sharedProps->_altBinning.find(name);
-    if (item != sharedProps->_altBinning.end()) {
-      item->second->removeHook(*this);
-      if (sharedProps->_ownBinnings)
-        delete item->second;
-
-      sharedProps->_altBinning.erase(item);
-    }
-    auto item2 = _altNonSharedBinning.find(name);
-    if (item2 != _altNonSharedBinning.end()) {
-      item2->second->removeHook(*this);
-      _altNonSharedBinning.erase(item2);
-    }
+    removeBinning(name);
 
     // Install new
     newBinning->SetName(name) ;
     newBinning->SetTitle(name) ;
     newBinning->insertHook(*this) ;
-    if (newBinning->isShareable()) {
+    if (newBinning->isShareable() && shared) {
       sharedProp()->_altBinning[name] = newBinning.release();
     } else {
       _altNonSharedBinning[name] = std::move(newBinning);
@@ -457,15 +506,15 @@ void RooRealVar::setBinning(const RooAbsBinning& binning, const char* name)
 /// Set minimum of name range to given value. If name is null
 /// minimum of default range is set
 
-void RooRealVar::setMin(const char* name, double value)
+void RooRealVar::setMin(const char* name, double value, bool shared)
 {
   // Set new minimum of fit range
-  RooAbsBinning& binning = getBinning(name,true,true) ;
+  RooAbsBinning& binning = getBinning(name,true,true,shared) ;
 
   // Check if new limit is consistent
-  if (value >= getMax()) {
+  if (value > getMax()) {
     coutW(InputArguments) << "RooRealVar::setMin(" << GetName()
-           << "): Proposed new fit min. larger than max., setting min. to max." << endl ;
+           << "): Proposed new fit min. larger than max., setting min. to max." << std::endl ;
     binning.setMin(getMax()) ;
   } else {
     binning.setMin(value) ;
@@ -474,7 +523,7 @@ void RooRealVar::setMin(const char* name, double value)
   // Clip current value in window if it fell out
   if (!name) {
     double clipValue ;
-    if (!inRange(_value,0,&clipValue)) {
+    if (!inRange(_value,nullptr,&clipValue)) {
       setVal(clipValue) ;
     }
   }
@@ -487,15 +536,15 @@ void RooRealVar::setMin(const char* name, double value)
 /// Set maximum of name range to given value. If name is null
 /// maximum of default range is set
 
-void RooRealVar::setMax(const char* name, double value)
+void RooRealVar::setMax(const char* name, double value, bool shared)
 {
   // Set new maximum of fit range
-  RooAbsBinning& binning = getBinning(name,true,true) ;
+  RooAbsBinning& binning = getBinning(name,true,true,shared) ;
 
   // Check if new limit is consistent
   if (value < getMin()) {
     coutW(InputArguments) << "RooRealVar::setMax(" << GetName()
-           << "): Proposed new fit max. smaller than min., setting max. to min." << endl ;
+           << "): Proposed new fit max. smaller than min., setting max. to min." << std::endl ;
     binning.setMax(getMin()) ;
   } else {
     binning.setMax(value) ;
@@ -504,7 +553,7 @@ void RooRealVar::setMax(const char* name, double value)
   // Clip current value in window if it fell out
   if (!name) {
     double clipValue ;
-    if (!inRange(_value,0,&clipValue)) {
+    if (!inRange(_value,nullptr,&clipValue)) {
       setVal(clipValue) ;
     }
   }
@@ -522,17 +571,17 @@ void RooRealVar::setMax(const char* name, double value)
 /// plotting). If the name is `nullptr`, the function sets the limits of the default range.
 /// \param[in] min Miniminum of the range.
 /// \param[in] max Maximum of the range.
-void RooRealVar::setRange(const char* name, double min, double max)
+void RooRealVar::setRange(const char* name, double min, double max, bool shared)
 {
-  bool exists = name == nullptr || sharedProp()->_altBinning.count(name) > 0;
+  bool exists = name == nullptr || sharedProp()->_altBinning.count(name) > 0 || _altNonSharedBinning.count(name) > 0;
 
   // Set new fit range
-  RooAbsBinning& binning = getBinning(name,false,true) ;
+  RooAbsBinning& binning = getBinning(name,false,true,shared) ;
 
   // Check if new limit is consistent
   if (min>max) {
     coutW(InputArguments) << "RooRealVar::setRange(" << GetName()
-           << "): Proposed new fit max. smaller than min., setting max. to min." << endl ;
+           << "): Proposed new fit max. smaller than min., setting max. to min." << std::endl ;
     binning.setRange(min,min) ;
   } else {
     binning.setRange(min,max) ;
@@ -541,7 +590,7 @@ void RooRealVar::setRange(const char* name, double min, double max)
   if (!exists) {
     coutI(Eval) << "RooRealVar::setRange(" << GetName()
       << ") new range named '" << name << "' created with bounds ["
-      << min << "," << max << "]" << endl ;
+      << min << "," << max << "]" << std::endl ;
   }
 
   setShapeDirty() ;
@@ -553,10 +602,10 @@ void RooRealVar::setRange(const char* name, double min, double max)
 /// Set or modify a parameterised range, i.e., a range the varies in dependence
 /// of parameters.
 /// See setRange() for more details.
-void RooRealVar::setRange(const char* name, RooAbsReal& min, RooAbsReal& max)
+void RooRealVar::setRange(const char* name, RooAbsReal& min, RooAbsReal& max, bool shared)
 {
   RooParamBinning pb(min,max,100) ;
-  setBinning(pb,name) ;
+  setBinning(pb,name,shared) ;
 }
 
 
@@ -566,7 +615,8 @@ void RooRealVar::setRange(const char* name, RooAbsReal& min, RooAbsReal& max)
 
 bool RooRealVar::readFromStream(istream& is, bool compact, bool verbose)
 {
-  TString token,errorPrefix("RooRealVar::readFromStream(") ;
+  TString token;
+  TString errorPrefix("RooRealVar::readFromStream(");
   errorPrefix.Append(GetName()) ;
   errorPrefix.Append(")") ;
   RooStreamParser parser(is,errorPrefix) ;
@@ -590,7 +640,7 @@ bool RooRealVar::readFromStream(istream& is, bool compact, bool verbose)
     removeAsymError() ;
 
     bool reprocessToken = false ;
-    while(1) {
+    while(true) {
       if (parser.atEOL() || parser.atEOF()) break ;
 
       if (!reprocessToken) {
@@ -617,7 +667,8 @@ bool RooRealVar::readFromStream(istream& is, bool compact, bool verbose)
 
    } else {
      // Have error
-     double asymErrLo=0., asymErrHi=0.;
+     double asymErrLo = 0.;
+     double asymErrHi = 0.;
      if (parser.readDouble(asymErrLo,true) ||
          parser.expectToken(",",true) ||
          parser.readDouble(asymErrHi,true) ||
@@ -634,8 +685,9 @@ bool RooRealVar::readFromStream(istream& is, bool compact, bool verbose)
       } else if (!token.CompareTo("P")) {
 
    // Next tokens are plot limits
-   double plotMin(0), plotMax(0) ;
-        Int_t plotBins(0) ;
+   double plotMin(0);
+   double plotMax(0);
+   Int_t plotBins(0);
    if (parser.expectToken("(",true) ||
        parser.readDouble(plotMin,true) ||
        parser.expectToken("-",true) ||
@@ -644,13 +696,14 @@ bool RooRealVar::readFromStream(istream& is, bool compact, bool verbose)
             parser.readInteger(plotBins,true) ||
        parser.expectToken(")",true)) break ;
 //    setPlotRange(plotMin,plotMax) ;
-   coutW(Eval) << "RooRealVar::readFromStrem(" << GetName()
-        << ") WARNING: plot range deprecated, removed P(...) token" << endl ;
+   coutW(Eval) << "RooRealVar::readFromStream(" << GetName()
+        << ") WARNING: plot range deprecated, removed P(...) token" << std::endl ;
 
       } else if (!token.CompareTo("F")) {
 
    // Next tokens are fit limits
-   double fitMin, fitMax ;
+   double fitMin;
+   double fitMax;
    Int_t fitBins ;
    if (parser.expectToken("(",true) ||
        parser.readDouble(fitMin,true) ||
@@ -662,14 +715,15 @@ bool RooRealVar::readFromStream(istream& is, bool compact, bool verbose)
    //setBins(fitBins) ;
    //setRange(fitMin,fitMax) ;
    coutW(Eval) << "RooRealVar::readFromStream(" << GetName()
-        << ") WARNING: F(lo-hi:bins) token deprecated, use L(lo-hi) B(bins)" << endl ;
+        << ") WARNING: F(lo-hi:bins) token deprecated, use L(lo-hi) B(bins)" << std::endl ;
    if (!haveConstant) setConstant(false) ;
 
       } else if (!token.CompareTo("L")) {
 
    // Next tokens are fit limits
-   double fitMin = 0.0, fitMax = 0.0;
-// Int_t fitBins ;
+   double fitMin = 0.0;
+   double fitMax = 0.0;
+   // Int_t fitBins ;
    if (parser.expectToken("(",true) ||
        parser.readDouble(fitMin,true) ||
        parser.expectToken("-",true) ||
@@ -703,64 +757,63 @@ bool RooRealVar::readFromStream(istream& is, bool compact, bool verbose)
 ////////////////////////////////////////////////////////////////////////////////
 /// Write object contents to given stream
 
-void RooRealVar::writeToStream(ostream& os, bool compact) const
+void RooRealVar::writeToStream(ostream &os, bool compact) const
 {
-  if (compact) {
-    // Write value only
-    os << getVal() ;
-  } else {
+   if (compact) {
+      // Write value only
+      os << getVal();
+      return;
+   }
 
-    // Write value with error (if not zero)
-    if (_printScientific) {
-      char fmtVal[16], fmtErr[16] ;
-      snprintf(fmtVal,16,"%%.%de",_printSigDigits) ;
-      snprintf(fmtErr,16,"%%.%de",(_printSigDigits+1)/2) ;
-      if (_value>=0) os << " " ;
-      os << Form(fmtVal,_value) ;
+   // Write value with error (if not zero)
+   if (_printScientific) {
+      std::stringstream text;
 
+      int nDigitsVal = _printSigDigits;
+      int nDigitsErr = (_printSigDigits + 1) / 2;
+
+      text << std::scientific;
+
+      if (_value >= 0)
+         text << " ";
+      text << std::setprecision(nDigitsVal) << _value;
+
+      text << std::setprecision(nDigitsErr) << " +/- ";
       if (hasAsymError()) {
-   os << " +/- (" << Form(fmtErr,getAsymErrorLo())
-      << ", " << Form(fmtErr,getAsymErrorHi()) << ")" ;
-      } else  if (hasError()) {
-   os << " +/- " << Form(fmtErr,getError()) ;
+         text << "(" << getAsymErrorLo() << ", " << getAsymErrorHi() << ")";
+      } else if (hasError()) {
+         text << getError();
       }
 
-      os << " " ;
-    } else {
-      TString* tmp = format(_printSigDigits,"EFA") ;
-      os << tmp->Data() << " " ;
-      delete tmp ;
-    }
+      os << text.str() << " ";
+   } else {
+      os << format(_printSigDigits, "EFA") << " ";
+   }
 
-    // Append limits if not constants
-    if (isConstant()) {
-      os << "C " ;
-    }
+   // Append limits if not constants
+   if (isConstant()) {
+      os << "C ";
+   }
 
-    // Append fit limits
-    os << "L(" ;
-    if(hasMin()) {
-      os << getMin();
-    }
-    else {
-      os << "-INF";
-    }
-    if(hasMax()) {
-      os << " - " << getMax() ;
-    }
-    else {
-      os << " - +INF";
-    }
-    os << ") " ;
+   // Append fit limits
+   if (hasMin()) {
+      os << "L(" << getMin();
+   } else {
+      os << "L(-INF";
+   }
+   if (hasMax()) {
+      os << " - " << getMax() << ") ";
+   } else {
+      os << " - +INF) ";
+   }
 
-    if (getBins()!=100) {
-      os << "B(" << getBins() << ") " ;
-    }
+   if (getBins() != 0) {
+      os << "B(" << getBins() << ") ";
+   }
 
-    // Add comment with unit, if unit exists
-    if (!_unit.IsNull())
-      os << "// [" << getUnit() << "]" ;
-  }
+   // Add comment with unit, if unit exists
+   if (!_unit.IsNull())
+      os << "// [" << getUnit() << "]";
 }
 
 
@@ -807,7 +860,7 @@ void RooRealVar::printExtras(ostream& os) const
   }
   os << ") " ;
 
-  if (getBins()!=100) {
+  if (getBins()!=0) {
     os << "B(" << getBins() << ") " ;
   }
 
@@ -815,7 +868,7 @@ void RooRealVar::printExtras(ostream& os) const
   if (!_unit.IsNull())
     os << "// [" << getUnit() << "]" ;
 
-//   cout << " _value = " << &_value << " _error = " << &_error ;
+//   std::cout << " _value = " << &_value << " _error = " << &_error ;
 
 
 }
@@ -839,10 +892,10 @@ Int_t RooRealVar::defaultPrintContents(Option_t* opt) const
 void RooRealVar::printMultiline(ostream& os, Int_t contents, bool verbose, TString indent) const
 {
   RooAbsRealLValue::printMultiline(os,contents,verbose,indent);
-  os << indent << "--- RooRealVar ---" << endl;
+  os << indent << "--- RooRealVar ---" << std::endl;
   TString unit(_unit);
   if(!unit.IsNull()) unit.Prepend(' ');
-  os << indent << "  Error = " << getError() << unit << endl;
+  os << indent << "  Error = " << getError() << unit << std::endl;
 }
 
 
@@ -853,12 +906,12 @@ void RooRealVar::printMultiline(ostream& os, Int_t contents, bool verbose, TStri
 /// taken by paramOn() and translates them to an option string
 /// parsed by RooRealVar::format(Int_t sigDigits, const char *options)
 
-TString* RooRealVar::format(const RooCmdArg& formatArg) const
+std::string RooRealVar::format(const RooCmdArg& formatArg) const
 {
   RooCmdArg tmp(formatArg) ;
   tmp.setProcessRecArgs(true) ;
 
-  RooCmdConfig pc(Form("RooRealVar::format(%s)",GetName())) ;
+  RooCmdConfig pc("RooRealVar::format(" + std::string(GetName()) + ")");
   pc.defineString("what","FormatArgs",0,"") ;
   pc.defineInt("autop","FormatArgs::AutoPrecision",0,2) ;
   pc.defineInt("fixedp","FormatArgs::FixedPrecision",0,2) ;
@@ -872,7 +925,7 @@ TString* RooRealVar::format(const RooCmdArg& formatArg) const
   // Process & check varargs
   pc.process(tmp) ;
   if (!pc.ok(true)) {
-    return 0 ;
+    return "";
   }
 
   // Extract values from named arguments
@@ -908,6 +961,7 @@ TString* RooRealVar::format(const RooCmdArg& formatArg) const
 ///
 /// To control what is shown use the following options
 /// N = show name
+/// T = show title (takes precedent over `N`, falls back to `N` if title is empty)
 /// H = hide value
 /// E = show error
 /// A = show asymmetric error instead of parabolic error (if available)
@@ -922,14 +976,14 @@ TString* RooRealVar::format(const RooCmdArg& formatArg) const
 /// F = force fixed precision
 ///
 
-TString *RooRealVar::format(Int_t sigDigits, const char *options) const
+std::string RooRealVar::format(Int_t sigDigits, const char *options) const
 {
-  //cout << "format = " << options << endl ;
-
   // parse the options string
   TString opts(options);
   opts.ToLower();
+
   bool showName= opts.Contains("n");
+  bool showTitle = opts.Contains("t");
   bool hideValue= opts.Contains("h");
   bool showError= opts.Contains("e");
   bool showUnit= opts.Contains("u");
@@ -938,6 +992,12 @@ TString *RooRealVar::format(Int_t sigDigits, const char *options) const
   bool latexTableMode = opts.Contains("y") ;
   bool latexVerbatimName = opts.Contains("v") ;
 
+  std::string label = showName ? getPlotLabel() : "";
+  if(showTitle) {
+     label = GetTitle();
+     if(label.empty()) label = getPlotLabel();
+  }
+
   if (latexTableMode) latexMode = true ;
   bool asymError= opts.Contains("a") ;
   bool useErrorForPrecision= (((showError && hasError(false) && !isConstant()) || opts.Contains("p")) && !opts.Contains("f")) ;
@@ -945,120 +1005,82 @@ TString *RooRealVar::format(Int_t sigDigits, const char *options) const
   if(sigDigits < 1) sigDigits= 1;
   Int_t leadingDigitVal = 0;
   if (useErrorForPrecision) {
-    leadingDigitVal = (Int_t)floor(log10(fabs(_error+1e-10)));
+    leadingDigitVal = (Int_t)floor(log10(std::abs(_error+1e-10)));
     if (_value==0&&_error==0) leadingDigitVal=0 ;
   } else {
-    leadingDigitVal = (Int_t)floor(log10(fabs(_value+1e-10)));
+    leadingDigitVal = (Int_t)floor(log10(std::abs(_value+1e-10)));
     if (_value==0) leadingDigitVal=0 ;
   }
-  Int_t leadingDigitErr= (Int_t)floor(log10(fabs(_error+1e-10)));
+  Int_t leadingDigitErr= (Int_t)floor(log10(std::abs(_error+1e-10)));
   Int_t whereVal= leadingDigitVal - sigDigits + 1;
-  Int_t whereErr= leadingDigitErr - sigDigits + 1;
-  char fmtVal[16], fmtErr[16];
+  Int_t whereErr = leadingDigitErr - sigDigits + 1;
 
   if (_value<0) whereVal -= 1 ;
-  snprintf(fmtVal,16,"%%.%df", whereVal < 0 ? -whereVal : 0);
-  snprintf(fmtErr,16,"%%.%df", whereErr < 0 ? -whereErr : 0);
-  TString *text= new TString();
-  if(latexMode) text->Append("$");
+  int nDigitsVal = whereVal < 0 ? -whereVal : 0;
+  int nDigitsErr = whereErr < 0 ? -whereErr : 0;
+
+  std::stringstream text;
+
+  if (latexMode)
+     text << "$";
   // begin the string with "<name> = " if requested
-  if(showName) {
+  if(showName || showTitle) {
     if (latexTableMode && latexVerbatimName) {
-      text->Append("\\verb+") ;
+       text << "\\verb+";
     }
-    text->Append(getPlotLabel());
-    if (latexVerbatimName) text->Append("+") ;
+    text << label;
+    if (latexVerbatimName)
+       text << "+";
 
     if (!latexTableMode) {
-      text->Append(" = ");
+       text << " = ";
     } else {
-      text->Append(" $ & $ ");
+       text << " $ & $ ";
     }
   }
 
   // Add leading space if value is positive
-  if (_value>=0) text->Append(" ") ;
+  if (_value >= 0)
+     text << " ";
 
   // append our value if requested
-  char buffer[256];
+  text << std::fixed;
   if(!hideValue) {
-    chopAt(_value, whereVal);
-    snprintf(buffer, 256,fmtVal, _value);
-    text->Append(buffer);
+     text << std::setprecision(nDigitsVal) << _value;
   }
+  text << std::setprecision(nDigitsErr); // we only print errors from now on
 
   // append our error if requested and this variable is not constant
   if(hasError(false) && showError && !(asymError && hasAsymError(false))) {
     if(tlatexMode) {
-      text->Append(" #pm ");
-    }
-    else if(latexMode) {
-      text->Append("\\pm ");
+       text << " #pm " << getError();
     }
     else {
-      text->Append(" +/- ");
+       text << (latexMode ? "\\pm " : " +/- ") << getError();
     }
-    snprintf(buffer, 256,fmtErr, getError());
-    text->Append(buffer);
   }
 
   if (asymError && hasAsymError() && showError) {
     if(tlatexMode) {
-      text->Append(" #pm ");
-      text->Append("_{") ;
-      snprintf(buffer, 256,fmtErr, getAsymErrorLo());
-      text->Append(buffer);
-      text->Append("}^{+") ;
-      snprintf(buffer, 256,fmtErr, getAsymErrorHi());
-      text->Append(buffer);
-      text->Append("}") ;
+       text << " #pm _{" << getAsymErrorLo() << "}^{+" << getAsymErrorHi() << "}";
     }
     else if(latexMode) {
-      text->Append("\\pm ");
-      text->Append("_{") ;
-      snprintf(buffer, 256,fmtErr, getAsymErrorLo());
-      text->Append(buffer);
-      text->Append("}^{+") ;
-      snprintf(buffer, 256,fmtErr, getAsymErrorHi());
-      text->Append(buffer);
-      text->Append("}") ;
+       text << "\\pm _{" << getAsymErrorLo() << "}^{+" << getAsymErrorHi() << "}";
     }
     else {
-      text->Append(" +/- ");
-      text->Append(" (") ;
-      snprintf(buffer, 256, fmtErr, getAsymErrorLo());
-      text->Append(buffer);
-      text->Append(", ") ;
-      snprintf(buffer, 256, fmtErr, getAsymErrorHi());
-      text->Append(buffer);
-      text->Append(")") ;
+       text << " +/-  (" << getAsymErrorLo() << ", " << getAsymErrorHi() << ")";
     }
 
   }
 
   // append our units if requested
   if(!_unit.IsNull() && showUnit) {
-    text->Append(' ');
-    text->Append(_unit);
+     text << ' ' << _unit;
   }
-  if(latexMode) text->Append("$");
-  return text;
+  if (latexMode)
+     text << "$";
+  return text.str();
 }
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Utility to calculate number of decimals to show
-/// based on magnitude of error
-
-double RooRealVar::chopAt(double what, Int_t where) const
-{
-  double scale= pow(10.0,where);
-  Int_t trunc= (Int_t)floor(what/scale + 0.5);
-  return (double)trunc*scale;
-}
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Overload RooAbsReal::attachToTree to also attach
@@ -1102,8 +1124,8 @@ void RooRealVar::attachToTree(TTree& t, Int_t bufSize)
 {
   // Follow usual procedure for value
   RooAbsReal::attachToTree(t,bufSize) ;
-//   cout << "RooRealVar::attachToTree(" << this << ") name = " << GetName()
-//        << " StoreError = " << (getAttribute("StoreError")?"T":"F") << endl ;
+//   std::cout << "RooRealVar::attachToTree(" << this << ") name = " << GetName()
+//        << " StoreError = " << (getAttribute("StoreError")?"T":"F") << std::endl ;
 
   // Attach/create additional branch for error
   if (getAttribute("StoreError")) {
@@ -1157,7 +1179,7 @@ void RooRealVar::fillTreeBranch(TTree& t)
   TString cleanName(cleanBranchName()) ;
   TBranch* valBranch = t.GetBranch(cleanName) ;
   if (!valBranch) {
-    coutE(Eval) << "RooAbsReal::fillTreeBranch(" << GetName() << ") ERROR: not attached to tree" << endl ;
+    coutE(Eval) << "RooAbsReal::fillTreeBranch(" << GetName() << ") ERROR: not attached to tree" << std::endl ;
     assert(0) ;
   }
   valBranch->Fill() ;
@@ -1217,19 +1239,21 @@ void RooRealVar::copyCache(const RooAbsArg* source, bool valueOnly, bool setValD
 
 void RooRealVar::Streamer(TBuffer &R__b)
 {
-  UInt_t R__s, R__c;
+  UInt_t R__s;
+  UInt_t R__c;
   if (R__b.IsReading()) {
 
     Version_t R__v = R__b.ReadVersion(&R__s, &R__c); if (R__v) { }
     RooAbsRealLValue::Streamer(R__b);
     if (R__v==1) {
-      coutI(Eval) << "RooRealVar::Streamer(" << GetName() << ") converting version 1 data format" << endl ;
-      double fitMin, fitMax ;
+      coutI(Eval) << "RooRealVar::Streamer(" << GetName() << ") converting version 1 data format" << std::endl ;
+      double fitMin;
+      double fitMax;
       Int_t fitBins ;
       R__b >> fitMin;
       R__b >> fitMax;
       R__b >> fitBins;
-      _binning.reset(new RooUniformBinning(fitMin,fitMax,fitBins));
+      _binning = std::make_unique<RooUniformBinning>(fitMin,fitMax,fitBins);
     }
     R__b >> _error;
     R__b >> _asymErrLo;

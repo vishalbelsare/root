@@ -121,6 +121,8 @@ private: // Data Members
    std::set<size_t> fLookedUpClasses; // Set of classes for which headers were looked up already
    std::set<size_t> fPayloads; // Set of payloads
    std::set<const char*> fParsedPayloadsAddresses; // Set of payloads which were parsed
+   std::set<std::string> fAutoParseClasses; // Set of classes for which we autoparsed a header
+   std::set<std::string> fAutoLoadedLibraries; // Set of libraries that were autoloaded
    std::hash<std::string> fStringHashFunction; // A simple hashing function
    std::unordered_set<const clang::NamespaceDecl*> fNSFromRootmaps;   // Collection of namespaces fwd declared in the rootmaps
    TObjArray*      fRootmapFiles;     // Loaded rootmap files.
@@ -191,9 +193,8 @@ protected:
 
 public: // Public Interface
 
-   virtual ~TCling();
-   TCling(const char* name, const char* title, const char* const argv[]);
-   TCling(const char* name, const char* title): TCling(name, title, kNullArgv) {}
+   ~TCling() final;
+   TCling(const char* name, const char* title, const char* const argv[], void *interpLibHandle);
 
    void    AddIncludePath(const char* path) final;
    void   *GetAutoLoadCallBack() const final { return fAutoLoadCallBack; }
@@ -201,8 +202,9 @@ public: // Public Interface
    Int_t   AutoLoad(const char *classname, Bool_t knowDictNotLoaded = kFALSE) final;
    Int_t   AutoLoad(const std::type_info& typeinfo, Bool_t knowDictNotLoaded = kFALSE) final;
    Int_t   AutoParse(const char* cls) final;
+   const std::set<std::string>& GetAutoParseClasses() const { return fAutoParseClasses; }
    void*   LazyFunctionCreatorAutoload(const std::string& mangled_name);
-   bool   LibraryLoadingFailed(const std::string&, const std::string&, bool, bool);
+   bool    LibraryLoadingFailed(const std::string&, const std::string&, bool, bool);
    Bool_t  IsAutoLoadNamespaceCandidate(const clang::NamespaceDecl* nsDecl);
    void    ClearFileBusy() final;
    void    ClearStack() final; // Delete existing temporary values
@@ -217,17 +219,18 @@ public: // Public Interface
    Int_t   GenerateDictionary(const char* classes, const char* includes = "", const char* options = nullptr) final;
    char*   GetPrompt() final { return fPrompt; }
    const char* GetSharedLibs() final;
-   const char* GetClassSharedLibs(const char* cls) final;
+   const char* GetClassSharedLibs(const char* cls, bool skipCore = true) final;
    const char* GetSharedLibDeps(const char* lib, bool tryDyld = false) final;
    const char* GetIncludePath() final;
-   virtual const char* GetSTLIncludePath() const final;
+   const char* GetSTLIncludePath() const final;
    TObjArray*  GetRootMapFiles() const final { return fRootmapFiles; }
    unsigned long long GetInterpreterStateMarker() const final { return fTransactionCount;}
-   virtual void Initialize() final;
-   virtual void ShutDown() final;
+   void    Initialize() final;
+   void    ShutDown() final;
    void    InspectMembers(TMemberInspector&, const void* obj, const TClass* cl, Bool_t isTransient) final;
    Bool_t  IsLoaded(const char* filename) const final;
    Bool_t  IsLibraryLoaded(const char* libname) const final;
+   bool    IsValid() const final;
    Bool_t  HasPCMForLibrary(const char *libname) const final;
    Int_t   Load(const char* filenam, Bool_t system = kFALSE) final;
    void    LoadMacro(const char* filename, EErrorCode* error = nullptr) final;
@@ -240,6 +243,7 @@ public: // Public Interface
    Longptr_t ProcessLineAsynch(const char* line, EErrorCode* error = nullptr);
    Longptr_t ProcessLineSynch(const char* line, EErrorCode* error = nullptr) final;
    void    PrintIntro() final;
+   void    Print(Option_t *option="") const final;
    bool    RegisterPrebuiltModulePath(const std::string& FullPath,
                                       const std::string& ModuleMapName = "module.modulemap") const final;
    void    RegisterModule(const char* modulename,
@@ -252,9 +256,11 @@ public: // Public Interface
                           const char** classesHeaders,
                           Bool_t lateRegistration = false,
                           Bool_t hasCxxModule = false) final;
-   virtual void AddAvailableIndentifiers(TSeqCollection& Idents) final;
+   void    AddAvailableIndentifiers(TSeqCollection& Idents) final;
    void    RegisterTClassUpdate(TClass *oldcl,DictFuncPtr_t dict) final;
    void    UnRegisterTClassUpdate(const TClass *oldcl) final;
+
+   void    RegisterAutoLoadedLibrary(const char *libname) final;
 
    Int_t   SetClassSharedLibs(const char *cls, const char *libs) final;
    void    SetGetline(const char * (*getlineFunc)(const char* prompt),
@@ -271,9 +277,15 @@ public: // Public Interface
    void    UpdateListOfGlobals() final;
    void    UpdateListOfGlobalFunctions() final;
    void    UpdateListOfTypes() final;
-   void    SetClassInfo(TClass* cl, Bool_t reload = kFALSE) final;
+   void    SetClassInfo(TClass *cl,
+                        Bool_t reload = kFALSE,
+                        Bool_t silent = kFALSE,
+                        ClassInfo_t *classInfo = nullptr) final;
 
-   ECheckClassInfo CheckClassInfo(const char *name, Bool_t autoload, Bool_t isClassOrNamespaceOnly = kFALSE) final;
+   ECheckClassInfo CheckClassInfo(const char *name,
+                                  Bool_t autoload,
+                                  Bool_t isClassOrNamespaceOnly = kFALSE,
+                                  ClassInfo_t **classInfo = nullptr) final;
 
    Bool_t  CheckClassTemplate(const char *name) final;
    Longptr_t Calc(const char* line, EErrorCode* error = nullptr) final;
@@ -301,7 +313,7 @@ public: // Public Interface
    DeclId_t GetFunctionWithValues(ClassInfo_t *cl, const char* method, const char* params, Bool_t objectIsConst = kFALSE) final;
    DeclId_t GetFunctionTemplate(ClassInfo_t *cl, const char *funcname) final;
    void     GetFunctionOverloads(ClassInfo_t *cl, const char *funcname, std::vector<DeclId_t>& res) const final;
-   virtual void     LoadFunctionTemplates(TClass* cl) const final;
+   void     LoadFunctionTemplates(TClass* cl) const final;
 
    std::vector<std::string> GetUsingNamespaces(ClassInfo_t *cl) const final;
 
@@ -369,7 +381,7 @@ public: // Public Interface
 
    // core/meta helper functions.
    EReturnType MethodCallReturnType(TFunction *func) const final;
-   virtual void GetFunctionName(const clang::Decl *decl, std::string &name) const;
+   void GetFunctionName(const clang::Decl *decl, std::string &name) const;
    bool DiagnoseIfInterpreterException(const std::exception &e) const final;
 
    // CallFunc interface
@@ -441,6 +453,7 @@ public: // Public Interface
    void*  ClassInfo_New(ClassInfo_t* info, void* arena) const final;
    Long_t ClassInfo_Property(ClassInfo_t* info) const final;
    int    ClassInfo_Size(ClassInfo_t* info) const final;
+   size_t ClassInfo_AlignOf(ClassInfo_t* info) const final;
    Longptr_t ClassInfo_Tagnum(ClassInfo_t* info) const final;
    const char* ClassInfo_FileName(ClassInfo_t* info) const final;
    const char* ClassInfo_FullName(ClassInfo_t* info) const final;
@@ -534,6 +547,7 @@ public: // Public Interface
    const char* MethodArgInfo_Name(MethodArgInfo_t* marginfo) const final;
    const char* MethodArgInfo_TypeName(MethodArgInfo_t* marginfo) const final;
    std::string MethodArgInfo_TypeNormalizedName(MethodArgInfo_t *marginfo) const final;
+   TypeInfo_t* MethodArgInfo_TypeInfo(MethodArgInfo_t *marginfo) const final;
 
    // TypeInfo interface
    void   TypeInfo_Delete(TypeInfo_t* tinfo) const final;
@@ -547,6 +561,7 @@ public: // Public Interface
    int    TypeInfo_RefType(TypeInfo_t* /* tinfo */) const final;
    int    TypeInfo_Size(TypeInfo_t* tinfo) const final;
    const char* TypeInfo_TrueName(TypeInfo_t* tinfo) const final;
+   void*  TypeInfo_QualTypePtr(TypeInfo_t* tinfo) const final;
 
    // TypedefInfo interface
    DeclId_t GetDeclId(TypedefInfo_t *info) const final;
@@ -562,6 +577,16 @@ public: // Public Interface
    const char* TypedefInfo_TrueName(TypedefInfo_t* tinfo) const final;
    const char* TypedefInfo_Name(TypedefInfo_t* tinfo) const final;
    const char* TypedefInfo_Title(TypedefInfo_t* tinfo) const final;
+
+   // QualType Opaque Ptr interface
+   bool IsSameType(const void * QualTypePtr1, const void * QualTypePtr2) const final;
+   bool IsIntegerType(const void * QualTypePtr) const final;
+   bool IsSignedIntegerType(const void * QualTypePtr) const final;
+   bool IsUnsignedIntegerType(const void * QualTypePtr) const final;
+   bool IsFloatingType(const void * QualTypePtr) const final;
+   bool IsPointerType(const void * QualTypePtr) const final;
+   bool IsVoidPointerType(const void * QualTypePtr) const final;
+
 
    std::set<TClass*>& GetModTClasses() { return fModTClasses; }
 

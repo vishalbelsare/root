@@ -19,14 +19,11 @@
 \class RooStudyPackage
 \ingroup Roofitcore
 
-RooStudyPackage is a utility class to manage studies that consist of
+Utility class to manage studies that consist of
 repeated applications of generate-and-fit operations on a workspace
 
 **/
 
-
-
-#include "Riostream.h"
 
 #include "RooStudyPackage.h"
 #include "RooWorkspace.h"
@@ -37,21 +34,12 @@ repeated applications of generate-and-fit operations on a workspace
 #include "TRandom2.h"
 #include "RooRandom.h"
 #include "TMath.h"
-#include "TEnv.h"
 
-using namespace std ;
+#include <list>
+#include <string>
+#include <ostream>
 
-ClassImp(RooStudyPackage);
-  ;
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-
-RooStudyPackage::RooStudyPackage() : _ws(0)
-{
-}
-
+using std::list, std::string;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -115,7 +103,7 @@ void RooStudyPackage::run(Int_t nExperiments)
   Int_t prescale = nExperiments>100 ? Int_t(nExperiments/100) : 1 ;
   for (Int_t i=0 ; i<nExperiments ; i++) {
     if (i%prescale==0) {
-      coutP(Generation) << "RooStudyPackage::run(" << GetName() << ") processing experiment " << i << "/" << nExperiments << endl ;
+      coutP(Generation) << "RooStudyPackage::run(" << GetName() << ") processing experiment " << i << "/" << nExperiments << std::endl ;
     }
     runOne() ;
   }
@@ -159,7 +147,7 @@ void RooStudyPackage::exportData(TList* olist, Int_t seqno)
     RooDataSet* summaryData = (*iter)->summaryData() ;
     if (summaryData) {
       summaryData->SetName(Form("%s_%d",summaryData->GetName(),seqno)) ;
-      cout << "registering summary dataset: " ; summaryData->Print() ;
+      std::cout << "registering summary dataset: " ; summaryData->Print() ;
       olist->Add(summaryData) ;
     }
 
@@ -167,8 +155,8 @@ void RooStudyPackage::exportData(TList* olist, Int_t seqno)
     if (detailedData && detailedData->GetSize()>0) {
 
       detailedData->SetName(Form("%s_%d",detailedData->GetName(),seqno)) ;
-      cout << "registering detailed dataset " << detailedData->ClassName() << "::"
-      << detailedData->GetName() << " with " << detailedData->GetSize() << " elements" << endl ;
+      std::cout << "registering detailed dataset " << detailedData->ClassName() << "::"
+      << detailedData->GetName() << " with " << detailedData->GetSize() << " elements" << std::endl ;
       for(auto dobj : static_range_cast<TNamed*>(*detailedData)) {
         dobj->SetName(Form("%s_%d",dobj->GetName(),seqno)) ;
       }
@@ -191,17 +179,6 @@ Int_t RooStudyPackage::initRandom()
   //gRandom->SetSeed(0) ;
   Int_t seed = random.Integer(TMath::Limits<Int_t>::Max()) ;
 
-  // get worker number
-  TString  worknumber = gEnv->GetValue("ProofServ.Ordinal","undef");
-  int iworker = -1;
-  if (worknumber != "undef")
-     iworker = int( worknumber.Atof()*10 + 0.1);
-
-  if (iworker >= 0)  {
-     for (int i = 0; i <= iworker; ++i )
-        seed = random.Integer( TMath::Limits<Int_t>::Max() );
-  }
-
   RooRandom::randomGenerator()->SetSeed(seed) ;
   gRandom->SetSeed(seed) ;
 
@@ -219,13 +196,13 @@ void RooStudyPackage::processFile(const char* studyName, Int_t nexp)
   TFile fin(name_fin.c_str()) ;
   RooStudyPackage* pkg = dynamic_cast<RooStudyPackage*>(fin.Get("studypack")) ;
   if (!pkg) {
-    cout << "RooStudyPackage::processFile() ERROR input file " << name_fin << " does not contain a RooStudyPackage named 'studypack'" << endl ;
+    std::cout << "RooStudyPackage::processFile() ERROR input file " << name_fin << " does not contain a RooStudyPackage named 'studypack'" << std::endl ;
     return ;
   }
 
   // Initialize random seed
   Int_t seqno = pkg->initRandom() ;
-  cout << "RooStudyPackage::processFile() Initial random seed for this run is " << seqno << endl ;
+  std::cout << "RooStudyPackage::processFile() Initial random seed for this run is " << seqno << std::endl ;
 
   // Run study
   pkg->driver(nexp) ;

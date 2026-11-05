@@ -22,12 +22,12 @@ protected:
    Int_t         fOptStat;           ///< option Stat
    TString       fFitFormat;         ///< Printing format for fit parameters
    TString       fStatFormat;        ///< Printing format for stats
-   TObject      *fParent;            ///< owner of this TPaveStats
+   TObject      *fParent{nullptr};  ///< owner of this TPaveStats
 
 public:
    TPaveStats();
    TPaveStats(Double_t x1, Double_t y1,Double_t x2 ,Double_t y2, Option_t *option="br");
-   virtual ~TPaveStats();
+   ~TPaveStats() override;
    TBox            *AddBox(Double_t , Double_t , Double_t , Double_t) override {return nullptr;}
    TLine           *AddLine(Double_t , Double_t , Double_t, Double_t) override {return nullptr;}
    void             DeleteText() override {}
@@ -44,11 +44,12 @@ public:
    void             SavePrimitive(std::ostream &out, Option_t *option = "") override;
    virtual void     SaveStyle(); // *MENU*
    void             SetAllWith(const char *, Option_t *, Double_t) override {}
-   void             SetMargin(Float_t) override { }
    virtual void     SetFitFormat(const char *format="5.4g");    // *MENU*
    virtual void     SetStatFormat(const char *format="6.4g");   // *MENU*
    void             SetOptFit(Int_t fit=1);                     // *MENU*
    void             SetOptStat(Int_t stat=1);                   // *MENU*
+   void             SetOption(Option_t *option="br") override;  // *MENU*
+   void             SetDrawOption(Option_t *option="") override;
    void             SetParent(TObject*obj) override { fParent = obj; }
    void             UseCurrentStyle() override;
 

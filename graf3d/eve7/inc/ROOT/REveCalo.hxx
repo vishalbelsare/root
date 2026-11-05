@@ -16,8 +16,6 @@
 #include "ROOT/REveProjectionBases.hxx"
 #include "ROOT/REveProjectionManager.hxx"
 
-#include "TAtt3D.h"
-#include "TAttBBox.h"
 #include "ROOT/REveCaloData.hxx"
 
 class TClass;
@@ -26,11 +24,7 @@ namespace ROOT {
 namespace Experimental {
 
 class REveRGBAPalette;
-class REveCaloViz : public REveElement,
-                    public TAtt3D,
-                    public TAttBBox,
-                    public REveProjectable
-{
+class REveCaloViz : public REveElement, public REveProjectable {
 
 private:
    REveCaloViz& operator=(const REveCaloViz&) = delete;
@@ -70,8 +64,9 @@ protected:
 public:
    REveCaloViz(REveCaloData* data=nullptr, const char* n="REveCaloViz", const char* t="");
 
-   virtual ~REveCaloViz();
+   ~REveCaloViz() override;
 
+   bool RequiresExtraSelectionData() const override { return true; };
    virtual REveElement* ForwardSelection();
    virtual REveElement* ForwardEdit();
 
@@ -174,7 +169,7 @@ protected:
 
 public:
    REveCalo3D(REveCaloData* d=nullptr, const char* n="REveCalo3D", const char* t="");
-   virtual ~REveCalo3D() {}
+   ~REveCalo3D() override {}
    void ComputeBBox() override;
 
    Int_t WriteCoreJson(nlohmann::json &j, Int_t rnr_offset) override;
@@ -239,7 +234,7 @@ protected:
 
 public:
    REveCalo2D(const char* n="REveCalo2D", const char* t="");
-   virtual ~REveCalo2D();
+   ~REveCalo2D() override;
 
    void SetProjection(REveProjectionManager* proj, REveProjectable* model) override;
    void UpdateProjection() override;
@@ -303,7 +298,7 @@ protected:
 
 public:
    REveCaloLego(REveCaloData* data=nullptr, const char* n="REveCaloLego", const char* t="");
-   virtual ~REveCaloLego(){}
+   ~REveCaloLego() override{}
 
    void ComputeBBox() override;
    virtual void  SetData(REveCaloData* d);

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MethodMLP                                                             *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      ANN Multilayer Perceptron  class for the discrimination of signal         *
@@ -32,7 +32,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_MethodMLP
@@ -81,37 +81,37 @@ namespace TMVA {
 
       virtual ~MethodMLP();
 
-      virtual Bool_t HasAnalysisType( Types::EAnalysisType type, UInt_t numberClasses, UInt_t numberTargets );
+      Bool_t HasAnalysisType( Types::EAnalysisType type, UInt_t numberClasses, UInt_t numberTargets ) override;
 
-      void Train();
+      void Train() override;
       // for GA
       Double_t ComputeEstimator ( std::vector<Double_t>& parameters );
-      Double_t EstimatorFunction( std::vector<Double_t>& parameters );
+      Double_t EstimatorFunction( std::vector<Double_t>& parameters ) override;
 
       enum ETrainingMethod { kBP=0, kBFGS, kGA };
       enum EBPTrainingMode { kSequential=0, kBatch };
 
       bool     HasInverseHessian() { return fCalculateErrors; }
-      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr );
+      Double_t GetMvaValue( Double_t* err = nullptr, Double_t* errUpper = nullptr ) override;
 
    protected:
 
       // make ROOT-independent C++ class for classifier response (classifier-specific implementation)
-      void MakeClassSpecific( std::ostream&, const TString& ) const;
+      void MakeClassSpecific( std::ostream&, const TString& ) const override;
 
       // get help message text
-      void GetHelpMessage() const;
+      void GetHelpMessage() const override;
 
 
    private:
 
       // the option handling methods
-      void DeclareOptions();
-      void ProcessOptions();
+      void DeclareOptions() override;
+      void ProcessOptions() override;
 
       // general helper functions
       void     Train( Int_t nEpochs );
-      void     Init();
+      void     Init() override;
       void     InitializeLearningRates(); // although this is only needed by backprop
 
       // used as a measure of success in all minimization techniques
@@ -216,7 +216,7 @@ namespace TMVA {
       static const Bool_t fgPRINT_SEQ           = kFALSE; ///< debug flags
       static const Bool_t fgPRINT_BATCH         = kFALSE; ///< debug flags
 
-      ClassDef(MethodMLP,0); // Multi-layer perceptron implemented specifically for TMVA
+      ClassDefOverride(MethodMLP,0); // Multi-layer perceptron implemented specifically for TMVA
    };
 
 } // namespace TMVA

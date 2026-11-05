@@ -1,14 +1,15 @@
 // Tests for the RooWrapperPdf
 // Author: Stephan Hageboeck, CERN  09/2019
 
-#include "RooWrapperPdf.h"
-#include "RooRealVar.h"
+#include "RooConstVar.h"
+#include "RooDataSet.h"
+#include "RooFitResult.h"
+#include "RooHelpers.h"
+#include "RooPlot.h"
 #include "RooProduct.h"
 #include "RooRealSumFunc.h"
-#include "RooConstVar.h"
-#include "RooPlot.h"
-#include "RooFitResult.h"
-#include "RooDataSet.h"
+#include "RooRealVar.h"
+#include "RooWrapperPdf.h"
 
 #include "TCanvas.h"
 
@@ -16,6 +17,8 @@
 
 TEST(RooWrapperPdf, Basics)
 {
+  RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
   RooRealVar x("x", "x", -5., 5.);
 
   // Implement a poor-man's polynomial. Value ranges are chosen to keep it positive.
@@ -29,7 +32,8 @@ TEST(RooWrapperPdf, Basics)
 
   RooWrapperPdf polPdf("polPdf", "polynomial PDF", pol);
 
-  EXPECT_GT(pol.getVal(x)*1.05, polPdf.getVal(x)) << "Wrapper pdf normalises.";
+  RooArgSet normSet{x};
+  EXPECT_GT(pol.getVal(normSet)*1.05, polPdf.getVal(normSet)) << "Wrapper pdf normalises.";
 
   RooArgSet intSet(x);
   RooArgSet numSet;
@@ -46,7 +50,10 @@ TEST(RooWrapperPdf, Basics)
 }
 
 
-TEST(RooWrapperPdf, GenerateAndFit) {
+TEST(RooWrapperPdf, GenerateAndFit)
+{
+  RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
   RooRealVar x("x", "x", -5., 5.);
 
   // Implement a poor-man's polynomial. Value ranges are chosen to keep it positive.
@@ -65,7 +72,7 @@ TEST(RooWrapperPdf, GenerateAndFit) {
   auto result = polPdf.fitTo(*data, RooFit::Save(), RooFit::PrintLevel(-1));
 
   EXPECT_EQ(result->status(), 0) << "Fit converged.";
-  EXPECT_LT(fabs(a2.getVal()-0.01), a2.getError());
+  EXPECT_LT(std::abs(a2.getVal()-0.01), a2.getError());
 
 //  auto frame = x.frame();
 //  data->plotOn(frame);

@@ -14,56 +14,46 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)             *
  *****************************************************************************/
 
-#ifndef ROO_CODE_FACTORY
-#define ROO_CODE_FACTORY
+#ifndef RooFit_RooClassFactory_h
+#define RooFit_RooClassFactory_h
 
-#include "TNamed.h"
-#include "RooArgSet.h"
-#include "RooPrintable.h"
-#include "RooFactoryWSTool.h"
-
-#include <vector>
 #include <string>
 
 class RooAbsReal;
 class RooAbsPdf;
+class RooArgList;
 
-class RooClassFactory : public TNamed, public RooPrintable {
+// RooFit class code and instance factory
+class RooClassFactory {
 
 public:
+   static RooAbsReal *makeFunctionInstance(std::string const &className, std::string const &name,
+                                           std::string const &expression, const RooArgList &vars,
+                                           std::string const &intExpression = "");
+   static RooAbsReal *makeFunctionInstance(std::string const &name, std::string const &expression,
+                                           const RooArgList &vars, std::string const &intExpression = "");
 
-  // Constructors, assignment etc
-  RooClassFactory() ;
-  ~RooClassFactory() override ;
+   static RooAbsPdf *makePdfInstance(std::string const &className, std::string const &name,
+                                     std::string const &expression, const RooArgList &vars,
+                                     std::string const &intExpression = "");
+   static RooAbsPdf *makePdfInstance(std::string const &name, std::string const &expression, const RooArgList &vars,
+                                     std::string const &intExpression = "");
 
-  static RooAbsReal* makeFunctionInstance(const char* className, const char* name, const char* expression, const RooArgList& vars, const char* intExpression=nullptr) ;
-  static RooAbsReal* makeFunctionInstance(const char* name, const char* expression, const RooArgList& vars, const char* intExpression=nullptr) ;
+   static bool makeAndCompilePdf(std::string const &name, std::string const &expression, const RooArgList &vars,
+                                 std::string const &intExpression = "");
+   static bool makeAndCompileFunction(std::string const &name, std::string const &expression, const RooArgList &args,
+                                      std::string const &intExpression = "");
 
-  static RooAbsPdf* makePdfInstance(const char* className, const char* name, const char* expression, const RooArgList& vars, const char* intExpression=nullptr) ;
-  static RooAbsPdf* makePdfInstance(const char* name, const char* expression, const RooArgList& vars, const char* intExpression=nullptr) ;
-
-  static bool makeAndCompilePdf(const char* name, const char* expression, const RooArgList& vars, const char* intExpression=nullptr) ;
-  static bool makeAndCompileFunction(const char* name, const char* expression, const RooArgList& args, const char* intExpression=nullptr) ;
-
-  static bool makePdf(const char* name, const char* realArgNames=nullptr, const char* catArgNames=nullptr,
-         const char* expression="1.0", bool hasAnaInt=false, bool hasIntGen=false, const char* intExpression=nullptr) ;
-  static bool makeFunction(const char* name, const char* realArgNames=nullptr, const char* catArgNames=nullptr,
-              const char* expression="1.0", bool hasAnaInt=false, const char* intExpression=nullptr) ;
-  static bool makeClass(const char* className, const char* name, const char* realArgNames=nullptr, const char* catArgNames=nullptr,
-           const char* expression="1.0", bool hasAnaInt=false, bool hasIntGen=false, const char* intExpression=nullptr) ;
-
-  class ClassFacIFace : public RooFactoryWSTool::IFace {
-  public:
-    std::string create(RooFactoryWSTool& ft, const char* typeName, const char* instanceName, std::vector<std::string> args) override ;
-  } ;
-
-protected:
-
-
-
-  RooClassFactory(const RooClassFactory&) ;
-
-  ClassDefOverride(RooClassFactory,0) // RooFit class code and instance factory
-} ;
+   static bool makePdf(std::string const &name, std::string const &realArgNames = "",
+                       std::string const &catArgNames = "", std::string const &expression = "1.0",
+                       bool hasAnaInt = false, bool hasIntGen = false, std::string const &intExpression = "");
+   static bool makeFunction(std::string const &name, std::string const &realArgNames = "",
+                            std::string const &catArgNames = "", std::string const &expression = "1.0",
+                            bool hasAnaInt = false, std::string const &intExpression = "");
+   static bool makeClass(std::string const &baseName, const std::string &className,
+                         std::string const &realArgNames = "", std::string const &catArgNames = "",
+                         std::string const &expression = "1.0", bool hasAnaInt = false, bool hasIntGen = false,
+                         std::string const &intExpression = "");
+};
 
 #endif

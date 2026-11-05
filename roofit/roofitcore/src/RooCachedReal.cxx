@@ -14,11 +14,9 @@
 \class RooCachedReal
 \ingroup Roofitcore
 
-RooCachedReal is an implementation of RooAbsCachedReal that can cache
+Implementation of RooAbsCachedReal that can cache
 any external RooAbsReal input function provided in the constructor.
 **/
-
-#include "Riostream.h"
 
 #include "RooAbsPdf.h"
 #include "RooCachedReal.h"
@@ -29,27 +27,21 @@ any external RooAbsReal input function provided in the constructor.
 #include "RooHistPdf.h"
 #include "RooChangeTracker.h"
 
-using namespace std;
+#include <ostream>
 
-ClassImp(RooCachedReal);
-  ;
-
+using std::endl;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor taking name, title and function to be cached. To control
 /// granularity of the binning of the cache histogram set the desired properties
 /// in the binning named "cache" in the observables of the function
 
-RooCachedReal::RooCachedReal(const char *name, const char *title, RooAbsReal& _func) :
-   RooAbsCachedReal(name,title),
-   func("func","func",this,_func),
-   _useCdfBoundaries(false),
-   _cacheSource(false)
- {
+RooCachedReal::RooCachedReal(const char *name, const char *title, RooAbsReal &_func)
+   : RooAbsCachedReal(name, title), func("func", "func", this, _func), _useCdfBoundaries(false), _cacheSource(false)
+{
    // Choose same expensive object cache as input function
    setExpensiveObjectCache(_func.expensiveObjectCache()) ;
- }
-
+}
 
 
 
@@ -94,16 +86,6 @@ RooCachedReal::RooCachedReal(const RooCachedReal& other, const char* name) :
  {
  }
 
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooCachedReal::~RooCachedReal()
-{
-}
-
-
 ////////////////////////////////////////////////////////////////////////////////
 /// Interface function to create an internal cache object that represent
 /// each cached function configuration. This interface allows to create and
@@ -127,7 +109,7 @@ RooAbsCachedReal::FuncCacheElem* RooCachedReal::createCache(const RooArgSet* nse
 
 void RooCachedReal::fillCacheObject(RooAbsCachedReal::FuncCacheElem& cache) const
 {
-  unsigned nDim = cache.hist()->get()->getSize();
+  unsigned nDim = cache.hist()->get()->size();
   if (nDim>1) {
     unsigned nCat(0);
     for(RooAbsArg * arg : *cache.hist()->get()) {
@@ -135,14 +117,14 @@ void RooCachedReal::fillCacheObject(RooAbsCachedReal::FuncCacheElem& cache) cons
     }
     if (nDim>nCat+1) {
         coutP(Eval) << "RooCachedReal::fillCacheObject(" << GetName() << ") filling "
-                    << nCat << " + " << nDim-nCat <<" dimensional cache (" << cache.hist()->numEntries() << " points)" <<endl;
+                    << nCat << " + " << nDim-nCat <<" dimensional cache (" << cache.hist()->numEntries() << " points)" << std::endl;
     }
   }
 
   // Make deep clone of self and attach to dataset observables
   if (!cache.sourceClone()) {
     RooAbsArg* sourceClone = func.arg().cloneTree() ;
-    cache.setSourceClone((RooAbsReal*)sourceClone) ;
+    cache.setSourceClone(static_cast<RooAbsReal*>(sourceClone)) ;
     cache.sourceClone()->recursiveRedirectServers(*cache.hist()->get()) ;
     cache.sourceClone()->recursiveRedirectServers(cache.paramTracker()->parameters());
   }
@@ -156,7 +138,7 @@ void RooCachedReal::fillCacheObject(RooAbsCachedReal::FuncCacheElem& cache) cons
 
   // Delete source clone if we don't cache it
   if (!cache.cacheSource()) {
-    cache.setSourceClone(0) ;
+    cache.setSourceClone(nullptr) ;
   }
 
   cache.func()->setCdfBoundaries(_useCdfBoundaries) ;
@@ -173,13 +155,9 @@ void RooCachedReal::fillCacheObject(RooAbsCachedReal::FuncCacheElem& cache) cons
 /// of the external input p.d.f given the choice of observables defined
 /// in nset
 
-RooArgSet* RooCachedReal::actualObservables(const RooArgSet& nset) const
+RooFit::OwningPtr<RooArgSet> RooCachedReal::actualObservables(const RooArgSet& nset) const
 {
-  if (_cacheObs.getSize()>0) {
-    return func.arg().getObservables(_cacheObs) ;
-  }
-
-  return func.arg().getObservables(nset) ;
+  return func->getObservables(_cacheObs.empty() ? nset : _cacheObs);
 }
 
 
@@ -190,12 +168,9 @@ RooArgSet* RooCachedReal::actualObservables(const RooArgSet& nset) const
 /// the cache observables. If this p.d.f is operated in automatic mode,
 /// return the parameters of the external input p.d.f
 
-RooArgSet* RooCachedReal::actualParameters(const RooArgSet& nset) const
+RooFit::OwningPtr<RooArgSet> RooCachedReal::actualParameters(const RooArgSet& nset) const
 {
-  if (_cacheObs.getSize()>0) {
-    return func.arg().getParameters(_cacheObs) ;
-  }
-  return func.arg().getParameters(nset) ;
+   return func->getParameters(_cacheObs.empty() ? nset : _cacheObs);
 }
 
 
@@ -205,7 +180,3 @@ void RooCachedReal::operModeHook()
     ((RooAbsArg*)func.absArg())->setOperMode(ADirty) ;
   }
 }
-
-
-
-

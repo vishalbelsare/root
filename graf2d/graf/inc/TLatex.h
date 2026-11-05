@@ -15,6 +15,8 @@
 #include "TAttLine.h"
 #include <vector>
 
+class TVirtualPad;
+
 class TLatex : public TText, public TAttLine {
 protected:
 
@@ -40,9 +42,9 @@ protected:
 
       // definition of operators + and +=
       TLatexFormSize operator+(TLatexFormSize f)
-      { return TLatexFormSize(f.Width()+fWidth,TMath::Max(f.Over(),fOver),TMath::Max(f.Under(),fUnder)); }
+      { return TLatexFormSize(f.Width()+fWidth,std::max(f.Over(),fOver),std::max(f.Under(),fUnder)); }
       void operator+=(TLatexFormSize f)
-      { fWidth += f.Width(); fOver = TMath::Max(fOver,f.Over()); fUnder = TMath::Max(fUnder,f.Under()); }
+      { fWidth += f.Width(); fOver = std::max(fOver,f.Over()); fUnder = std::max(fUnder,f.Under()); }
 
       inline void Set(Double_t x, Double_t y1, Double_t y2) { fWidth=x; fOver=y1; fUnder=y2; }
       TLatexFormSize AddOver(TLatexFormSize f)
@@ -50,7 +52,7 @@ protected:
       TLatexFormSize AddUnder(TLatexFormSize f)
       { return TLatexFormSize(f.Width()+fWidth,fOver,f.Height()+fUnder); }
       TLatexFormSize AddOver(TLatexFormSize f1, TLatexFormSize f2)
-      { return TLatexFormSize(fWidth+TMath::Max(f1.Width(),f2.Width()),fOver+f1.Over(),fUnder+f2.Under()); }
+      { return TLatexFormSize(fWidth+std::max(f1.Width(),f2.Width()),fOver+f1.Over(),fUnder+f2.Under()); }
 
       // return members
       inline Double_t Width()  const { return fWidth; }
@@ -62,7 +64,7 @@ protected:
    Double_t                    fFactorSize;      ///<! Relative size of subscripts and superscripts
    Double_t                    fFactorPos;       ///<! Relative position of subscripts and superscripts
    Int_t                       fLimitFactorSize; ///< lower bound for subscripts/superscripts size
-   const Char_t               *fError;           ///<! error code
+   const Char_t               *fError{nullptr};  ///<! error code
    Bool_t                      fShow;            ///<! is true during the second pass (Painting)
    std::vector<TLatexFormSize> fTabSize;         ///<! array of values for the different zones
    Double_t                    fOriginSize;      ///< Font size of the starting font
@@ -71,12 +73,16 @@ protected:
    TLatex& operator=(const TLatex&);
 
    //Text analysis and painting
-   TLatexFormSize Analyse(Double_t x, Double_t y, TextSpec_t spec, const Char_t* t,Int_t length);
-   TLatexFormSize Anal1(TextSpec_t spec, const Char_t* t,Int_t length);
+   TLatexFormSize Analyse(Double_t x, Double_t y, const TextSpec_t &spec, const Char_t *t,Int_t length);
+   TLatexFormSize Anal1(const TextSpec_t &spec, const Char_t *t,Int_t length);
 
-   void DrawLine(Double_t x1, Double_t y1, Double_t x2, Double_t y2, TextSpec_t spec);
-   void DrawCircle(Double_t x1, Double_t y1, Double_t r, TextSpec_t spec);
-   void DrawParenthesis(Double_t x1, Double_t y1, Double_t r1, Double_t r2, Double_t phimin, Double_t phimax, TextSpec_t spec);
+   void Rotate(TVirtualPad *pad, Double_t angle, Int_t np, Double_t *x, Double_t *y);
+   void Rotate(TVirtualPad *pad, Double_t angle, Double_t x, Double_t y, Double_t &xx, Double_t &yy);
+
+   void DrawPolyLine(Int_t npoints, Double_t *xx, Double_t *yy, const TextSpec_t &spec, Double_t scale_width = 0.);
+   void DrawLine(Double_t x1, Double_t y1, Double_t x2, Double_t y2, const TextSpec_t &spec);
+   void DrawCircle(Double_t x1, Double_t y1, Double_t r, const TextSpec_t &spec);
+   void DrawParenthesis(Double_t x1, Double_t y1, Double_t r1, Double_t r2, Double_t phimin, Double_t phimax, const TextSpec_t &spec);
 
    TLatexFormSize FirstParse(Double_t angle, Double_t size, const Char_t *text);
 
@@ -96,7 +102,7 @@ public:
    TLatex();
    TLatex(Double_t x, Double_t y, const char *text);
    TLatex(const TLatex &text);
-   virtual ~TLatex();
+   ~TLatex() override;
 
    void             Copy(TObject &text) const override;
 

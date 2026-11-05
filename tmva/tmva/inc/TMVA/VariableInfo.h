@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : Option                                                                *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *      Variable type info                                                        *
@@ -111,7 +111,7 @@ namespace TMVA {
       Int_t    fVarCounter;      ///< dummy variable
    public:
 
-       ClassDef(VariableInfo,1);
+       ClassDefOverride(VariableInfo,1);
    };
 
 }

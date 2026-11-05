@@ -19,30 +19,18 @@
 \class RooAbsIntegrator
 \ingroup Roofitcore
 
-RooAbsIntegrator is the abstract interface for integrators of real-valued
+Abstract interface for integrators of real-valued
 functions that implement the RooAbsFunc interface.
 **/
 
-#include "Riostream.h"
-
 #include "RooAbsIntegrator.h"
 #include "RooMsgService.h"
-#include "TClass.h"
 
-using namespace std;
+#include <ostream>
 
-ClassImp(RooAbsIntegrator);
-;
+using std::endl;
 
-
-////////////////////////////////////////////////////////////////////////////////
-/// Default constructor
-
-RooAbsIntegrator::RooAbsIntegrator() : _function(0), _valid(false), _printEvalCounter(false)
-{
-}
-
-
+RooAbsIntegrator::RooAbsIntegrator() = default;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy constructor
@@ -65,7 +53,7 @@ double RooAbsIntegrator::calculate(const double *yvec)
   double ret = integral(yvec) ;
   integrand()->restoreXVec() ;
 
-  cxcoutD(NumIntegration) << ClassName() << "::calculate(" << _function->getName() << ") number of function calls = " << integrand()->numCall()<<", result  = "<<ret << endl ;
+  oocxcoutD(static_cast<TObject*>(nullptr), NumericIntegration) << "RooAbsIntegrator::calculate(" << _function->getName() << ") number of function calls = " << integrand()->numCall()<<", result  = "<<ret << std::endl ;
   return ret ;
 }
 

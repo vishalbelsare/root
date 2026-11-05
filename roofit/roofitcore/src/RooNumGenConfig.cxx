@@ -19,12 +19,10 @@
 \class RooNumGenConfig
 \ingroup Roofitcore
 
-RooNumGenConfig holds the configuration parameters of the various
+Holds the configuration parameters of the various
 numeric integrators used by RooRealIntegral. RooRealIntegral and RooAbsPdf
 use this class in the (normalization) integral configuration interface
 **/
-
-#include "Riostream.h"
 
 #include "RooNumGenConfig.h"
 #include "RooArgSet.h"
@@ -32,10 +30,10 @@ use this class in the (normalization) integral configuration interface
 #include "RooNumGenFactory.h"
 #include "RooMsgService.h"
 
+#include <ostream>
 
-using namespace std;
+using std::endl, std::ostream;
 
-ClassImp(RooNumGenConfig);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,7 +114,8 @@ RooNumGenConfig::RooNumGenConfig(const RooNumGenConfig& other) :
 {
   // Clone all configuration dat
   for (auto * set : static_range_cast<RooArgSet*>(other._configSets)) {
-    RooArgSet* setCopy = (RooArgSet*) set->snapshot() ;
+    RooArgSet* setCopy = new RooArgSet;
+    set->snapshot(*setCopy) ;
     setCopy->setName(set->GetName()) ;
    _configSets.Add(setCopy);
   }
@@ -154,7 +153,8 @@ RooNumGenConfig& RooNumGenConfig::operator=(const RooNumGenConfig& other)
 
   // Copy new integrator-specific data
   for(auto * set : static_range_cast<RooArgSet*>(other._configSets)) {
-    RooArgSet* setCopy = (RooArgSet*) set->snapshot() ;
+    RooArgSet* setCopy = new RooArgSet;
+    set->snapshot(*setCopy);
     setCopy->setName(set->GetName()) ;
    _configSets.Add(setCopy);
   }
@@ -235,7 +235,7 @@ const RooCategory& RooNumGenConfig::methodND(bool cond, bool cat) const
 
 bool RooNumGenConfig::addConfigSection(const RooAbsNumGenerator* proto, const RooArgSet& inDefaultConfig)
 {
-  std::string name = proto->ClassName();
+  std::string name = proto->generatorName();
 
   // Register integrator for appropriate dimensionalities
 
@@ -261,7 +261,8 @@ bool RooNumGenConfig::addConfigSection(const RooAbsNumGenerator* proto, const Ro
   }
 
   // Store default configuration parameters
-  RooArgSet* config = (RooArgSet*) inDefaultConfig.snapshot() ;
+  RooArgSet* config = new RooArgSet;
+  inDefaultConfig.snapshot(*config);
   config->setName(name.c_str());
   _configSets.Add(config) ;
 
@@ -285,9 +286,9 @@ RooArgSet& RooNumGenConfig::getConfigSection(const char* name)
 const RooArgSet& RooNumGenConfig::getConfigSection(const char* name) const
 {
   static RooArgSet dummy ;
-  RooArgSet* config = (RooArgSet*) _configSets.FindObject(name) ;
+  RooArgSet* config = static_cast<RooArgSet*>(_configSets.FindObject(name)) ;
   if (!config) {
-    oocoutE(nullptr,InputArguments) << "RooNumGenConfig::getIntegrator: ERROR: no configuration stored for integrator '" << name << "'" << endl ;
+    oocoutE(nullptr,InputArguments) << "RooNumGenConfig::getIntegrator: ERROR: no configuration stored for integrator '" << name << "'" << std::endl ;
     return dummy ;
   }
   return *config ;
@@ -318,58 +319,58 @@ RooPrintable::StyleOption RooNumGenConfig::defaultPrintStyle(Option_t* opt) cons
 
 void RooNumGenConfig::printMultiline(ostream &os, Int_t /*content*/, bool verbose, TString indent) const
 {
-  os << endl ;
-  os << indent << "1-D sampling method: " << _method1D.getCurrentLabel() << endl ;
+  os << std::endl ;
+  os << indent << "1-D sampling method: " << _method1D.getCurrentLabel() << std::endl ;
   if (_method1DCat.getCurrentIndex()!=_method1D.getCurrentIndex()) {
-    os << " (" << _method1DCat.getCurrentLabel() << " if with categories)" << endl ;
+    os << " (" << _method1DCat.getCurrentLabel() << " if with categories)" << std::endl ;
   }
   if (_method1DCond.getCurrentIndex()!=_method1D.getCurrentIndex()) {
-    os << " (" << _method1DCond.getCurrentLabel() << " if conditional)" << endl ;
+    os << " (" << _method1DCond.getCurrentLabel() << " if conditional)" << std::endl ;
   }
   if (_method1DCondCat.getCurrentIndex()!=_method1D.getCurrentIndex()) {
-    os << " (" << _method1DCondCat.getCurrentLabel() << " if conditional with categories)" << endl ;
+    os << " (" << _method1DCondCat.getCurrentLabel() << " if conditional with categories)" << std::endl ;
   }
-  os << endl ;
+  os << std::endl ;
 
-  os << indent << "2-D sampling method: " << _method2D.getCurrentLabel() << endl ;
+  os << indent << "2-D sampling method: " << _method2D.getCurrentLabel() << std::endl ;
   if (_method2DCat.getCurrentIndex()!=_method2D.getCurrentIndex()) {
-    os << " (" << _method2DCat.getCurrentLabel() << " if with categories)" << endl ;
+    os << " (" << _method2DCat.getCurrentLabel() << " if with categories)" << std::endl ;
   }
   if (_method2DCond.getCurrentIndex()!=_method2D.getCurrentIndex()) {
-    os << " (" << _method2DCond.getCurrentLabel() << " if conditional)" << endl ;
+    os << " (" << _method2DCond.getCurrentLabel() << " if conditional)" << std::endl ;
   }
   if (_method2DCondCat.getCurrentIndex()!=_method2D.getCurrentIndex()) {
-    os << " (" << _method2DCondCat.getCurrentLabel() << " if conditional with categories)" << endl ;
+    os << " (" << _method2DCondCat.getCurrentLabel() << " if conditional with categories)" << std::endl ;
   }
-  os << endl ;
+  os << std::endl ;
 
-  os << indent << "N-D sampling method: " << _methodND.getCurrentLabel() << endl ;
+  os << indent << "N-D sampling method: " << _methodND.getCurrentLabel() << std::endl ;
   if (_methodNDCat.getCurrentIndex()!=_methodND.getCurrentIndex()) {
-    os << " (" << _methodNDCat.getCurrentLabel() << " if with categories)" << endl ;
+    os << " (" << _methodNDCat.getCurrentLabel() << " if with categories)" << std::endl ;
   }
   if (_methodNDCond.getCurrentIndex()!=_methodND.getCurrentIndex()) {
-    os << " (" << _methodNDCond.getCurrentLabel() << " if conditional)" << endl ;
+    os << " (" << _methodNDCond.getCurrentLabel() << " if conditional)" << std::endl ;
   }
   if (_methodNDCondCat.getCurrentIndex()!=_methodND.getCurrentIndex()) {
-    os << " (" << _methodNDCondCat.getCurrentLabel() << " if conditional with categories)" << endl ;
+    os << " (" << _methodNDCondCat.getCurrentLabel() << " if conditional with categories)" << std::endl ;
   }
-  os << endl ;
+  os << std::endl ;
 
   if (verbose) {
 
-    os << endl << "Available sampling methods:" << endl << endl ;
+    os << std::endl << "Available sampling methods:" << std::endl << std::endl ;
     for(auto * configSet : static_range_cast<RooArgSet*>(_configSets)) {
 
-      os << indent << "*** " << configSet->GetName() << " ***" << endl ;
+      os << indent << "*** " << configSet->GetName() << " ***" << std::endl ;
       os << indent << "Capabilities: " ;
       const RooAbsNumGenerator* proto = RooNumGenFactory::instance().getProtoSampler(configSet->GetName()) ;
      if (proto->canSampleConditional()) os << "[Conditional] " ;
      if (proto->canSampleCategories()) os << "[Categories] " ;
-      os << endl ;
+      os << std::endl ;
 
-      os << "Configuration: " << endl ;
+      os << "Configuration: " << std::endl ;
       configSet->printMultiline(os,kName|kValue|kTitle) ;
-      os << endl ;
+      os << std::endl ;
 
     }
   }

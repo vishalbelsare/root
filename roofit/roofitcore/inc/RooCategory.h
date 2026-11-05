@@ -34,7 +34,7 @@ public:
   RooCategory(const RooCategory& other, const char* name=nullptr) ;
   RooCategory& operator=(const RooCategory&) = delete;
   ~RooCategory() override;
-  TObject* clone(const char* newname) const override { return new RooCategory(*this,newname); }
+  TObject* clone(const char* newname=nullptr) const override { return new RooCategory(*this,newname); }
 
   /// Return current index.
   value_type getCurrentIndex() const final {
@@ -128,7 +128,7 @@ private:
   using RangeMap_t = std::map<std::string, std::vector<value_type>>;
   /// Map range names to allowed category states. Note that this must be shared between copies,
   /// so categories in datasets have the same ranges as their counterparts outside of the dataset.
-  std::shared_ptr<RangeMap_t> _ranges{new RangeMap_t()}; //!
+  std::shared_ptr<RangeMap_t> _ranges{new RangeMap_t()}; ///<!
   RangeMap_t* _rangesPointerForIO{nullptr}; ///< Pointer to the same object as _ranges, but not shared for I/O.
 
   void installLegacySharedProp(const RooCategorySharedProperties* sp);

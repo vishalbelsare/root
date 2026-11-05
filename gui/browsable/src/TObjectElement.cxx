@@ -27,7 +27,7 @@
 
 using namespace std::string_literals;
 
-using namespace ROOT::Experimental::Browsable;
+using namespace ROOT::Browsable;
 
 
 /** \class TObjectLevelIter
@@ -45,7 +45,7 @@ class TObjectLevelIter : public RLevelIter {
 public:
    explicit TObjectLevelIter() {}
 
-   virtual ~TObjectLevelIter() = default;
+   ~TObjectLevelIter() override = default;
 
    void AddElement(std::shared_ptr<RElement> &&elem)
    {
@@ -102,7 +102,7 @@ class TMyBrowserImp : public TBrowserImp {
 public:
 
    TMyBrowserImp(TObjectLevelIter *iter, TObject *obj) : TBrowserImp(nullptr), fIter(iter), fBrowseObj(obj) {}
-   virtual ~TMyBrowserImp() = default;
+   ~TMyBrowserImp() override = default;
 
    void SetIgnore(bool on = true) { fIgnore = on; }
 
@@ -154,7 +154,7 @@ public:
 
    explicit TCollectionIter(const TCollection *coll) : RLevelIter(), fIter(coll) {}
 
-   virtual ~TCollectionIter() = default;
+   ~TCollectionIter() override = default;
 
    bool Next() override { return fIter.Next() != nullptr; }
 
@@ -314,7 +314,12 @@ void TObjectElement::SetObject(TObject *obj)
 
 void TObjectElement::ForgetObject() const
 {
-   const_cast<TObjectElement *>(this)->fObj = nullptr;
+   auto elem = const_cast<TObjectElement *>(this);
+   elem->fObj = nullptr;
+   if (elem->fObject) {
+      elem->fObject->Forget();
+      elem->fObject.reset();
+   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -408,10 +413,9 @@ std::unique_ptr<RHolder> TObjectElement::GetObject()
 
 bool TObjectElement::IsObject(void *obj)
 {
-   if (CheckObject() == obj)
-      return true;
+   return (fObj && (fObj == obj));
 
-   return fObject && (fObject->get_object<TObject>() == obj);
+   // return fObject && (fObject->get_object<TObject>() == obj);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -456,7 +460,7 @@ std::unique_ptr<RItem> TObjectElement::CreateItem() const
    if (!obj)
       return RElement::CreateItem();
 
-   auto isfolder = !IsHideChilds() && obj->IsFolder();
+   auto isfolder = !IsHideChilds() && IsFolder();
 
    auto item = std::make_unique<TObjectItem>(obj->GetName(), isfolder ? -1 : 0);
 
@@ -572,10 +576,10 @@ public:
       RegisterTObject("TDirectory", "sap-icon://folder-blank", true, 0);
       RegisterTObject("TClass", "sap-icon://tag-cloud-chart", false, 0);
       RegisterTObject("TQClass", "sap-icon://tag-cloud-chart", false, 0);
-      RegisterTObject("TH1", "sap-icon://bar-chart", false, 3, "hist"s);
+      RegisterTObject("TH1", "sap-icon://bar-chart", false, 3, ""s);
       RegisterTObject("TH2", "sap-icon://pixelate", false, 3, "col"s);
       RegisterTObject("TH3", "sap-icon://product");
-      RegisterTObject("TProfile", "sap-icon://vertical-bar-chart", false, 3, "e0"s);
+      RegisterTObject("TProfile", "sap-icon://vertical-bar-chart", false, 3, ""s);
       RegisterTObject("TGraph", "sap-icon://line-chart");
       RegisterTObject("TCanvas", "sap-icon://business-objects-experience", false, 1); // only can use TWebCanvas
       RegisterTObject("TASImage", "sap-icon://picture", false, 1); // only can use TWebCanvas
@@ -584,9 +588,10 @@ public:
       RegisterTObject("TMultiGraph", "sap-icon://multiple-line-chart");
 
       RegisterTObject("TCollection", "sap-icon://list", true, 0);
-      RegisterTObject("TGeoManager", "sap-icon://overview-chart", true, 0);
-      RegisterTObject("TGeoVolume", "sap-icon://product", true, 0);
-      RegisterTObject("TGeoNode", "sap-icon://product", true, 0);
+
+      RegisterClass("TGeoManager", "sap-icon://overview-chart", "libROOTGeoBrowseProvider");
+      RegisterClass("TGeoVolume", "sap-icon://product", "libROOTGeoBrowseProvider");
+      RegisterClass("TGeoNode", "sap-icon://product", "libROOTGeoBrowseProvider");
 
       RegisterBrowse(TFolder::Class(), [](std::unique_ptr<RHolder> &object) -> std::shared_ptr<RElement> {
          return std::make_shared<TFolderElement>(object);

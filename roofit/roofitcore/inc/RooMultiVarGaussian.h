@@ -32,15 +32,14 @@ class RooMultiVarGaussian : public RooAbsPdf {
 public:
 
   RooMultiVarGaussian() {} ;
-  RooMultiVarGaussian(const char *name, const char *title, const RooArgList& xvec, const RooArgList& mu, const TMatrixDSym& covMatrix) ;
+  RooMultiVarGaussian(const char *name, const char *title, const RooArgList& xvec, const RooArgList& mu, const TMatrixDBase& covMatrix) ;
   RooMultiVarGaussian(const char *name, const char *title, const RooArgList& xvec, const RooFitResult& fr, bool reduceToConditional=true) ;
-  RooMultiVarGaussian(const char *name, const char *title, const RooArgList& xvec, const TVectorD& mu, const TMatrixDSym& covMatrix) ;
-  RooMultiVarGaussian(const char *name, const char *title, const RooArgList& xvec,const TMatrixDSym& covMatrix) ;
+  RooMultiVarGaussian(const char *name, const char *title, const RooArgList& xvec, const TVectorD& mu, const TMatrixDBase& covMatrix) ;
+  RooMultiVarGaussian(const char *name, const char *title, const RooArgList& xvec,const TMatrixDBase& covMatrix) ;
   void setAnaIntZ(double z) { _z = z ; }
 
   RooMultiVarGaussian(const RooMultiVarGaussian& other, const char* name=nullptr) ;
-  TObject* clone(const char* newname) const override { return new RooMultiVarGaussian(*this,newname); }
-  inline ~RooMultiVarGaussian() override { }
+  TObject* clone(const char* newname=nullptr) const override { return new RooMultiVarGaussian(*this,newname); }
 
   Int_t getAnalyticalIntegral(RooArgSet& allVars, RooArgSet& analVars, const char* rangeName=nullptr) const override ;
   double analyticalIntegral(Int_t code, const char* rangeName=nullptr) const override ;
@@ -50,6 +49,9 @@ public:
   void generateEvent(Int_t code) override;
 
   const TMatrixDSym& covarianceMatrix() const { return _cov ; }
+  const TMatrixDSym& covarianceMatrixInverse() const { return _covI ; }
+  const RooArgList& xVec() const { return _x;}
+  const RooArgList& muVec() const { return _mu; }
 
   class AnaIntData {
   public:
@@ -71,16 +73,14 @@ public:
 
   class BitBlock {
   public:
-    BitBlock() : b0(0), b1(0), b2(0), b3(0) {} ;
-
     void setBit(Int_t ibit) ;
     bool getBit(Int_t ibit) ;
-    bool operator==(const BitBlock& other) ;
+    friend bool operator==(BitBlock const& lhs, BitBlock const& rhs);
 
-    Int_t b0 ;
-    Int_t b1 ;
-    Int_t b2 ;
-    Int_t b3 ;
+    Int_t b0 = 0;
+    Int_t b1 = 0;
+    Int_t b2 = 0;
+    Int_t b3 = 0;
   } ;
 
   static void blockDecompose(const TMatrixD& input, const std::vector<int>& map1, const std::vector<int>& map2, TMatrixDSym& S11, TMatrixD& S12, TMatrixD& S21, TMatrixDSym& S22) ;
@@ -104,7 +104,7 @@ protected:
   double    _z ;
 
   void syncMuVec() const ;
-  mutable TVectorD _muVec ; //! Do not persist
+  mutable TVectorD _muVec ; ///<! Do not persist
 
   double evaluate() const override ;
 

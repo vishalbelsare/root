@@ -34,7 +34,7 @@ public:
    TMarker();
    TMarker(Double_t x, Double_t y, Int_t marker);
    TMarker(const TMarker &marker);
-   virtual ~TMarker();
+   ~TMarker() override;
 
    void             Copy(TObject &marker) const override;
    Int_t            DistancetoPrimitive(Int_t px, Int_t py) override;
@@ -54,8 +54,6 @@ public:
    virtual void     SetY(Double_t y) { fY = y;} // *MENU*
 
    Rectangle_t      GetBBox() override;
-   TPoint           GetBBoxCenter() override;
-   void             SetBBoxCenter(const TPoint &p) override;
    void             SetBBoxCenterX(const Int_t x) override;
    void             SetBBoxCenterY(const Int_t y) override;
    void             SetBBoxX1(const Int_t x) override;

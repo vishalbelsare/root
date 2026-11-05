@@ -30,9 +30,6 @@
 #include <cstring>
 #include <cctype>
 
-using namespace std;
-
-ClassImp(RooBlindTools);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Constructor
@@ -95,11 +92,6 @@ void RooBlindTools::setup(const char *stSeedIn)
 
   _STagConstant = Randomizer("fghijklmnopqrstuvwxyzabcde");
 }
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destructor
-
-RooBlindTools::~RooBlindTools(){}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -314,7 +306,7 @@ double RooBlindTools::Randomizer(const char *StringAlphabet) const{
   }
 
   if (lengthSeed<5 || ((sumSeed<1 || sumSeed>8000)&&!_s2bMode)) {
-    cout<< "RooBlindTools::Randomizer: Your String Seed is Bad: '" << _stSeed << "'" << endl ;
+    std::cout<< "RooBlindTools::Randomizer: Your String Seed is Bad: '" << _stSeed << "'" << std::endl ;
     RooErrorHandler::softAbort() ;
   }
 
@@ -337,7 +329,7 @@ double RooBlindTools::Randomizer(const char *StringAlphabet) const{
 
 double RooBlindTools::PseudoRandom(Int_t Seed) const{
   if (Seed<1 || Seed>8000 ) {
-    cout<< "RooBlindTools::PseudoRandom: Your integer Seed is Bad" <<endl;
+    std::cout<< "RooBlindTools::PseudoRandom: Your integer Seed is Bad" << std::endl;
   }
 
   Int_t ia = 8121;

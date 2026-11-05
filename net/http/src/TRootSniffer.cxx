@@ -16,6 +16,7 @@
 #include "TList.h"
 #include "TBufferJSON.h"
 #include "TROOT.h"
+#include "TInterpreter.h"
 #include "TFolder.h"
 #include "TClass.h"
 #include "TRealData.h"
@@ -24,7 +25,6 @@
 #include "TObjString.h"
 #include "TObjArray.h"
 #include "TUrl.h"
-#include "TImage.h"
 #include "TVirtualMutex.h"
 #include "TRootSnifferStore.h"
 #include "THttpCallArg.h"
@@ -33,6 +33,8 @@
 #include <memory>
 #include <vector>
 #include <cstring>
+#include <cctype>
+
 
 const char *item_prop_kind = "_kind";
 const char *item_prop_more = "_more";
@@ -46,7 +48,6 @@ const char *item_prop_autoload = "_autoload";
 const char *item_prop_rootversion = "_root_version";
 
 /** \class TRootSnifferScanRec
-\ingroup http
 
 Structure used to scan hierarchies of ROOT objects
 
@@ -341,7 +342,7 @@ Bool_t TRootSnifferScanRec::GoInside(TRootSnifferScanRec &super, TObject *obj, c
    fMask = super.fMask & kActions;
    if (fRestriction == 0)
       fRestriction = super.fRestriction; // get restriction from parent
-   Bool_t topelement(kFALSE);
+   Bool_t topelement = kFALSE;
 
    if (fMask & kScan) {
       // if scanning only fields, ignore all childs
@@ -397,7 +398,6 @@ Bool_t TRootSnifferScanRec::GoInside(TRootSnifferScanRec &super, TObject *obj, c
 
 
 /** \class TRootSniffer
-\ingroup http
 
 Sniffer of ROOT objects, data provider for THttpServer
 
@@ -408,7 +408,6 @@ Can be extended to application-specific classes.
 Normally TRootSnifferFull class is used which able to access data from trees, canvases, histograms.
 */
 
-ClassImp(TRootSniffer);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// constructor
@@ -431,12 +430,15 @@ TRootSniffer::~TRootSniffer()
 /// For instance, if user authorized with some user name,
 /// depending from restrictions some objects will be invisible
 /// or user get full access to the element
+/// Returns previous argument which was set before
 
-void TRootSniffer::SetCurrentCallArg(THttpCallArg *arg)
+THttpCallArg *TRootSniffer::SetCurrentCallArg(THttpCallArg *arg)
 {
+   auto res = fCurrentArg;
    fCurrentArg = arg;
    fCurrentRestrict = 0;
    fCurrentAllowedMethods = "";
+   return res;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -557,9 +559,8 @@ Int_t TRootSniffer::CheckRestriction(const char *full_item_name)
 
    const char *options = nullptr;
    TIter iter(&fRestrictions);
-   TObject *obj;
 
-   while ((obj = iter()) != nullptr) {
+   while (auto obj = iter()) {
       const char *title = obj->GetTitle();
 
       if (strstr(title, pattern1.Data()) == title) {
@@ -614,9 +615,8 @@ void TRootSniffer::ScanObjectMembers(TRootSnifferScanRec &rec, TClass *cl, char 
       cl->BuildRealData();
 
    // scan only real data
-   TObject *obj = nullptr;
    TIter iter(cl->GetListOfRealData());
-   while ((obj = iter()) != nullptr) {
+   while (auto obj = iter()) {
       TRealData *rdata = dynamic_cast<TRealData *>(obj);
       if (!rdata || strchr(rdata->GetName(), '.'))
          continue;
@@ -646,7 +646,7 @@ void TRootSniffer::ScanObjectMembers(TRootSnifferScanRec &rec, TClass *cl, char 
             break;
 
          const char *title = member->GetTitle();
-         if (title && (strlen(title) != 0))
+         if (title && *title)
             chld.SetField(item_prop_title, title);
 
          if (member->GetTypeName())
@@ -706,14 +706,14 @@ void TRootSniffer::ScanObjectProperties(TRootSnifferScanRec &rec, TObject *obj)
       return;
 
    pos += 7;
-   while (*pos != 0) {
+   while (*pos) {
       if (*pos == ' ') {
          pos++;
          continue;
       }
       // first locate identifier
       const char *pos0 = pos;
-      while ((*pos != 0) && (*pos != '='))
+      while (*pos && (*pos != '='))
          pos++;
       if (*pos == 0)
          return;
@@ -724,7 +724,7 @@ void TRootSniffer::ScanObjectProperties(TRootSnifferScanRec &rec, TObject *obj)
          pos++;
       pos0 = pos;
       // then value with or without quotes
-      while ((*pos != 0) && (*pos != (quotes ? '\"' : ' ')))
+      while (*pos && (*pos != (quotes ? '\"' : ' ')))
          pos++;
       TString value(pos0, pos - pos0);
       rec.SetField(name, value);
@@ -742,7 +742,7 @@ void TRootSniffer::ScanKeyProperties(TRootSnifferScanRec &rec, TKey *key, TObjec
 {
    if (strcmp(key->GetClassName(), "TDirectoryFile") == 0) {
       if (rec.fLevel == 0) {
-         TDirectory *dir = dynamic_cast<TDirectory *>(key->ReadObj());
+         auto dir = key->ReadObject<TDirectory>();
          if (dir) {
             obj = dir;
             obj_class = dir->IsA();
@@ -813,7 +813,7 @@ void TRootSniffer::ScanCollection(TRootSnifferScanRec &rec, TCollection *lst, co
          if (chld.SetResult(obj, obj->IsA()))
             return;
 
-         Bool_t has_kind(kFALSE), has_title(kFALSE);
+         Bool_t has_kind = kFALSE, has_title = kFALSE;
 
          ScanObjectProperties(chld, obj);
          // now properties, coded as TNamed objects, placed after object in the hierarchy
@@ -844,9 +844,8 @@ void TRootSniffer::ScanCollection(TRootSnifferScanRec &rec, TCollection *lst, co
 
    if (keys_lst) {
       TIter iter(keys_lst);
-      TObject *kobj = nullptr;
 
-      while ((kobj = iter()) != nullptr) {
+      while (auto kobj = iter()) {
          TKey *key = dynamic_cast<TKey *>(kobj);
          if (!key)
             continue;
@@ -1214,9 +1213,41 @@ Bool_t TRootSniffer::ExecuteCmd(const std::string &path, const std::string &opti
             return kTRUE;
          }
 
-         TString svalue = DecodeUrlOptionValue(argvalue, kTRUE);
          argname = TString("%") + argname + TString("%");
-         method.ReplaceAll(argname, svalue);
+         auto p = method.Index(argname);
+         if (p == kNPOS)
+            continue;
+
+         method.Remove(p, argname.Length());
+
+         if ((p > 0) && (p < method.Length()) && (method.Length() > 1) && (method[p-1] == '"') && (method[p] == '"')) {
+            // command definition has quotes around argument
+            // one can insert value from URL removing quotes
+            method.Insert(p, DecodeUrlOptionValue(argvalue, kTRUE));
+            continue;
+         }
+
+         // extract argument without removing quotes
+         TString svalue = DecodeUrlOptionValue(argvalue, kFALSE);
+
+         if ((svalue.Length() > 1) && (svalue[0] == '"') && (svalue[svalue.Length() - 1] == '"')) {
+            // if value itself has quotes, all special symbols already escaped and one can insert it as is
+            method.Insert(p, svalue);
+            continue;
+         }
+
+         Bool_t is_numeric = kTRUE;
+         // expect decimal, hex or float values here, E/e also belong to hex
+         for(Size_t i = 0; is_numeric && (i < svalue.Length()); ++i)
+            is_numeric = std::isxdigit(svalue[i]) || std::strchr(".+-", svalue[i]);
+
+         // always quote content which not numeric
+         if (!is_numeric)
+            svalue = "\"" + svalue + "\"";
+         else if (svalue.IsNull())
+            svalue = "0";
+
+         method.Insert(p, svalue);
       }
    }
 
@@ -1240,7 +1271,15 @@ Bool_t TRootSniffer::ExecuteCmd(const std::string &path, const std::string &opti
          Info("ExecuteCmd", "Executing %s", method.Data());
    }
 
-   auto v = gROOT->ProcessLineSync(method.Data());
+   Int_t err = 0;
+   auto v = gROOT->ProcessLineSync(method.Data(), &err);
+   if (err == TInterpreter::kProcessing) {
+      gInterpreter->ProcessLine(".@");
+      if (gDebug > 0)
+         Info("ExecuteCmd", "Unbalanced braces in %s", method.Data());
+      res = "false";
+      return kTRUE;
+   }
 
    res = std::to_string(v);
 
@@ -1280,12 +1319,16 @@ Bool_t TRootSniffer::ProduceXml(const std::string &/* path */, const std::string
 ////////////////////////////////////////////////////////////////////////////////
 /// Method replaces all kind of special symbols, which could appear in URL options
 
-TString TRootSniffer::DecodeUrlOptionValue(const char *value, Bool_t remove_quotes)
+TString TRootSniffer::DecodeUrlOptionValue(const char *value, Bool_t remove_quotes, Bool_t escape_special)
 {
-   if (!value || (strlen(value) == 0))
-      return TString();
+   if (!value || !*value)
+      return "";
 
    TString res = value;
+
+   // discard too large URL options, they should not appear at all
+   if (res.Length() > 1024)
+      return "";
 
    res.ReplaceAll("%27", "\'");
    res.ReplaceAll("%22", "\"");
@@ -1296,13 +1339,43 @@ TString TRootSniffer::DecodeUrlOptionValue(const char *value, Bool_t remove_quot
    res.ReplaceAll("%5D", "]");
    res.ReplaceAll("%3D", "=");
 
-   if (remove_quotes && (res.Length() > 1) && ((res[0] == '\'') || (res[0] == '\"')) &&
-       (res[0] == res[res.Length() - 1])) {
+   Char_t quote = 0;
+
+   if ((res.Length() > 1) && ((res[0] == '\'') || (res[0] == '\"')) && (res[0] == res[res.Length() - 1]))
+      quote = res[0];
+
+   // first remove quotes
+   if (quote) {
       res.Remove(res.Length() - 1);
       res.Remove(0, 1);
    }
 
-   return res;
+   if (!escape_special && remove_quotes)
+      return res;
+
+   // we expect normal content here, no special symbols, no unescaped quotes
+   TString clean;
+   for (Ssiz_t i = 0; i < res.Length(); ++i) {
+      char c = res[i];
+      if (c == '"' || c == '\\') {
+         // escape quotes and slahes
+         clean.Append('\\');
+         clean.Append(c);
+      } else if (!std::iscntrl(c))
+         // ignore all special symbols
+         clean.Append(c);
+   }
+
+   if (quote && !remove_quotes) {
+      // return string with quotes - when desired
+      res = "";
+      res.Append(quote);
+      res.Append(clean);
+      res.Append(quote);
+      return res;
+   }
+
+   return clean;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1446,6 +1519,16 @@ Bool_t TRootSniffer::ProduceBinary(const std::string & /*path*/, const std::stri
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Produce ROOT file for specified item
+///
+/// Implemented only in TRootSnifferFull class
+
+Bool_t TRootSniffer::ProduceRootFile(const std::string & /*path*/, const std::string & /*query*/, std::string & /*res*/)
+{
+   return kFALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Method to produce image from specified object
 ///
 /// Parameters:
@@ -1465,12 +1548,19 @@ Bool_t TRootSniffer::ProduceBinary(const std::string & /*path*/, const std::stri
 ///
 ///      http://localhost:8080/Files/hsimple.root/hpx/get.png?w=500&h=500&opt=lego1
 ///
-///  Return is memory with produced image
-///  Memory must be released by user with free(ptr) call
+///  Returns produced image in the res string
 ///
 ///  Method implemented only in TRootSnifferFull class
 
 Bool_t TRootSniffer::ProduceImage(Int_t /*kind*/, const std::string & /*path*/, const std::string & /*options*/, std::string & /*res*/)
+{
+   return kFALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Invokes TRootSniffer::ProduceIamge, converting kind into TImage::EImageFileTypes type
+
+Bool_t TRootSniffer::CallProduceImage(const std::string &/*kind*/, const std::string &/*path*/, const std::string &/*options*/, std::string &/*res*/)
 {
    return kFALSE;
 }
@@ -1487,11 +1577,13 @@ Bool_t TRootSniffer::ProduceImage(Int_t /*kind*/, const std::string & /*path*/, 
 /// * "root.gif"  - gif image
 /// * "root.xml"  - xml representation
 /// * "root.json" - json representation
+/// * "file.root" - ROOT file with stored object
 /// * "exe.json"  - method execution with json reply
 /// * "exe.bin"   - method execution with binary reply
 /// * "exe.txt"   - method execution with debug output
 /// * "cmd.json"  - execution of registered commands
 ///
+/// @param options specific options
 /// @param res returns result - binary or text.
 
 Bool_t TRootSniffer::Produce(const std::string &path, const std::string &file, const std::string &options, std::string &res)
@@ -1503,13 +1595,13 @@ Bool_t TRootSniffer::Produce(const std::string &path, const std::string &file, c
       return ProduceBinary(path, options, res);
 
    if (file == "root.png")
-      return ProduceImage(TImage::kPng, path, options, res);
+      return CallProduceImage("png", path, options, res);
 
    if (file == "root.jpeg")
-      return ProduceImage(TImage::kJpeg, path, options, res);
+      return CallProduceImage("jpeg", path, options, res);
 
    if (file == "root.gif")
-      return ProduceImage(TImage::kGif, path, options, res);
+      return CallProduceImage("gif", path, options, res);
 
    if (file == "exe.bin")
       return ProduceExe(path, options, 2, res);
@@ -1519,6 +1611,9 @@ Bool_t TRootSniffer::Produce(const std::string &path, const std::string &file, c
 
    if (file == "root.json")
       return ProduceJson(path, options, res);
+
+   if (file == "file.root")
+      return ProduceRootFile(path, options, res);
 
    // used for debugging
    if (file == "exe.txt")
@@ -1565,7 +1660,7 @@ TObject *TRootSniffer::GetItem(const char *fullname, TFolder *&parent, Bool_t fo
       path = fObjectsPath + "/" + path;
 
    TString tok;
-   Ssiz_t from(0);
+   Ssiz_t from = 0;
 
    while (path.Tokenize(tok, from, "/")) {
       if (tok.Length() == 0)
@@ -1609,6 +1704,7 @@ TFolder *TRootSniffer::GetSubFolder(const char *subfolder, Bool_t force)
 ////////////////////////////////////////////////////////////////////////////////
 /// Register object in subfolder structure
 ///
+/// @param obj pointer to TObject
 /// @param subfolder can have many levels like:
 ///
 ///     TRootSniffer* sniff = new TRootSniffer("sniff");
@@ -1707,14 +1803,13 @@ Bool_t TRootSniffer::AccessField(TFolder *parent, TObject *chld, const char *nam
 
    TIter iter(parent->GetListOfFolders());
 
-   TObject *obj = nullptr;
-   Bool_t find(kFALSE), last_find(kFALSE);
+   Bool_t find = kFALSE, last_find = kFALSE;
    // this is special case of top folder - fields are on very top
-   if (parent == chld) {
+   if (parent == chld)
       last_find = find = kTRUE;
-   }
+
    TNamed *curr = nullptr;
-   while ((obj = iter()) != nullptr) {
+   while (auto obj = iter()) {
       if (IsItemField(obj)) {
          if (last_find && obj->GetName() && !strcmp(name, obj->GetName()))
             curr = (TNamed *)obj;
@@ -1864,14 +1959,14 @@ const char *TRootSniffer::GetItemField(const char *fullname, const char *name)
 
 Bool_t TRootSniffer::RegisterCommand(const char *cmdname, const char *method, const char *icon)
 {
-   CreateItem(cmdname, Form("command %s", method));
+   CreateItem(cmdname, TString::Format("command %s", method).Data());
    SetItemField(cmdname, "_kind", "Command");
    if (icon) {
       if (strncmp(icon, "button;", 7) == 0) {
          SetItemField(cmdname, "_fastcmd", "true");
          icon += 7;
       }
-      if (*icon != 0)
+      if (*icon)
          SetItemField(cmdname, "_icon", icon);
    }
    SetItemField(cmdname, "method", method);

@@ -9,6 +9,7 @@
  *************************************************************************/
 
 #include "ROOT/RDF/RDatasetSpec.hxx"
+#include <ROOT/RFriendInfo.hxx>
 #include <stdexcept> // std::logic_error
 
 namespace ROOT {
@@ -28,130 +29,207 @@ RDatasetSpec::REntryRange::REntryRange(Long64_t begin, Long64_t end) : fBegin(be
                              "creation of a dataset specification.");
 }
 
-/**
- * \class ROOT::RDF::Experimental::RDatasetSpec
- * \ingroup dataframe
- * \brief A dataset specification for RDataFrame.
- **/
-
-////////////////////////////////////////////////////////////////////////////
-/// \brief Construct an RDatasetSpec for one or more samples with the same tree name.
-/// \param[in] treeName Name of the tree
-/// \param[in] fileNameGlob Single file name or glob expression for the files where the tree(s) are stored
-/// \param[in] entryRange The global entry range to be processed, {begin (inclusive), end (exclusive)}
-///
-/// The filename glob supports the same type of expressions as TChain::Add().
-RDatasetSpec::RDatasetSpec(const std::string &treeName, const std::string &fileNameGlob, const REntryRange &entryRange)
-   : fTreeNames({treeName}), fFileNameGlobs({fileNameGlob}), fEntryRange(entryRange)
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns the collection of the dataset's sample names.
+const std::vector<std::string> RDatasetSpec::GetSampleNames() const
 {
+   std::vector<std::string> sampleNames;
+   sampleNames.reserve(fSamples.size());
+   for (const auto &sample : fSamples)
+      sampleNames.emplace_back(sample.GetSampleName());
+   return sampleNames;
 }
 
-////////////////////////////////////////////////////////////////////////////
-/// \brief Construct an RDatasetSpec for one or more samples with the same tree name.
-/// \param[in] treeName Name of the tree
-/// \param[in] fileNameGlobs A vector of file names or glob expressions for the files where the trees are stored
-/// \param[in] entryRange The global entry range to be processed, {begin (inclusive), end (exclusive)}
-///
-/// The filename glob supports the same type of expressions as TChain::Add().
-RDatasetSpec::RDatasetSpec(const std::string &treeName, const std::vector<std::string> &fileNameGlobs,
-                           const REntryRange &entryRange)
-   : fTreeNames({treeName}), fFileNameGlobs(fileNameGlobs), fEntryRange(entryRange)
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns the collection of the dataset's tree names.
+const std::vector<std::string> RDatasetSpec::GetTreeNames() const
 {
-}
-
-////////////////////////////////////////////////////////////////////////////
-/// \brief Construct an RDatasetSpec for a chain of several trees (possibly having different names).
-/// \param[in] treeAndFileNameGlobs A vector of pairs of tree names and their corresponding file names/globs
-/// \param[in] entryRange The global entry range to be processed, {begin (inclusive), end (exclusive)}
-///
-/// The filename glob supports the same type of expressions as TChain::Add().
-///
-/// ### Example usage:
-/// ~~~{.py}
-/// spec = ROOT.RDF.Experimental.RDatasetSpec([("tree1", "a.root"), ("tree2", "b.root")], (5, 10))
-/// df = ROOT.RDataFrame(spec)
-/// ~~~
-RDatasetSpec::RDatasetSpec(const std::vector<std::pair<std::string, std::string>> &treeAndFileNameGlobs,
-                           const REntryRange &entryRange)
-   : fEntryRange(entryRange)
-{
-   fTreeNames.reserve(treeAndFileNameGlobs.size());
-   fFileNameGlobs.reserve(treeAndFileNameGlobs.size());
-   for (auto &p : treeAndFileNameGlobs) {
-      fTreeNames.emplace_back(p.first);
-      fFileNameGlobs.emplace_back(p.second);
+   std::vector<std::string> treeNames;
+   for (const auto &sample : fSamples) {
+      const auto &trees = sample.GetTreeNames();
+      treeNames.insert(std::end(treeNames), std::begin(trees), std::end(trees));
    }
+   return treeNames;
 }
-
-////////////////////////////////////////////////////////////////////////////
-/// \brief Add a friend tree or chain with the same tree name to the dataset specification.
-/// \param[in] treeName Name of the tree
-/// \param[in] fileNameGlob Single file name or glob expression for the files where the tree(s) are stored
-/// \param[in] alias String to refer to the particular friend
-///
-/// The filename glob supports the same type of expressions as TChain::Add().
-void RDatasetSpec::AddFriend(const std::string &treeName, const std::string &fileNameGlob, const std::string &alias)
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns the collection of the dataset's paths to files, or globs if specified in input.
+const std::vector<std::string> RDatasetSpec::GetFileNameGlobs() const
 {
-   fFriendInfo.AddFriend(treeName, fileNameGlob, alias);
+   std::vector<std::string> fileNames;
+   for (const auto &sample : fSamples) {
+      const auto &files = sample.GetFileNameGlobs();
+      fileNames.insert(std::end(fileNames), std::begin(files), std::end(files));
+   }
+   return fileNames;
 }
-
-////////////////////////////////////////////////////////////////////////////
-/// \brief Add a friend tree or chain with the same tree name to the dataset specification.
-/// \param[in] treeName Name of the tree
-/// \param[in] fileNameGlobs A vector of file names or glob expressions for the files where the trees are stored
-/// \param[in] alias String to refer to the particular friend
-///
-/// The filename glob supports the same type of expressions as TChain::Add().
-void RDatasetSpec::AddFriend(const std::string &treeName, const std::vector<std::string> &fileNameGlobs,
-                             const std::string &alias)
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns the collection of the dataset's metadata (RMetaData class objects).
+const std::vector<RMetaData> RDatasetSpec::GetMetaData() const
 {
-   fFriendInfo.AddFriend(treeName, fileNameGlobs, alias);
+   std::vector<RMetaData> metaDatas;
+   metaDatas.reserve(fSamples.size());
+   for (const auto &sample : fSamples)
+      metaDatas.emplace_back(sample.GetMetaData());
+   return metaDatas;
 }
 
-////////////////////////////////////////////////////////////////////////////
-/// \brief Add a friend tree or chain (possibly with different tree names) to the dataset specification.
-/// \param[in] treeAndFileNameGlobs A vector of pairs of tree names and their corresponding file names/globs
-/// \param[in] alias String to refer to the particular friend
-///
-/// The filename glob supports the same type of expressions as TChain::Add().
-///
-/// ### Example usage:
-/// ~~~{.py}
-/// spec = ROOT.RDF.Experimental.RDatasetSpec("tree", "file.root")
-/// spec.AddFriend([("tree1", "a.root"), ("tree2", "b.root")], "alias")
-/// df = ROOT.RDataFrame(spec)
-/// ~~~
-void RDatasetSpec::AddFriend(const std::vector<std::pair<std::string, std::string>> &treeAndFileNameGlobs,
-                             const std::string &alias)
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns the reference to the friend tree information.
+const ROOT::TreeUtils::RFriendInfo &RDatasetSpec::GetFriendInfo() const
 {
-   fFriendInfo.AddFriend(treeAndFileNameGlobs, alias);
+   return *std::any_cast<ROOT::TreeUtils::RFriendInfo>(&fFriendInfo);
 }
 
-const std::vector<std::string> &RDatasetSpec::GetTreeNames() const
+ROOT::TreeUtils::RFriendInfo &RDatasetSpec::GetFriendInfo()
 {
-   return fTreeNames;
+   return *std::any_cast<ROOT::TreeUtils::RFriendInfo>(&fFriendInfo);
 }
 
-const std::vector<std::string> &RDatasetSpec::GetFileNameGlobs() const
-{
-   return fFileNameGlobs;
-}
-
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns the first entry as defined by the global range provided in the specification.
+/// The first entry is inclusive.
 Long64_t RDatasetSpec::GetEntryRangeBegin() const
 {
    return fEntryRange.fBegin;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns the last entry as defined by the global range provided in the specification.
+/// The last entry is exclusive.
 Long64_t RDatasetSpec::GetEntryRangeEnd() const
 {
    return fEntryRange.fEnd;
 }
 
-const ROOT::TreeUtils::RFriendInfo &RDatasetSpec::GetFriendInfo() const
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Returns a collection of instances of the RSample class.
+/// RSample class represents a sample i.e. a grouping of trees (and their corresponding fileglobs) and, optionally, the
+/// sample's metadata.
+std::vector<RSample> RDatasetSpec::MoveOutSamples()
 {
-   return fFriendInfo;
+   return std::move(fSamples);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Add sample (RSample class object) to the RDatasetSpec object.
+/// \param[in] sample RSample class object.
+/// RSample class represents a sample i.e. a grouping of trees (and their corresponding fileglobs) and, optionally, the
+/// sample's metadata.
+/// ### Example usage:
+/// Our goal is to create an RDataFrame from the RDatasetSpec object.
+/// In order to do that, we need to create an RSample object first.
+/// In order to make this example even fuller, before we create the RSample object,
+/// we also create the RMetaData object which will be associated with our RSample object.
+/// Note that adding this metadata information to the RSample object is optional.
+/// ~~~{.cpp}
+/// // Create the RMetaData object which will be used to create the RSample object.
+/// ROOT::RDF::Experimental::RMetaData meta;
+/// meta.Add("sample_name", "name");
+/// // Create the RSample object "mySample" with sample name "mySampleName", tree name "outputTree1",
+/// // file name "outputFile.root" and associated metadata information.
+/// ROOT::RDF::Experimental::RSample mySample("mySampleName", "outputTree1", "outputFile.root", meta);
+/// // Create the RDatasetSpec object to which we add the sample (RSample object).
+/// ROOT::RDF::Experimental::RDatasetSpec spec;
+/// spec.AddSample(mySample);
+/// // Finally, create an RDataFrame from the RDatasetSpec object.
+/// auto df = ROOT::RDataFrame(spec);
+/// ~~~
+RDatasetSpec &RDatasetSpec::AddSample(RSample sample)
+{
+   sample.SetSampleId(fSamples.size());
+   fSamples.push_back(std::move(sample));
+   return *this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Add friend tree to RDatasetSpec object
+/// \param[in] treeName Name of the tree.
+/// \param[in] fileNameGlob Path to the file in which the tree is stored. Refer to TChain::Add for globbing rules.
+/// \param[in] alias Alias for this friend.
+///
+/// ### Example usage:
+/// ~~~{.cpp}
+/// ROOT::RDF::Experimental::RSample s("mySample", "outputTree1", "outputFile.root");
+/// ROOT::RDF::Experimental::RDatasetSpec spec;
+/// spec.AddSample(s);
+/// // Add friend tree "outputTree2" with the alias "myTreeFriend"
+/// spec.WithGlobalFriends("outputTree2", "outputFile.root", "myTreeFriend");
+/// auto df = ROOT::RDataFrame(spec);
+/// ~~~
+RDatasetSpec &
+RDatasetSpec::WithGlobalFriends(const std::string &treeName, const std::string &fileNameGlob, const std::string &alias)
+{
+   GetFriendInfo().AddFriend(treeName, fileNameGlob, alias);
+   return *this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Add friend tree to RDatasetSpec object
+///
+/// \param[in] treeName Name of the tree.
+/// \param[in] fileNameGlobs Collection of paths to the files in which the tree is stored. Refer to TChain::Add for
+/// globbing rules. \param[in] alias Alias for this friend.
+RDatasetSpec &RDatasetSpec::WithGlobalFriends(const std::string &treeName,
+                                              const std::vector<std::string> &fileNameGlobs, const std::string &alias)
+{
+   GetFriendInfo().AddFriend(treeName, fileNameGlobs, alias);
+   return *this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Add friend tree to RDatasetSpec object
+/// \param[in] treeAndFileNameGlobs Collection of pairs of paths to trees and paths to files.
+/// \param[in] alias Alias for this friend.
+RDatasetSpec &
+RDatasetSpec::WithGlobalFriends(const std::vector<std::pair<std::string, std::string>> &treeAndFileNameGlobs,
+                                const std::string &alias)
+{
+   GetFriendInfo().AddFriend(treeAndFileNameGlobs, alias);
+   return *this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Add friend tree to RDatasetSpec object
+/// \param[in] treeNames Collection of paths to trees.
+/// \param[in] fileNameGlobs Collection of paths to files.
+/// \param[in] alias Alias for this friend.
+RDatasetSpec &RDatasetSpec::WithGlobalFriends(const std::vector<std::string> &treeNames,
+                                        const std::vector<std::string> &fileNameGlobs, const std::string &alias)
+{
+   if (treeNames.size() != 1 && treeNames.size() != fileNameGlobs.size())
+      throw std::logic_error("Mismatch between number of trees and file globs.");
+   std::vector<std::pair<std::string, std::string>> target;
+   target.reserve(fileNameGlobs.size());
+   for (auto i = 0u; i < fileNameGlobs.size(); ++i)
+      target.emplace_back(std::make_pair((treeNames.size() == 1u ? treeNames[0] : treeNames[i]), fileNameGlobs[i]));
+   GetFriendInfo().AddFriend(target, alias);
+   return *this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// \brief Create an RDatasetSpec object for a given range of entries
+/// \param[in] entryRange
+///
+/// ## Example usage:
+/// ~~~{.cpp}
+/// ROOT::RDF::Experimental::RSample s("mySample", "outputTree1", "outputFile.root");
+/// ROOT::RDF::Experimental::RDatasetSpec spec;
+/// spec.AddSample(s);
+/// // Set the entries range to be processed: including entry 1 and excluding entry 10.
+/// spec.WithGlobalRange({1, 10});
+/// auto df = ROOT::RDataFrame(spec);
+/// ~~~
+RDatasetSpec &RDatasetSpec::WithGlobalRange(const RDatasetSpec::REntryRange &entryRange)
+{
+   fEntryRange = entryRange;
+   return *this;
 }
 
 } // namespace Experimental
 } // namespace RDF
 } // namespace ROOT
+
+ROOT::RDF::Experimental::RDatasetSpec::RDatasetSpec() noexcept
+{
+   fFriendInfo = ROOT::TreeUtils::RFriendInfo{};
+};

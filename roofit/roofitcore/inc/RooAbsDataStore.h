@@ -20,7 +20,7 @@
 #include "RooArgSet.h"
 #include "RooAbsData.h"
 
-#include "ROOT/RStringView.hxx"
+#include <string_view>
 #include "TNamed.h"
 
 #include <list>
@@ -29,9 +29,6 @@
 class RooAbsArg ;
 class RooArgList ;
 class TTree ;
-namespace RooBatchCompute {
-struct RunContext;
-}
 
 
 class RooAbsDataStore : public TNamed, public RooPrintable {
@@ -79,14 +76,13 @@ public:
     throw std::logic_error("getCategoryBatches() not implemented in RooAbsDataStore.");
     return {};
   }
-  virtual RooSpan<const double> getWeightBatch(std::size_t first, std::size_t len) const = 0;
+  virtual std::span<const double> getWeightBatch(std::size_t first, std::size_t len) const = 0;
 
   // Change observable name
   virtual bool changeObservableName(const char* from, const char* to) =0 ;
 
   // Add one or more columns
   virtual RooAbsArg* addColumn(RooAbsArg& var, bool adjustRange=true) = 0 ;
-  RooArgSet* addColumns(const RooArgList& varList);
 
   // Merge column-wise
   virtual RooAbsDataStore* merge(const RooArgSet& allvars, std::list<RooAbsDataStore*> dstoreList) = 0 ;
@@ -125,29 +121,15 @@ public:
   int defaultPrintContents(Option_t* /*opt*/) const override { return kName|kClassName|kArgs|kValue ; }
 
 
-  // Constant term  optimizer interface
-  virtual void cacheArgs(const RooAbsArg* cacheOwner, RooArgSet& varSet, const RooArgSet* nset=nullptr, bool skipZeroWeights=false) = 0 ;
-  virtual const RooAbsArg* cacheOwner() = 0 ;
-  virtual void attachCache(const RooAbsArg* newOwner, const RooArgSet& cachedVars) = 0 ;
-  virtual void setArgStatus(const RooArgSet& set, bool active) = 0 ;
-  const RooArgSet& cachedVars() const { return _cachedVars ; }
-  virtual void resetCache() = 0 ;
-  virtual void recalculateCache(const RooArgSet* /*proj*/, Int_t /*firstEvent*/, Int_t /*lastEvent*/, Int_t /*stepSize*/, bool /* skipZeroWeights*/) {} ;
-
   virtual void setDirtyProp(bool flag) { _doDirtyProp = flag ; }
   bool dirtyProp() const { return _doDirtyProp ; }
 
   virtual void checkInit() const {} ;
 
-  virtual bool hasFilledCache() const { return false ; }
-
-  virtual const TTree* tree() const { return nullptr ; }
   virtual void dump() {}
 
   virtual void loadValues(const RooAbsDataStore *tds, const RooFormulaVar* select=nullptr, const char* rangeName=nullptr,
       std::size_t nStart=0, std::size_t nStop = std::numeric_limits<std::size_t>::max()) = 0 ;
-
-  virtual void forceCacheUpdate() {} ;
 
  protected:
 

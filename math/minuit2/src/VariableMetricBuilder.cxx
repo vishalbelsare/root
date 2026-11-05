@@ -18,12 +18,11 @@
 #include "Minuit2/MnFcn.h"
 #include "Minuit2/MnMachinePrecision.h"
 #include "Minuit2/MnPosDef.h"
-#include "Minuit2/MnParabolaPoint.h"
-#include "Minuit2/LaSum.h"
-#include "Minuit2/LaProd.h"
 #include "Minuit2/MnStrategy.h"
 #include "Minuit2/MnHesse.h"
 #include "Minuit2/MnPrint.h"
+
+#include "Math/Util.h"
 
 #include <cmath>
 #include <cassert>
@@ -31,8 +30,6 @@
 namespace ROOT {
 
 namespace Minuit2 {
-
-double inner_product(const LAVector &, const LAVector &);
 
 void VariableMetricBuilder::AddResult(std::vector<MinimumState> &result, const MinimumState &state) const
 {
@@ -92,13 +89,13 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
    }
 
    std::vector<MinimumState> result;
-   if (StorageLevel() > 0)
-      result.reserve(10);
-   else
-      result.reserve(2);
+   result.reserve(StorageLevel() > 0 ? 10 : 2);
 
    // do actual iterations
    print.Info("Start iterating until Edm is <", edmval, "with call limit =", maxfcn);
+
+   // print time after returning
+   ROOT::Math::Util::TimingScope timingScope([&print](std::string const &s) { print.Info(s); }, "Stop iterating after");
 
    AddResult(result, seed.State());
 
@@ -133,11 +130,13 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
       edm = result.back().Edm();
       // need to correct again for Dcovar: edm *= (1. + 3. * e.Dcovar()) ???
 
-      if ((strategy.Strategy() == 2) || (strategy.Strategy() == 1 && min.Error().Dcovar() > 0.05)) {
+      if (min.Error().Dcovar() > strategy.HessianRecomputeThreshold()) {
 
          print.Debug("MnMigrad will verify convergence and Error matrix; dcov =", min.Error().Dcovar());
 
-         MinimumState st = MnHesse(strategy)(fcn, min.State(), min.Seed().Trafo(), maxfcn);
+         MnStrategy strat(strategy);
+         strat.SetHessianForcePosDef(1); // ensure no matter what strategy is used, we force the result positive-definite if required
+         MinimumState st = MnHesse(strat)(fcn, min.State(), min.Seed().Trafo(), maxfcn);
 
          print.Info("After Hessian");
 
@@ -249,6 +248,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
          break;
       }
 
+      // gdel = s^T * g = -g^T H g (since s = - Hg)  so it must be negative
       double gdel = inner_product(step, s0.Gradient().Grad());
 
       if (gdel > 0.) {
@@ -272,7 +272,7 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
          }
       }
 
-      MnParabolaPoint pp = lsearch(fcn, s0.Parameters(), step, gdel, prec);
+      auto pp = lsearch(fcn, s0.Parameters(), step, gdel, prec);
 
       // <= needed for case 0 <= 0
       if (std::fabs(pp.Y() - s0.Fval()) <= std::fabs(s0.Fval()) * prec.Eps()) {
@@ -349,16 +349,15 @@ FunctionMinimum VariableMetricBuilder::Minimum(const MnFcn &fcn, const GradientC
 
    if (fcn.NumOfCalls() >= maxfcn) {
       print.Warn("Call limit exceeded");
-
       return FunctionMinimum(seed, result, fcn.Up(), FunctionMinimum::MnReachedCallLimit);
    }
 
    if (edm > edmval) {
-      if (edm < std::fabs(prec.Eps2() * result.back().Fval())) {
-         print.Warn("Machine accuracy limits further improvement");
-
+      if (edm < 10 * edmval) {
+         print.Info("Edm is close to limit - return current minimum");
          return FunctionMinimum(seed, result, fcn.Up());
-      } else if (edm < 10 * edmval) {
+      } else if (edm < std::fabs(prec.Eps2() * result.back().Fval())) {
+         print.Warn("Edm is limited by Machine accuracy - return current minimum");
          return FunctionMinimum(seed, result, fcn.Up());
       } else {
          print.Warn("Iterations finish without convergence; Edm", edm, "Requested", edmval);

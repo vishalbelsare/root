@@ -1,10 +1,10 @@
 // Tests for the RooAbsCollection and derived classes
 // Authors: Stephan Hageboeck, CERN  05/2020
-#include "RooArgSet.h"
-#include "RooRealVar.h"
-#include "RooHelpers.h"
+#include <RooArgSet.h>
+#include <RooHelpers.h>
+#include <RooRealVar.h>
 
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
 
 /// ROOT-10845 IsOnHeap() always returned false.
 TEST(RooArgSet, IsOnHeap) {
@@ -80,13 +80,13 @@ TEST(RooArgSet, InsertAndDeduplicate) {
   RooArgList list2;
   for (unsigned int i = 0; i < 4; ++i) {
     char name[] = {char('a'+i), '\0'};
-    list.addOwned(*(new RooRealVar(name, name, 0.)));
+    list.addOwned(std::make_unique<RooRealVar>(name, name, 0.));
   }
   for (unsigned int i = 0; i < 5; ++i) {
     char name[] = {char('a'+i), '\0'};
-    list2.addOwned(*(new RooRealVar(name, name, 0.)));
+    list2.addOwned(std::make_unique<RooRealVar>(name, name, 0.));
     name[0] = char('a'+ 4 - i);
-    list2.addOwned(*(new RooRealVar(name, name, 0.)));
+    list2.addOwned(std::make_unique<RooRealVar>(name, name, 0.));
   }
 
   // Silence deduplication error messages
@@ -112,13 +112,13 @@ TEST(RooArgSet, HashAssistedFind) {
   RooArgList list2;
   for (unsigned int i = 0; i < 4; ++i) {
     char name[] = {char('a'+i), '\0'};
-    list.addOwned(*(new RooRealVar(name, name, 0.)));
+    list.addOwned(std::make_unique<RooRealVar>(name, name, 0.));
   }
   for (unsigned int i = 0; i < 5; ++i) {
     char name[] = {char('a'+i), '\0'};
-    list2.addOwned(*(new RooRealVar(name, name, 0.)));
+    list2.addOwned(std::make_unique<RooRealVar>(name, name, 0.));
     name[0] = char('a'+ 4 - i);
-    list2.addOwned(*(new RooRealVar(name, name, 0.)));
+    list2.addOwned(std::make_unique<RooRealVar>(name, name, 0.));
   }
 
   // Silence deduplication error messages
@@ -133,12 +133,34 @@ TEST(RooArgSet, HashAssistedFind) {
   EXPECT_EQ(set.size(), 5);
 
   // Renaming would invalidate the old hash map. Test that it gets regenerated correctly:
-  list.useHashMapForFind(true);
-
   list[0].SetName("a'");
   EXPECT_EQ(set.find("a"), nullptr);
   EXPECT_EQ(set.find("a'"), & list[0]);
+}
 
-  EXPECT_EQ(list.find("a"), nullptr);
-  EXPECT_EQ(list.find("a'"), & list[0]);
+// Previously in: roottest/root/roofitstats/read_scientific_notation.py
+TEST(RooArgSet, TextFileIO)
+{
+   const double xVal = 1000000;
+   const double xMin = 10000;
+   const double xMax = 1000000;
+
+   std::stringstream ss;
+   {
+      RooRealVar x{"x", "x", xVal, xMin, xMax};
+      RooArgSet aset{x};
+
+      aset.writeToStream(ss, false);
+   }
+
+   std::istringstream iss{ss.str()};
+
+   RooRealVar x{"x", "x", 10, 1, 100};
+   RooArgSet aset{x};
+   aset.readFromStream(iss, false, nullptr, nullptr);
+
+   // Test that both value and range have been updated correctly:
+   EXPECT_EQ(x.getVal(), xVal);
+   EXPECT_EQ(x.getMin(), xMin);
+   EXPECT_EQ(x.getMax(), xMax);
 }

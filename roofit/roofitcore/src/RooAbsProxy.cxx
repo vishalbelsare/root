@@ -14,16 +14,17 @@
  * listed in LICENSE (http://roofit.sourceforge.net/license.txt)             *
  *****************************************************************************/
 
-#include "Riostream.h"
 #include "RooAbsProxy.h"
 #include "RooArgSet.h"
+
+#include <ostream>
 
 /**
 \file RooAbsProxy.cxx
 \class RooAbsProxy
 \ingroup Roofitcore
 
-RooAbsProxy is the abstact interface for proxy classes.
+Abstract interface for proxy classes.
 Proxy classes hold pointers to other Roofit objects
 and process serverRedirect changes so that the proxied
 pointers are updated accordingly on a clone or copy of
@@ -31,20 +32,8 @@ of the owning class
 **/
 
 
-using namespace std;
 
-ClassImp(RooAbsProxy);
-;
-
-
-////////////////////////////////////////////////////////////////////////////////
-/// Constructor
-
-RooAbsProxy::RooAbsProxy() : _nset(0)
-{
-}
-
-
+RooAbsProxy::RooAbsProxy() = default;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Copy constructor
@@ -68,7 +57,7 @@ void RooAbsProxy::changeNormSet(const RooArgSet* newNormSet)
 ////////////////////////////////////////////////////////////////////////////////
 /// Print proxy name
 
-void RooAbsProxy::print(ostream& os, bool /*addContents*/) const
+void RooAbsProxy::print(std::ostream& os, bool /*addContents*/) const
 {
-  os << name() << endl ;
+  os << name() << std::endl;
 }

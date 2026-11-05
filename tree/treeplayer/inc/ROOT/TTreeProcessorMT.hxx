@@ -62,8 +62,7 @@ class TTreeView {
    std::unique_ptr<TChain> fChain; ///< Chain on which to operate
 
    void MakeChain(const std::vector<std::string> &treeName, const std::vector<std::string> &fileNames,
-                  const ROOT::TreeUtils::RFriendInfo &friendInfo, const std::vector<Long64_t> &nEntries,
-                  const std::vector<std::vector<Long64_t>> &friendEntries);
+                  const ROOT::TreeUtils::RFriendInfo &friendInfo, const std::vector<Long64_t> &nEntries);
 
 public:
    TTreeView() = default;
@@ -73,7 +72,7 @@ public:
                                               const std::vector<std::string> &fileNames,
                                               const ROOT::TreeUtils::RFriendInfo &friendInfo,
                                               const TEntryList &entryList, const std::vector<Long64_t> &nEntries,
-                                              const std::vector<std::vector<Long64_t>> &friendEntries);
+                                              const std::set<std::string> &suppressErrorsForMissingBranches);
    void Reset();
 };
 } // End of namespace Internal
@@ -84,7 +83,7 @@ private:
    const std::vector<std::string> fTreeNames; ///< TTree names (always same size and ordering as fFileNames)
    /// User-defined selection of entry numbers to be processed, empty if none was provided
    TEntryList fEntryList;
-   const ROOT::TreeUtils::RFriendInfo fFriendInfo;
+   ROOT::TreeUtils::RFriendInfo fFriendInfo;
    ROOT::TThreadExecutor fPool; ///<! Thread pool for processing.
 
    /// Thread-local TreeViews
@@ -96,15 +95,24 @@ private:
 
    std::pair<Long64_t, Long64_t> fGlobalRange{0, std::numeric_limits<Long64_t>::max()};
 
+   // List of branches for which we want to suppress the printed error about
+   // missing branch when switching to a new tree
+   std::set<std::string> fSuppressErrorsForMissingBranches{};
+
 public:
    TTreeProcessorMT(std::string_view filename, std::string_view treename = "", UInt_t nThreads = 0u,
                     const std::pair<Long64_t, Long64_t> &globalRange = {0, std::numeric_limits<Long64_t>::max()});
    TTreeProcessorMT(const std::vector<std::string_view> &filenames, std::string_view treename = "",
                     UInt_t nThreads = 0u,
                     const std::pair<Long64_t, Long64_t> &globalRange = {0, std::numeric_limits<Long64_t>::max()});
-   TTreeProcessorMT(TTree &tree, const TEntryList &entries, UInt_t nThreads = 0u);
+   TTreeProcessorMT(std::initializer_list<std::string_view> filenames, std::string_view treename = "", UInt_t nThreads = 0u,
+                    const std::pair<Long64_t, Long64_t> &globalRange = {0, std::numeric_limits<Long64_t>::max()}):
+                    TTreeProcessorMT(std::vector<std::string_view>(filenames), treename, nThreads, globalRange) {}
+   TTreeProcessorMT(TTree &tree, const TEntryList &entries, UInt_t nThreads = 0u,
+                    const std::set<std::string> &suppressErrorsForMissingBranches = {});
    TTreeProcessorMT(TTree &tree, UInt_t nThreads = 0u,
-                    const std::pair<Long64_t, Long64_t> &globalRange = {0, std::numeric_limits<Long64_t>::max()});
+                    const std::pair<Long64_t, Long64_t> &globalRange = {0, std::numeric_limits<Long64_t>::max()},
+                    const std::set<std::string> &suppressErrorsForMissingBranches = {});
 
    void Process(std::function<void(TTreeReader &)> func);
 

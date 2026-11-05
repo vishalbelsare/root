@@ -1,41 +1,54 @@
 // Tests for the RooBinSamplingPdf
 // Authors: Jonas Rembser, CERN  03/2022
+
+#include <RooAddPdf.h>
 #include <RooArgSet.h>
 #include <RooBinSamplingPdf.h>
-#include <RooGenericPdf.h>
-#include <RooAddPdf.h>
-#include <RooRandom.h>
-#include <RooDataSet.h>
 #include <RooDataHist.h>
+#include <RooDataSet.h>
+#include <RooGaussian.h>
+#include <RooGenericPdf.h>
+#include <RooHelpers.h>
+#include <RooRandom.h>
 #include <RooRealVar.h>
-#include <RooMsgService.h>
 
-#include <gtest/gtest.h>
+#include "gtest_wrapper.h"
 
 #include <memory>
 
+class ParamTest : public testing::TestWithParam<std::tuple<std::string>> {
+   void SetUp() override
+   {
+      RooRandom::randomGenerator()->SetSeed(1337ul);
+      _batchMode = std::get<0>(GetParam());
+      _changeMsgLvl = std::make_unique<RooHelpers::LocalChangeMsgLevel>(RooFit::WARNING);
+   }
+
+   void TearDown() override { _changeMsgLvl.reset(); }
+
+protected:
+   std::string _batchMode;
+
+private:
+   std::unique_ptr<RooHelpers::LocalChangeMsgLevel> _changeMsgLvl;
+};
+
 // For a linear pdf, doing the bin sampling should make no difference because
 // the integral of a linear function is the same as the central point.
-TEST(RooBinSamplingPdf, LinearPdfCrossCheck)
+TEST_P(ParamTest, LinearPdfCrossCheck)
 {
    using namespace RooFit;
 
-   auto& msg = RooMsgService::instance();
-   msg.setGlobalKillBelow(RooFit::WARNING);
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
 
    RooRandom::randomGenerator()->SetSeed(1337ul);
 
    RooRealVar x("x", "x", 0.1, 5.1);
    x.setBins(10);
 
-   RooGenericPdf pdf("lin", "x", RooArgSet(x));
+   RooGenericPdf pdf("lin", "x", {x});
    std::unique_ptr<RooDataHist> dataH(pdf.generateBinned(x, 10000));
-   RooRealVar w("w", "weight", 0., 0., 10000.);
-   RooDataSet data("data", "data", RooArgSet(x, w), RooFit::WeightVar(w));
-   for (int i = 0; i < dataH->numEntries(); ++i) {
-      auto coords = dataH->get(i);
-      data.add(*coords, dataH->weight());
-   }
+   RooDataSet data("data", "data", x, RooFit::Import(*dataH));
 
    std::unique_ptr<RooAbsReal> nll1(pdf.createNLL(data));
    std::unique_ptr<RooAbsReal> nll2(pdf.createNLL(data, IntegrateBins(1.E-3)));
@@ -46,12 +59,11 @@ TEST(RooBinSamplingPdf, LinearPdfCrossCheck)
 // For a linear pdf, doing the bin sampling should make no difference because
 // the integral of a linear function is the same as the central point.
 // Similar to "LinearPdfCrossCheck", but this time for a subrange fit.
-TEST(RooBinSamplingPdf, LinearPdfSubRangeCrossCheck)
+TEST_P(ParamTest, LinearPdfSubRangeCrossCheck)
 {
    using namespace RooFit;
 
-   auto& msg = RooMsgService::instance();
-   msg.setGlobalKillBelow(RooFit::WARNING);
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
 
    RooRandom::randomGenerator()->SetSeed(1337ul);
 
@@ -60,14 +72,9 @@ TEST(RooBinSamplingPdf, LinearPdfSubRangeCrossCheck)
    x.setRange("range", 0.1, 4.1);
    x.setBins(8, "range"); // consistent binning
 
-   RooGenericPdf pdf("lin", "x", RooArgSet(x));
+   RooGenericPdf pdf("lin", "x", {x});
    std::unique_ptr<RooDataHist> dataH(pdf.generateBinned(x, 10000));
-   RooRealVar w("w", "weight", 0., 0., 10000.);
-   RooDataSet data("data", "data", RooArgSet(x, w), RooFit::WeightVar(w));
-   for (int i = 0; i < dataH->numEntries(); ++i) {
-      auto coords = dataH->get(i);
-      data.add(*coords, dataH->weight());
-   }
+   RooDataSet data("data", "data", x, RooFit::Import(*dataH));
 
    std::unique_ptr<RooAbsReal> nll1(pdf.createNLL(data, Range("range")));
    std::unique_ptr<RooAbsReal> nll2(pdf.createNLL(data, Range("range"), IntegrateBins(1.E-3)));
@@ -77,6 +84,8 @@ TEST(RooBinSamplingPdf, LinearPdfSubRangeCrossCheck)
 
 TEST(RooBinSamplingPdf, CheckConsistentNormalization)
 {
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
    RooRealVar x("x", "x", 0, 10);
    RooRealVar mean1("mean1", "mean1", 4., 0, 10);
    RooRealVar mean2("mean2", "mean2", 6., 0, 10);
@@ -85,8 +94,8 @@ TEST(RooBinSamplingPdf, CheckConsistentNormalization)
 
    RooArgSet normSet{x};
 
-   RooGenericPdf gaus1("guas1", "gaus1", "std::exp(-0.5*(x - mean1)^2/width^2)", {x, mean1, width});
-   RooGenericPdf gaus2("guas2", "gaus2", "std::exp(-0.5*(x - mean2)^2/width^2)", {x, mean2, width});
+   RooGenericPdf gaus1("gauss1", "gauss1", "std::exp(-0.5*(x - mean1)^2/width^2)", {x, mean1, width});
+   RooGenericPdf gaus2("gauss2", "gauss2", "std::exp(-0.5*(x - mean2)^2/width^2)", {x, mean2, width});
    RooAddPdf pdf{"pdf", "pdf", {gaus1, gaus2}, {f}};
    pdf.fixCoefNormalization(normSet);
 
@@ -104,3 +113,61 @@ TEST(RooBinSamplingPdf, CheckConsistentNormalization)
    std::unique_ptr<RooAbsReal> int3{binSamplingPdf.createIntegral(normSet)};
    EXPECT_FLOAT_EQ(int2->getVal(), int3->getVal());
 }
+
+// The RooBinSamplingPdf uses the analytical integral of the wrapped pdf to
+// sample the bins when it is available, and falls back to the numeric
+// integrator otherwise. This test checks that the analytical path (here
+// exercised with a RooGaussian) gives the same result as the numeric path
+// (exercised with an identical RooGenericPdf that has no analytical integral).
+TEST(RooBinSamplingPdf, AnalyticalMatchesNumeric)
+{
+   using namespace RooFit;
+
+   RooHelpers::LocalChangeMsgLevel changeMsgLvl(RooFit::WARNING);
+
+   RooRealVar x("x", "x", -5, 5);
+   x.setBins(20);
+   RooRealVar mean("mean", "mean", 0.7, -5, 5);
+   RooRealVar sigma("sigma", "sigma", 1.3, 0.1, 5);
+
+   // Has an analytical integral over x -> analytical bin sampling.
+   RooGaussian gaus("gaus", "gaus", x, mean, sigma);
+   // Identical shape, but no analytical integral -> numeric bin sampling.
+   RooGenericPdf gen("gen", "gen", "std::exp(-0.5*(x-mean)*(x-mean)/(sigma*sigma))", {x, mean, sigma});
+
+   RooBinSamplingPdf bsAna("bsAna", "bsAna", x, gaus);
+   RooBinSamplingPdf bsNum("bsNum", "bsNum", x, gen);
+
+   RooArgSet normSet{x};
+
+   // Compare the sampled values bin by bin.
+   for (int i = 0; i < x.numBins(); ++i) {
+      x.setBin(i);
+      EXPECT_NEAR(bsAna.getVal(normSet), bsNum.getVal(normSet), 1e-5 * bsNum.getVal(normSet))
+         << "mismatch in bin " << i;
+   }
+
+   // The results must also agree when used in a fit, for both the legacy and
+   // the vectorizing "cpu" evaluation backend.
+   std::unique_ptr<RooDataHist> dataH(gaus.generateBinned(x, 20000));
+   RooDataSet data("data", "data", x, RooFit::Import(*dataH));
+
+   for (auto backend : {EvalBackend(EvalBackend::Value::Legacy), EvalBackend::Cpu()}) {
+      mean.setVal(0.7);
+      sigma.setVal(1.3);
+      std::unique_ptr<RooAbsReal> nllAna{gaus.createNLL(data, IntegrateBins(1.E-3), backend)};
+      mean.setVal(0.7);
+      sigma.setVal(1.3);
+      std::unique_ptr<RooAbsReal> nllNum{gen.createNLL(data, IntegrateBins(1.E-3), backend)};
+
+      EXPECT_NEAR(nllAna->getVal(), nllNum->getVal(), 1e-5 * std::abs(nllNum->getVal()))
+         << "NLL mismatch for backend " << backend.name();
+   }
+}
+
+INSTANTIATE_TEST_SUITE_P(RooBinSamplingPdf, ParamTest, testing::Values("Off", "Cpu"),
+                         [](testing::TestParamInfo<ParamTest::ParamType> const &paramInfo) {
+                            std::stringstream ss;
+                            ss << "BatchMode" << std::get<0>(paramInfo.param);
+                            return ss.str();
+                         });

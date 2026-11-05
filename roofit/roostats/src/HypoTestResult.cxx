@@ -68,10 +68,9 @@ be larger than one.
 #define NaN numeric_limits<float>::quiet_NaN()
 #define IsNaN(a) TMath::IsNaN(a)
 
-ClassImp(RooStats::HypoTestResult); ;
 
 using namespace RooStats;
-using namespace std;
+using std::numeric_limits, std::endl;
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Default constructor
@@ -110,9 +109,9 @@ HypoTestResult::HypoTestResult(const char* name, double nullp, double altp) :
 
 HypoTestResult::HypoTestResult(const HypoTestResult& other) :
    TNamed(other),
-   fNullPValue(NaN), fAlternatePValue(NaN),
-   fNullPValueError(0), fAlternatePValueError(0),
-   fTestStatisticData(NaN),
+   fNullPValue(other.fNullPValue), fAlternatePValue(other.fAlternatePValue),
+   fNullPValueError(other.fNullPValueError), fAlternatePValueError(other.fAlternatePValueError),
+   fTestStatisticData(other.fTestStatisticData),
    fAllTestStatisticsData(nullptr),
    fNullDistr(nullptr), fAltDistr(nullptr),
    fNullDetailedOutput(nullptr), fAltDetailedOutput(nullptr),
@@ -127,13 +126,7 @@ HypoTestResult::HypoTestResult(const HypoTestResult& other) :
 
 HypoTestResult::~HypoTestResult()
 {
-   if( fNullDistr ) delete fNullDistr;
-   if( fAltDistr ) delete fAltDistr;
 
-   if( fNullDetailedOutput ) delete fNullDetailedOutput;
-   if( fAltDetailedOutput ) delete fAltDetailedOutput;
-
-   if( fAllTestStatisticsData ) delete fAllTestStatisticsData;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -149,12 +142,13 @@ HypoTestResult & HypoTestResult::operator=(const HypoTestResult& other) {
    fAlternatePValueError = other.fAlternatePValueError;
    fTestStatisticData = other.fTestStatisticData;
 
-   if( fAllTestStatisticsData ) delete fAllTestStatisticsData;
+
    fAllTestStatisticsData = nullptr;
-   if( fNullDistr ) { delete fNullDistr; fNullDistr = nullptr; }
-   if( fAltDistr ) { delete fAltDistr; fAltDistr = nullptr; }
-   if( fNullDetailedOutput ) { delete fNullDetailedOutput; fNullDetailedOutput = nullptr; }
-   if( fAltDetailedOutput ) { delete fAltDetailedOutput;  fAltDetailedOutput = nullptr; }
+   fNullDistr = nullptr;
+   fAltDistr = nullptr;
+   fNullDetailedOutput = nullptr;
+   fAltDetailedOutput = nullptr;
+
    fFitInfo = nullptr;
 
    fPValueIsRightTail =  other.GetPValueIsRightTail();
@@ -171,54 +165,55 @@ HypoTestResult & HypoTestResult::operator=(const HypoTestResult& other) {
 /// set (otherwise, ignore the new one).
 
 void HypoTestResult::Append(const HypoTestResult* other) {
-   if(fNullDistr)
+   if (fNullDistr) {
       fNullDistr->Add(other->GetNullDistribution());
-   else
-      if(other->GetNullDistribution()) fNullDistr = new SamplingDistribution( *other->GetNullDistribution() );
+   } else if (other->GetNullDistribution()) {
+      fNullDistr = std::make_unique<SamplingDistribution>(*other->GetNullDistribution());
+   }
 
-   if(fAltDistr)
+   if (fAltDistr) {
       fAltDistr->Add(other->GetAltDistribution());
-   else
-      if(other->GetAltDistribution()) fAltDistr = new SamplingDistribution( *other->GetAltDistribution() );
-
+   } else if (other->GetAltDistribution()) {
+      fAltDistr = std::make_unique<SamplingDistribution>(*other->GetAltDistribution());
+   }
 
    if( fNullDetailedOutput ) {
       if( other->GetNullDetailedOutput() ) fNullDetailedOutput->append( *other->GetNullDetailedOutput() );
    }else{
-      if( other->GetNullDetailedOutput() ) fNullDetailedOutput = new RooDataSet( *other->GetNullDetailedOutput() );
+      if( other->GetNullDetailedOutput() ) fNullDetailedOutput = std::make_unique<RooDataSet>( *other->GetNullDetailedOutput() );
    }
 
    if( fAltDetailedOutput ) {
       if( other->GetAltDetailedOutput() ) fAltDetailedOutput->append( *other->GetAltDetailedOutput() );
    }else{
-      if( other->GetAltDetailedOutput() ) fAltDetailedOutput = new RooDataSet( *other->GetAltDetailedOutput() );
+      if( other->GetAltDetailedOutput() ) fAltDetailedOutput = std::make_unique<RooDataSet>( *other->GetAltDetailedOutput() );
    }
 
    if( fFitInfo ) {
       if( other->GetFitInfo() ) fFitInfo->append( *other->GetFitInfo() );
    }else{
-      if( other->GetFitInfo() ) fFitInfo.reset(new RooDataSet( *other->GetFitInfo() ));
+      if( other->GetFitInfo() ) fFitInfo = std::make_unique<RooDataSet>( *other->GetFitInfo());
    }
 
    // if no data is present use the other HypoTestResult's data
    if(IsNaN(fTestStatisticData)) fTestStatisticData = other->GetTestStatisticData();
 
-   UpdatePValue(fNullDistr, fNullPValue, fNullPValueError, true);
-   UpdatePValue(fAltDistr, fAlternatePValue, fAlternatePValueError, false);
+   UpdatePValue(fNullDistr.get(), fNullPValue, fNullPValueError, true);
+   UpdatePValue(fAltDistr.get(), fAlternatePValue, fAlternatePValueError, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void HypoTestResult::SetAltDistribution(SamplingDistribution *alt) {
-   fAltDistr = alt;
-   UpdatePValue(fAltDistr, fAlternatePValue, fAlternatePValueError, false);
+   fAltDistr.reset(alt);
+   UpdatePValue(fAltDistr.get(), fAlternatePValue, fAlternatePValueError, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void HypoTestResult::SetNullDistribution(SamplingDistribution *null) {
-   fNullDistr = null;
-   UpdatePValue(fNullDistr, fNullPValue, fNullPValueError, true);
+   fNullDistr.reset(null);
+   UpdatePValue(fNullDistr.get(), fNullPValue, fNullPValueError, true);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -226,21 +221,17 @@ void HypoTestResult::SetNullDistribution(SamplingDistribution *null) {
 void HypoTestResult::SetTestStatisticData(const double tsd) {
    fTestStatisticData = tsd;
 
-   UpdatePValue(fNullDistr, fNullPValue, fNullPValueError, true);
-   UpdatePValue(fAltDistr, fAlternatePValue, fAlternatePValueError, false);
+   UpdatePValue(fNullDistr.get(), fNullPValue, fNullPValueError, true);
+   UpdatePValue(fAltDistr.get(), fAlternatePValue, fAlternatePValueError, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
 void HypoTestResult::SetAllTestStatisticsData(const RooArgList* tsd) {
-   if (fAllTestStatisticsData) {
-      delete fAllTestStatisticsData;
-      fAllTestStatisticsData = 0;
-   }
-   if (tsd) fAllTestStatisticsData = (const RooArgList*)tsd->snapshot();
+   if (tsd) fAllTestStatisticsData.reset(static_cast<const RooArgList*>(tsd->snapshot()));
 
-   if( fAllTestStatisticsData  &&  fAllTestStatisticsData->getSize() > 0 ) {
-      RooRealVar* firstTS = (RooRealVar*)fAllTestStatisticsData->at(0);
+   if( fAllTestStatisticsData  &&  !fAllTestStatisticsData->empty() ) {
+      RooRealVar* firstTS = static_cast<RooRealVar*>(fAllTestStatisticsData->at(0));
       if( firstTS ) SetTestStatisticData( firstTS->getVal() );
    }
 }
@@ -250,8 +241,8 @@ void HypoTestResult::SetAllTestStatisticsData(const RooArgList* tsd) {
 void HypoTestResult::SetPValueIsRightTail(bool pr) {
    fPValueIsRightTail = pr;
 
-   UpdatePValue(fNullDistr, fNullPValue, fNullPValueError, true);
-   UpdatePValue(fAltDistr, fAlternatePValue, fAlternatePValueError, false);
+   UpdatePValue(fNullDistr.get(), fNullPValue, fNullPValueError, true);
+   UpdatePValue(fAltDistr.get(), fAlternatePValue, fAlternatePValueError, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -309,7 +300,7 @@ double HypoTestResult::CLsError() const {
    double cl_b_err2 = pow(CLbError(),2);
    double cl_sb_err2 = pow(CLsplusbError(),2);
 
-   return TMath::Sqrt(cl_sb_err2 + cl_b_err2 * pow(CLs(),2))/CLb();
+   return std::sqrt(cl_sb_err2 + cl_b_err2 * pow(CLs(),2))/CLb();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,7 +333,7 @@ void HypoTestResult::Print(Option_t * ) const
 {
    bool fromToys = (fAltDistr || fNullDistr);
 
-   std::cout << std::endl << "Results " << GetName() << ": " << endl;
+   std::cout << std::endl << "Results " << GetName() << ": " << std::endl;
    std::cout << " - Null p-value = " << NullPValue();
    if (fromToys) std::cout << " +/- " << NullPValueError();
    std::cout << std::endl;

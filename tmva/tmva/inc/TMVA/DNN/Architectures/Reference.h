@@ -19,7 +19,6 @@
 #define TMVA_DNN_ARCHITECTURES_REFERENCE
 
 #include "TMatrix.h"
-//#include "TMVA/RTensor.hxx"
 #include "TMVA/DNN/Functions.h"
 #include "TMVA/DNN/CNN/ConvLayer.h"
 #include "TMVA/DNN/Architectures/Reference/DataLoader.h"
@@ -56,8 +55,7 @@ private:
 public:
    using Scalar_t     = AReal;
    using Matrix_t     = TMatrixT<AReal>;
-   using Tensor_t     = TMatrixT<AReal>;
-   //using Tensor_t     = TMVA::Experimental::RTensor<AReal>;
+   using Tensor_t = TMatrixT<AReal>;
 
    //____________________________________________________________________________
    //
@@ -316,10 +314,10 @@ public:
    //____________________________________________________________________________
 
    /** @name Regularization
-    * For each regularization type two functions are required, one named
-    * <tt><Type>Regularization</tt> that evaluates the corresponding
+    * For each regularization type, two functions are required, one named
+    * `<Type>Regularization` that evaluates the corresponding
     * regularization functional for a given weight matrix and the
-    * <tt>Add`<Type>`RegularizationGradients</tt>, that adds the regularization
+    * `Add<Type>RegularizationGradients`, that adds the regularization
     * component in the gradients to the provided matrix.
     */
    ///@{
@@ -342,7 +340,7 @@ public:
 
    /** @name Initialization
     * For each initialization method, one function in the low-level interface
-    * is provided. The naming scheme is <p>Initialize<Type></p> for a given
+    * is provided. The naming scheme is `Initialize<Type>` for a given
     * initialization method Type.
     */
    ///@{

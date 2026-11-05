@@ -34,18 +34,28 @@ class TEnum : public TDictionary {
 
 private:
    THashList    fConstantList;            // List of constants the enum type
-   ClassInfo_t *fInfo  = nullptr;         //!Interpreter information, owned by TEnum
-   TClass      *fClass = nullptr;         //!Owning class
+   ClassInfo_t *fInfo  = nullptr;         ///<!Interpreter information, owned by TEnum
+   TClass      *fClass = nullptr;         ///<!Owning class
    std::string  fQualName;                // Fully qualified type name
    EDataType    fUnderlyingType = kInt_t; // Type (size) used to store the enum in memory
 
-   enum EBits {
-     kBitIsScopedEnum = BIT(14) ///< The enum is an enum class.
+   enum EStatusBits {
+      kBitIsScopedEnum = BIT(14), ///< The enum is an enum class.
+      kBitIsValid = BIT(15)       ///< The TEnum object was read from file (assumed valid)
    };
 
 public:
 
-   enum ESearchAction {kNone                 = 0,
+   enum ESearchAction {
+// clang++ <v20 (-Wshadow) complains about shadowing GuiTypes.h global variable kNone. Let's silence warning:
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow"
+#endif
+                       kNone                 = 0,
+#if defined(__clang__) && __clang_major__ < 20
+#pragma clang diagnostic pop
+#endif
                        kAutoload             = 1,
                        kInterpLookup         = 2,
                        kALoadAndInterpLookup = 3

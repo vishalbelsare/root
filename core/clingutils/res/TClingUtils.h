@@ -12,8 +12,6 @@
 #ifndef ROOT_TMetaUtils
 #define ROOT_TMetaUtils
 
-#include "RConversionRuleParser.h"
-
 #include <functional>
 #include <set>
 #include <string>
@@ -22,7 +20,7 @@
 #include <list>
 #include <map>
 #include <utility>
-
+#include <cstdarg>
 #include <cstdlib>
 
 #if defined(__GNUC__) && !defined(__clang__)
@@ -69,6 +67,7 @@ namespace clang {
    class Type;
    class TypeDecl;
    class TypedefNameDecl;
+   enum class ElaboratedTypeKeyword;
    struct PrintingPolicy;
 }
 
@@ -87,8 +86,6 @@ namespace cling {
 
 // for TClassEdit::TInterpreterLookupHelper
 #include "TClassEdit.h"
-
-#include "Varargs.h"
 
 namespace ROOT {
 namespace TMetaUtils {
@@ -160,25 +157,26 @@ public:
 class TClingLookupHelper : public TClassEdit::TInterpreterLookupHelper {
 public:
    typedef bool (*ExistingTypeCheck_t)(const std::string &tname, std::string &result);
+   typedef bool (*CheckInClassTable_t)(const std::string &tname, std::string &result);
    typedef bool (*AutoParse_t)(const char *name);
 
 private:
    cling::Interpreter *fInterpreter;
    TNormalizedCtxt    *fNormalizedCtxt;
    ExistingTypeCheck_t fExistingTypeCheck;
+   CheckInClassTable_t fCheckInClassTable;
    AutoParse_t         fAutoParse;
    bool               *fInterpreterIsShuttingDownPtr;
    const int          *fPDebug; // debug flag, might change at runtime thus *
    bool WantDiags() const { return fPDebug && *fPDebug > 5; }
 
 public:
-   TClingLookupHelper(cling::Interpreter &interpreter, TNormalizedCtxt &normCtxt,
-                      ExistingTypeCheck_t existingTypeCheck,
-                      AutoParse_t autoParse,
-                      bool *shuttingDownPtr,
-                      const int *pgDebug = 0);
+   TClingLookupHelper(cling::Interpreter &interpreter, TNormalizedCtxt &normCtxt, ExistingTypeCheck_t existingTypeCheck,
+                      CheckInClassTable_t CheckInClassTable, AutoParse_t autoParse, bool *shuttingDownPtr,
+                      const int *pgDebug = nullptr);
    virtual ~TClingLookupHelper() { /* we're not owner */ }
 
+   bool CheckInClassTable(const std::string &tname, std::string &result) override;
    bool ExistingTypeCheck(const std::string &tname, std::string &result) override;
    void GetPartiallyDesugaredName(std::string &nameLong) override;
    bool IsAlreadyPartiallyDesugaredName(const std::string &nondef, const std::string &nameLong) override;
@@ -197,21 +195,31 @@ private:
    std::string fRequestedName;
    std::string fNormalizedName;
    std::string fDemangledTypeInfo;
+   // clang-format off
    bool fRequestStreamerInfo;
    bool fRequestNoStreamer;
    bool fRequestNoInputOperator;
    bool fRequestOnlyTClass;
    int  fRequestedVersionNumber;
+   int  fRequestedRNTupleSerializationMode;
+   std::string fRequestedRNTupleSoARecord;
+   // clang-format on
 
 public:
+   // clang-format off
    enum ERootFlag {
-      kNoStreamer      = 0x01,
+      kNoStreamer = 0x01,
       kNoInputOperator = 0x02,
-      kUseByteCount    = 0x04,
-      kStreamerInfo    = 0x04,
-      kHasVersion      = 0x08
+      kUseByteCount = 0x04,
+      kStreamerInfo = 0x04,
+      kHasVersion = 0x08,
+      // kHasCustomStreamerMember = 0x10 (see TClingUtils.cxx and TClassTable.h)
+      kNtplForceNativeMode = 0x20,
+      kNtplForceStreamerMode = 0x40
    };
+   // clang-format on
 
+   // clang-format off
    AnnotatedRecordDecl(long index,
                        const clang::RecordDecl *decl,
                        bool rStreamerInfo,
@@ -219,6 +227,8 @@ public:
                        bool rRequestNoInputOperator,
                        bool rRequestOnlyTClass,
                        int rRequestedVersionNumber,
+                       int rRequestedRNTupleSerializationMode,
+                       const std::string &rRequestedRNTupleSoARecord,
                        const cling::Interpreter &interpret,
                        const TNormalizedCtxt &normCtxt);
 
@@ -230,6 +240,8 @@ public:
                        bool rRequestNoInputOperator,
                        bool rRequestOnlyTClass,
                        int rRequestedVersionNumber,
+                       int rRequestedRNTupleSerializationMode,
+                       const std::string &rRequestedRNTupleSoARecord,
                        const cling::Interpreter &interpret,
                        const TNormalizedCtxt &normCtxt);
 
@@ -242,6 +254,8 @@ public:
                        bool rRequestNoInputOperator,
                        bool rRequestOnlyTClass,
                        int rRequestedVersionNumber,
+                       int rRequestedRNTupleSerializationMode,
+                       const std::string &rRequestedRNTupleSoARecord,
                        const cling::Interpreter &interpret,
                        const TNormalizedCtxt &normCtxt);
 
@@ -255,8 +269,11 @@ public:
                        bool rRequestNoInputOperator,
                        bool rRequestOnlyTClass,
                        int rRequestedVersionNumber,
+                       int rRequestedRNTupleSerializationMode,
+                       const std::string &rRequestedRNTupleSoARecord,
                        const cling::Interpreter &interpret,
                        const TNormalizedCtxt &normCtxt);
+   // clang-format on
 
    ~AnnotatedRecordDecl() {
       // Nothing to do we do not own the pointer;
@@ -273,10 +290,14 @@ public:
       // Equivalent to CINT's cl.RootFlag() & G__USEBYTECOUNT
       return fRequestStreamerInfo;
    }
+   // clang-format off
    bool RequestNoInputOperator() const { return fRequestNoInputOperator; }
    bool RequestNoStreamer() const { return fRequestNoStreamer; }
    bool RequestOnlyTClass() const { return fRequestOnlyTClass; }
    int  RequestedVersionNumber() const { return fRequestedVersionNumber; }
+   int  RequestedRNTupleSerializationMode() const { return fRequestedRNTupleSerializationMode; }
+   const std::string &RequestedRNTupleSoARecord() const { return fRequestedRNTupleSoARecord; }
+   // clang-format on
    int  RootFlag() const {
       // Return the request (streamerInfo, has_version, etc.) combined in a single
       // int.  See RScanner::AnnotatedRecordDecl::ERootFlag.
@@ -285,6 +306,12 @@ public:
       if (fRequestNoInputOperator) result |= kNoInputOperator;
       if (fRequestStreamerInfo) result |= kStreamerInfo;
       if (fRequestedVersionNumber > -1) result |= kHasVersion;
+      switch (fRequestedRNTupleSerializationMode) {
+      case 0: break;
+      case 1: result |= kNtplForceNativeMode; break;
+      case -1: result |= kNtplForceStreamerMode; break;
+      default: assert(false && "invalid setting of fRequestedRNTupleSerializationMode");
+      }
       return result;
    }
    const clang::RecordDecl* GetRecordDecl() const { return fDecl; }
@@ -377,7 +404,7 @@ int ElementStreamer(std::ostream& finalString,
                     const char *t,
                     int rwmode,
                     const cling::Interpreter &interp,
-                    const char *tcl=0);
+                    const char *tcl = nullptr);
 
 //______________________________________________________________________________
 bool IsBase(const clang::CXXRecordDecl *cl, const clang::CXXRecordDecl *base, const clang::CXXRecordDecl *context,const cling::Interpreter &interp);
@@ -545,6 +572,14 @@ void WriteClassInit(std::ostream& finalString,
                     bool& needCollectionProxy);
 
 //______________________________________________________________________________
+void WriteStandaloneReadRules(std::ostream &finalString, bool rawrules, std::vector<std::string> &standaloneTargets,
+                              const cling::Interpreter &interp);
+
+//______________________________________________________________________________
+void WriteRulesRegistration(std::ostream &finalString, const std::string &dictName,
+                            const std::vector<std::string> &standaloneTargets);
+
+//______________________________________________________________________________
 bool HasCustomStreamerMemberFunction(const AnnotatedRecordDecl &cl,
                                      const clang::CXXRecordDecl* clxx,
                                      const cling::Interpreter &interp,
@@ -568,6 +603,24 @@ std::string GetModuleFileName(const char* moduleName);
 // Return (in the argument 'output') a mangled version of the C++ symbol/type (pass as 'input')
 // that can be used in C++ as a variable name.
 void GetCppName(std::string &output, const char *input);
+
+//______________________________________________________________________________
+// Demangle the input symbol name for dlsym.
+static inline std::string DemangleNameForDlsym(const std::string& name)
+{
+   std::string nameForDlsym = name;
+
+#if defined(R__MACOSX) || defined(R__WIN32)
+   // The JIT gives us a mangled name which has an additional leading underscore
+   // on macOS and Windows, for instance __ZN8TRandom34RndmEv. However, dlsym
+   // requires us to remove it.
+   // FIXME: get this information from the DataLayout via getGlobalPrefix()!
+   if (nameForDlsym[0] == '_')
+      nameForDlsym.erase(0, 1);
+#endif //R__MACOSX
+
+   return nameForDlsym;
+}
 
 //______________________________________________________________________________
 // Return the type with all parts fully qualified (most typedefs),
@@ -618,7 +671,7 @@ std::pair<std::string,clang::QualType> GetNameTypeForIO(const clang::QualType& t
 
 //______________________________________________________________________________
 // Returns comment in a meaningful way
-llvm::StringRef GetComment(const clang::Decl &decl, clang::SourceLocation *loc = 0);
+llvm::StringRef GetComment(const clang::Decl &decl, clang::SourceLocation *loc = nullptr);
 
 //______________________________________________________________________________
 // Returns true if class def macro exists
@@ -659,6 +712,16 @@ const clang::TypedefNameDecl* GetAnnotatedRedeclarable(const clang::TypedefNameD
 const clang::TagDecl* GetAnnotatedRedeclarable(const clang::TagDecl* TND);
 
 //______________________________________________________________________________
+// Return true if the DeclContext is representing an entity reacheable from the
+// global namespace
+bool IsCtxtReacheable(const clang::DeclContext &ctxt);
+
+//______________________________________________________________________________
+// Return true if the decl is representing an entity reacheable from the
+// global namespace
+bool IsDeclReacheable(const clang::Decl &decl);
+
+//______________________________________________________________________________
 // Return true if the decl is part of the std namespace.
 bool IsStdClass(const clang::RecordDecl &cl);
 
@@ -690,7 +753,7 @@ clang::QualType ReSubstTemplateArg(clang::QualType input, const clang::Type *ins
 int RemoveTemplateArgsFromName(std::string& name, unsigned int);
 
 //______________________________________________________________________________
-clang::TemplateName ExtractTemplateNameFromQualType(const clang::QualType& qt);
+void ExtractTemplateNameFromQualType(const clang::QualType& qt, clang::TemplateName& theTemplateName, clang::ElaboratedTypeKeyword& theKeyword);
 
 //______________________________________________________________________________
 bool QualType2Template(const clang::QualType& qt,
@@ -752,7 +815,7 @@ inline void LevelPrint(bool prefix, int level, const char *location, const char 
    if (level < GetErrorIgnoreLevel())
       return;
 
-   const char *type = 0;
+   const char *type = nullptr;
 
    if (level >= ROOT::TMetaUtils::kInfo)
       type = "Info";
@@ -769,11 +832,11 @@ inline void LevelPrint(bool prefix, int level, const char *location, const char 
 
    if (!location || !location[0]) {
       if (prefix) fprintf(stderr, "%s: ", type);
-      vfprintf(stderr, (const char*)va_(fmt), ap);
+      vfprintf(stderr, (const char *)fmt, ap);
    } else {
       if (prefix) fprintf(stderr, "%s in <%s>: ", type, location);
       else fprintf(stderr, "In <%s>: ", location);
-      vfprintf(stderr, (const char*)va_(fmt), ap);
+      vfprintf(stderr, (const char *)fmt, ap);
    }
 
    fflush(stderr);
@@ -785,52 +848,52 @@ inline void LevelPrint(bool prefix, int level, const char *location, const char 
 }
 
 //______________________________________________________________________________
-// Use this function in case an error occured.
-inline void Error(const char *location, const char *va_(fmt), ...)
+// Use this function in case an error occurred.
+inline void Error(const char *location, const char *fmt, ...)
 {
    va_list ap;
-   va_start(ap,va_(fmt));
-   LevelPrint(true, ROOT::TMetaUtils::kError, location, va_(fmt), ap);
+   va_start(ap, fmt);
+   LevelPrint(true, ROOT::TMetaUtils::kError, location, fmt, ap);
    va_end(ap);
 }
 
 //______________________________________________________________________________
-// Use this function in case a system (OS or GUI) related error occured.
-inline void SysError(const char *location, const char *va_(fmt), ...)
+// Use this function in case a system (OS or GUI) related error occurred.
+inline void SysError(const char *location, const char *fmt, ...)
 {
    va_list ap;
-   va_start(ap, va_(fmt));
-   LevelPrint(true, ROOT::TMetaUtils::kSysError, location, va_(fmt), ap);
+   va_start(ap, fmt);
+   LevelPrint(true, ROOT::TMetaUtils::kSysError, location, fmt, ap);
    va_end(ap);
 }
 
 //______________________________________________________________________________
 // Use this function for informational messages.
-inline void Info(const char *location, const char *va_(fmt), ...)
+inline void Info(const char *location, const char *fmt, ...)
 {
    va_list ap;
-   va_start(ap,va_(fmt));
-   LevelPrint(true, ROOT::TMetaUtils::kInfo, location, va_(fmt), ap);
+   va_start(ap, fmt);
+   LevelPrint(true, ROOT::TMetaUtils::kInfo, location, fmt, ap);
    va_end(ap);
 }
 
 //______________________________________________________________________________
 // Use this function in warning situations.
-inline void Warning(const char *location, const char *va_(fmt), ...)
+inline void Warning(const char *location, const char *fmt, ...)
 {
    va_list ap;
-   va_start(ap,va_(fmt));
-   LevelPrint(true, ROOT::TMetaUtils::kWarning, location, va_(fmt), ap);
+   va_start(ap, fmt);
+   LevelPrint(true, ROOT::TMetaUtils::kWarning, location, fmt, ap);
    va_end(ap);
 }
 
 //______________________________________________________________________________
 // Use this function in case of a fatal error. It will abort the program.
-inline void Fatal(const char *location, const char *va_(fmt), ...)
+inline void Fatal(const char *location, const char *fmt, ...)
 {
    va_list ap;
-   va_start(ap,va_(fmt));
-   LevelPrint(true, ROOT::TMetaUtils::kFatal, location, va_(fmt), ap);
+   va_start(ap, fmt);
+   LevelPrint(true, ROOT::TMetaUtils::kFatal, location, fmt, ap);
    va_end(ap);
 }
 

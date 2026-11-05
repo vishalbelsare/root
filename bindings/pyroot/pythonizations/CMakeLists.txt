@@ -8,224 +8,78 @@
 # CMakeLists.txt file for building ROOT pythonizations libraries
 ################################################################
 
-if(dataframe)
-    list(APPEND PYROOT_EXTRA_PY2_PY3_SOURCE
-        ROOT/_pythonization/_rdf_utils.py
-        ROOT/_pythonization/_rdataframe.py
-        ROOT/_pythonization/_rdfdescription.py)
-    if(PYTHON_VERSION_STRING_Development_Main VERSION_GREATER_EQUAL 3.7)
-      list(APPEND PYROOT_EXTRA_PY3_SOURCE
-          ROOT/_pythonization/_rdf_conversion_maps.py
-          ROOT/_pythonization/_rdf_pyz.py)
-    endif()
-    list(APPEND PYROOT_EXTRA_SOURCE
-        src/RDataFramePyz.cxx
-        src/RTensorPyz.cxx)
-    list(APPEND PYROOT_EXTRA_HEADERS
-        inc/RNumpyDS.hxx)
-endif()
-
-list(APPEND PYROOT_EXTRA_HEADERS
-     inc/TPyDispatcher.h)
-
-set(py2_py3_sources
-  ROOT/_application.py
-  ROOT/_asan.py
-  ROOT/_facade.py
-  ROOT/__init__.py
-  ROOT/_numbadeclare.py
-  ROOT/_pythonization/_cppinstance.py
-  ROOT/_pythonization/_drawables.py
-  ROOT/_pythonization/_generic.py
-  ROOT/_pythonization/__init__.py
-  ROOT/_pythonization/_pyz_utils.py
-  ROOT/_pythonization/_roofit/__init__.py
-  ROOT/_pythonization/_roofit/_rooabscollection.py
-  ROOT/_pythonization/_roofit/_rooabsdata.py
-  ROOT/_pythonization/_roofit/_rooabspdf.py
-  ROOT/_pythonization/_roofit/_rooabsreallvalue.py
-  ROOT/_pythonization/_roofit/_rooabsreal.py
-  ROOT/_pythonization/_roofit/_rooarglist.py
-  ROOT/_pythonization/_roofit/_rooargset.py
-  ROOT/_pythonization/_roofit/_roocategory.py
-  ROOT/_pythonization/_roofit/_roochi2var.py
-  ROOT/_pythonization/_roofit/_roodatahist.py
-  ROOT/_pythonization/_roofit/_roodataset.py
-  ROOT/_pythonization/_roofit/_roodecays.py
-  ROOT/_pythonization/_roofit/_roogenfitstudy.py
-  ROOT/_pythonization/_roofit/_rooglobalfunc.py
-  ROOT/_pythonization/_roofit/_roojsonfactorywstool.py
-  ROOT/_pythonization/_roofit/_roomcstudy.py
-  ROOT/_pythonization/_roofit/_roomsgservice.py
-  ROOT/_pythonization/_roofit/_roonllvar.py
-  ROOT/_pythonization/_roofit/_rooprodpdf.py
-  ROOT/_pythonization/_roofit/_roorealvar.py
-  ROOT/_pythonization/_roofit/_roosimultaneous.py
-  ROOT/_pythonization/_roofit/_roosimwstool.py
-  ROOT/_pythonization/_roofit/_roovectordatastore.py
-  ROOT/_pythonization/_roofit/_rooworkspace.py
-  ROOT/_pythonization/_roofit/_utils.py
-  ROOT/_pythonization/_rvec.py
-  ROOT/_pythonization/_stl_vector.py
-  ROOT/_pythonization/_tarray.py
-  ROOT/_pythonization/_tclass.py
-  ROOT/_pythonization/_tclonesarray.py
-  ROOT/_pythonization/_tcollection.py
-  ROOT/_pythonization/_tcomplex.py
-  ROOT/_pythonization/_tcontext.py
-  ROOT/_pythonization/_tdirectoryfile.py
-  ROOT/_pythonization/_tdirectory.py
-  ROOT/_pythonization/_tfile.py
-  ROOT/_pythonization/_tgraph.py
-  ROOT/_pythonization/_th1.py
-  ROOT/_pythonization/_titer.py
-  ROOT/_pythonization/_tmva/_crossvalidation.py
-  ROOT/_pythonization/_tmva/_dataloader.py
-  ROOT/_pythonization/_tmva/_factory.py
-  ROOT/_pythonization/_tmva/__init__.py
-  ROOT/_pythonization/_tmva/_rbdt.py
-  ROOT/_pythonization/_tmva/_rtensor.py
-  ROOT/_pythonization/_tmva/_tree_inference.py
-  ROOT/_pythonization/_tmva/_utils.py
-  ROOT/_pythonization/_tobject.py
-  ROOT/_pythonization/_tobjstring.py
-  ROOT/_pythonization/_tseqcollection.py
-  ROOT/_pythonization/_tstring.py
-  ROOT/_pythonization/_ttree.py
-  ROOT/_pythonization/_tvector3.py
-  ROOT/_pythonization/_tvectort.py
-  ${PYROOT_EXTRA_PY2_PY3_SOURCE}
-)
-
-set(py3_sources
-  ${PYROOT_EXTRA_PY3_SOURCE}
-)
-
 set(cpp_sources
     src/PyROOTModule.cxx
-    src/PyROOTStrings.cxx
-    src/PyROOTWrapper.cxx
-    src/RPyROOTApplication.cxx
     src/GenericPyz.cxx
-    src/RVecPyz.cxx
-    src/TClassPyz.cxx
-    src/TClonesArrayPyz.cxx
-    src/TDirectoryFilePyz.cxx
-    src/TDirectoryPyz.cxx
-    src/TFilePyz.cxx
-    src/TMemoryRegulator.cxx
-    src/TObjectPyz.cxx
-    src/TTreePyz.cxx
-    src/PyzCppHelpers.cxx
-    src/PyzPythonHelpers.cxx
     src/CPPInstancePyz.cxx
-    src/FacadeHelpers.cxx
-    src/TPyDispatcher.cxx
-    inc/TPyDispatcher.h
-    ${PYROOT_EXTRA_SOURCE}
 )
 
-set(ROOTPySrcDir python/ROOT)
-set(ROOT_headers_dir inc)
+set(libname ROOTPythonizations)
 
-# Add custom rules to copy the Python sources into the build directory
-foreach(py_source ${py2_py3_sources} ${py3_sources})
-  add_custom_command(
-      OUTPUT ${localruntimedir}/${py_source}
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/python/${py_source}
-                                       ${localruntimedir}/${py_source}
-      DEPENDS python/${py_source}
-      COMMENT "Copying ${CMAKE_CURRENT_SOURCE_DIR}/python/${py_source}")
-  list(APPEND py_sources_in_localruntimedir ${localruntimedir}/${py_source})
-endforeach()
+add_library(${libname} SHARED ${cpp_sources})
 
-# A custom target that depends on the Python sources being present in the build
-# directory. This will be used as a dependency of the pythonization libraries,
-# such that the Python sources get re-copied to the build directory when
-# changed.
-add_custom_target(ROOTPythonizationsPySources ALL DEPENDS ${py_sources_in_localruntimedir})
+# On Windows we can't use the stable ABI yet: it requires linking against a
+# different libpython, so as long as we don't build all translation units in
+# the ROOT Pythonization library with the stable ABI we should not use it.
+# Free-threaded (Py_GIL_DISABLED) interpreters don't support the limited API.
+if(NOT MSVC AND NOT Python3_GIL_DISABLED)
+  target_compile_options(${libname} PRIVATE -DPy_LIMITED_API=0x030B0000)
+endif()
 
-# Copy headers inside build_dir/include/ROOT
-file(COPY ${ROOT_headers_dir}/ DESTINATION ${CMAKE_BINARY_DIR}/include/ROOT)
+# Set the suffix to '.so' and the prefix to 'lib'
+set_target_properties(${libname} PROPERTIES ${ROOT_LIBRARY_PROPERTIES_NO_VERSION})
+target_link_libraries(${libname} PUBLIC Core Tree cpyrt)
+if(MSVC)
+  set_target_properties(${libname} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
+  set_target_properties(${libname} PROPERTIES SUFFIX ".pyd")
+  target_link_options(${libname} PRIVATE "-ignore:4197")
+elseif(APPLE)
+  target_link_libraries(${libname} PUBLIC -Wl,-bind_at_load -Wl,-w -Wl,-undefined -Wl,dynamic_lookup)
+else()
+  target_link_libraries(${libname} PUBLIC -Wl,--unresolved-symbols=ignore-all)
+endif()
 
-foreach(val RANGE ${how_many_pythons})
-  list(GET python_under_version_strings ${val} python_under_version_string)
-  list(GET python_major_version_strings ${val} python_major_version_string)
-  list(GET python_include_dirs ${val} python_include_dir)
-  list(GET python_executables ${val} python_executable)
+# Disables warnings caused by Py_RETURN_TRUE/Py_RETURN_FALSE
+if(NOT MSVC)
+  target_compile_options(${libname} PRIVATE -Wno-strict-aliasing)
+endif()
 
-  set(libname ROOTPythonizations${python_under_version_string})
 
-  add_library(${libname} SHARED ${cpp_sources})
+# Create meta-target PyROOT3 (INTERFACE library)
+# Export of targets are not supported for custom targets(add_custom_targets())
+add_library(PyROOT INTERFACE)
+target_link_libraries(PyROOT INTERFACE cppjit_backend cppjit ROOTPythonizations)
 
-  # Insert the ROOTPythonizationsPySources in the dependency graph
-  add_dependencies(${libname} ROOTPythonizationsPySources)
+# Define library output directories for build and install trees
+set(pymoduledir_build "${localruntimedir}/ROOT")
+set(pymoduledir_install "${CMAKE_INSTALL_PYTHONDIR}/ROOT")
 
-  # Set the suffix to '.so' and the prefix to 'lib'
-  set_target_properties(${libname} PROPERTIES  ${ROOT_LIBRARY_PROPERTIES})
-  if(MSVC)
-    set_target_properties(${libname} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
-    set_target_properties(${libname} PROPERTIES SUFFIX ".pyd")
-    target_link_libraries(${libname} PUBLIC Core Tree cppyy${python_under_version_string})
-  elseif(APPLE)
-    target_link_libraries(${libname} PUBLIC -Wl,-bind_at_load -Wl,-undefined -Wl,dynamic_lookup Core Tree cppyy${python_under_version_string})
-  else()
-    target_link_libraries(${libname} PUBLIC -Wl,--unresolved-symbols=ignore-all Core Tree cppyy${python_under_version_string})
-  endif()
+# To make sure that the library also ends up in the right subdirectory in the
+# build directory tree.
+if(MSVC)
+  set_target_properties(${libname}
+      PROPERTIES
+          RUNTIME_OUTPUT_DIRECTORY_DEBUG ${pymoduledir_build}
+          RUNTIME_OUTPUT_DIRECTORY_RELEASE ${pymoduledir_build}
+          RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${pymoduledir_build}
+          RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${pymoduledir_build})
+else()
+  set_target_properties(${libname} PROPERTIES
+      LIBRARY_OUTPUT_DIRECTORY ${pymoduledir_build})
+endif()
 
-  target_include_directories(${libname}
-     SYSTEM PRIVATE ${python_include_dir})
+if(NOT MSVC)
+  # Make sure that relative RUNPATH to main ROOT libraries is always correct.
+  ROOT_APPEND_LIBDIR_TO_INSTALL_RPATH(${libname} ${pymoduledir_install})
+endif()
 
-  target_include_directories(${libname}
-     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>)
+# Install library
+install(TARGETS ${libname} EXPORT ${CMAKE_PROJECT_NAME}Exports
+                            RUNTIME DESTINATION ${pymoduledir_install} COMPONENT libraries
+                            LIBRARY DESTINATION ${pymoduledir_install}  COMPONENT libraries
+                            ARCHIVE DESTINATION ${pymoduledir_install} COMPONENT libraries)
 
-  # Disables warnings caused by Py_RETURN_TRUE/Py_RETURN_FALSE
-  if(NOT MSVC)
-    target_compile_options(${libname} PRIVATE -Wno-strict-aliasing)
-  endif()
-
-  set(py_sources ${py2_py3_sources})
-  if(${python_major_version_string} EQUAL 3)
-    # If Python3, compile Python3-only compatible files too
-    list(APPEND py_sources ${py3_sources})
-  endif()
-
-  # Compile .py files
-  foreach(py_source ${py_sources})
-    add_custom_command(TARGET ${libname}
-                       COMMAND ${python_executable} -m py_compile ${localruntimedir}/${py_source}
-                       COMMAND ${python_executable} -O -m py_compile ${localruntimedir}/${py_source}
-                       DEPENDS ${localruntimedir}/${py_source}
-                       COMMENT "Compiling PyROOT source ${py_source} for Python ${python_major_version_string}.${python_under_version_string}")
-  endforeach()
-
-  # Create meta-target PyROOT2 and PyROOT3 (INTERFACE library)
-  # Export of targets are not supported for custom targets(add_custom_targets())
-  add_library(PyROOT${python_major_version_string} INTERFACE)
-  target_link_libraries(PyROOT${python_major_version_string} INTERFACE cppyy_backend${python_under_version_string} cppyy${python_under_version_string} ROOTPythonizations${python_under_version_string})
-
-  # Install library
-  install(TARGETS ${libname} EXPORT ${CMAKE_PROJECT_NAME}Exports
-                             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT libraries
-                             LIBRARY DESTINATION ${CMAKE_INSTALL_PYTHONDIR} COMPONENT libraries
-                             ARCHIVE DESTINATION ${CMAKE_INSTALL_PYTHONDIR} COMPONENT libraries)
-
-  # Install meta-target PyROOT2 and PyROOT3 (INTERFACE library)
-  # Install library
-  install(TARGETS PyROOT${python_major_version_string} EXPORT ${CMAKE_PROJECT_NAME}Exports
-                             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT libraries
-                             LIBRARY DESTINATION ${CMAKE_INSTALL_PYTHONDIR} COMPONENT libraries
-                             ARCHIVE DESTINATION ${CMAKE_INSTALL_PYTHONDIR} COMPONENT libraries)
-endforeach()
-
-# Install Python sources and bytecode
-install(DIRECTORY ${localruntimedir}/ROOT
-        DESTINATION ${CMAKE_INSTALL_PYTHONDIR}
-        COMPONENT libraries)
-
-# Install headers required by pythonizations
-install(FILES ${PYROOT_EXTRA_HEADERS}
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ROOT
-        COMPONENT headers)
+# For the ROOT Python package
+add_subdirectory(python)
 
 ROOT_ADD_TEST_SUBDIRECTORY(test)

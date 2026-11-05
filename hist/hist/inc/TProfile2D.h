@@ -95,16 +95,22 @@ public:
    static  void      Approximate(Bool_t approx=kTRUE);
    void              BuildOptions(Double_t zmin, Double_t zmax, Option_t *option);
    Int_t     BufferEmpty(Int_t action=0) override;
+   Double_t  Chi2Test(const TH1* h2, Option_t *option = "WW", Double_t *res = nullptr) const override;
    void      Copy(TObject &hnew) const override;
    Bool_t    Divide(TF1 *h1, Double_t c1=1) override;
    Bool_t    Divide(const TH1 *h1) override;
    Bool_t    Divide(const TH1 *h1, const TH1 *h2, Double_t c1=1, Double_t c2=1, Option_t *option="") override; // *MENU*
    void      ExtendAxis(Double_t x, TAxis *axis) override;
    Int_t             Fill(Double_t x, Double_t y, Double_t z) override;
-   virtual Int_t     Fill(Double_t x, const char *namey, Double_t z, Double_t w = 1.);
-   virtual Int_t     Fill(const char *namex, Double_t y, Double_t z, Double_t w = 1.);
-   virtual Int_t     Fill(const char *namex, const char *namey, Double_t z, Double_t w = 1.);
+   // Don't use a default w=1.0 in the Fill functions, but instead declare
+   // inlined no-weight overloads to correctly override TH2 methods.
+   virtual Int_t     Fill(Double_t x, const char *namey, Double_t z, Double_t w);
+   virtual Int_t     Fill(const char *namex, Double_t y, Double_t z, Double_t w);
+   virtual Int_t     Fill(const char *namex, const char *namey, Double_t z, Double_t w);
    virtual Int_t     Fill(Double_t x, Double_t y, Double_t z, Double_t w);
+   inline  Int_t     Fill(Double_t x, const char *namey, Double_t z) override { return Fill(x, namey, z, 1.0); }
+   inline  Int_t     Fill(const char *namex, Double_t y, Double_t z) override { return Fill(namex, y, z, 1.0); }
+   inline  Int_t     Fill(const char *namex, const char *namey, Double_t z) override { return Fill(namex, namey, z, 1.0); }
    Double_t  GetBinContent(Int_t bin) const override;
    Double_t  GetBinContent(Int_t binx, Int_t biny) const override {return GetBinContent(GetBin(binx,biny));}
    Double_t  GetBinContent(Int_t binx, Int_t biny, Int_t) const override {return GetBinContent(GetBin(binx,biny));}
@@ -131,7 +137,7 @@ public:
    TProfile         *ProfileY(const char *name="_pfy", Int_t firstxbin=0, Int_t lastxbin=-1, Option_t *option="") const;   // *MENU*
    void      PutStats(Double_t *stats) override;
    void      Reset(Option_t *option="") override;
-   TProfile2D *Rebin2D(Int_t nxgroup=2, Int_t nygroup=2, const char *newname="") override;
+   TProfile2D *Rebin2D(Int_t nxgroup=2, Int_t nygroup=2, const char *newname="", const Double_t *xbins=nullptr, const Double_t *ybins=nullptr) override;
    TProfile2D *RebinX(Int_t ngroup=2, const char *newname="") override;
    TProfile2D *RebinY(Int_t ngroup=2, const char *newname="") override;
    void      SavePrimitive(std::ostream &out, Option_t *option = "") override;
@@ -140,7 +146,7 @@ public:
    void      SetBins(Int_t nbinsx, Double_t xmin, Double_t xmax, Int_t nbinsy, Double_t ymin, Double_t ymax) override;
    void      SetBins(Int_t nx, const Double_t *xBins, Int_t ny, const Double_t *yBins) override;
    void      SetBinsLength(Int_t n=-1) override;
-   void      SetBuffer(Int_t buffersize, Option_t *option="") override;
+   void      SetBuffer(Int_t bufsize, Option_t *option="") override;
    virtual void      SetErrorOption(Option_t *option=""); // *MENU*
    void      Sumw2(Bool_t flag = kTRUE) override;
    Double_t GetNumberOfBins() { return fBinEntries.GetSize(); }

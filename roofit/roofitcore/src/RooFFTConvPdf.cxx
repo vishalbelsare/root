@@ -81,8 +81,8 @@
 /// -------
 ///
 /// You have two options:
-/// * **Recommended**: ROOT can automatically install FFTW for itself, see `builtin_fftw3` at https://root.cern.ch/building-root
-/// * Install FFTW and let ROOT discover it. `fftw3` is on by default (see https://root.cern.ch/building-root)
+/// * **Recommended**: ROOT can automatically install FFTW for itself, see `builtin_fftw3` at https://root.cern/building-root
+/// * Install FFTW and let ROOT discover it. `fftw3` is on by default (see https://root.cern/building-root)
 ///
 /// 1) Go to www.fftw.org and download the latest stable version (a .tar.gz file)
 ///
@@ -92,7 +92,7 @@
 ///       and type './configure' followed by 'make install'.
 ///       This will install fftw in /usr/local/bin,lib etc...
 ///
-///   3) Start from a source installation of ROOT. ROOT should discover it. See https://root.cern.ch/building-root
+///   3) Start from a source installation of ROOT. ROOT should discover it. See https://root.cern/building-root
 ///
 ///
 /// If you do not have root access and want to make a private installation of FFTW
@@ -105,7 +105,7 @@
 ///       procedure will install FFTW in the location designated by you
 ///
 ///   4) Start from a source installation of ROOT.
-///      Look up and set the proper paths for ROOT to discover FFTW. See https://root.cern.ch/building-root
+///      Look up and set the proper paths for ROOT to discover FFTW. See https://root.cern/building-root
 ///
 
 #include "RooFFTConvPdf.h"
@@ -123,6 +123,7 @@
 #include "RooGlobalFunc.h"
 #include "RooConstVar.h"
 #include "RooUniformBinning.h"
+#include "RooFitImplHelpers.h"
 
 #include "TClass.h"
 #include "TComplex.h"
@@ -131,9 +132,81 @@
 #include <iostream>
 #include <stdexcept>
 
-using namespace std;
+#ifndef ROOFIT_MATH_FFTW3
+#include "TInterpreter.h"
 
-ClassImp(RooFFTConvPdf);
+namespace {
+
+auto declareDoFFT()
+{
+   static void (*doFFT)(int, double *, double *, double *) = nullptr;
+
+   if (doFFT)
+      return doFFT;
+
+   bool success = gInterpreter->Declare("#include \"fftw3.h\"");
+
+   if (!success) {
+      std::stringstream ss;
+      ss << "RooFFTConvPdf evaluation Failed! The interpreter could not find the fftw3.h header.\n";
+      ss << "You have three options to fix this problem:\n";
+      ss << "    1) Install fftw3 on your system so that the interpreter can find it\n";
+      ss << "    2) In case fftw3.h is installed somewhere else,\n"
+         << "       tell ROOT with gInterpreter->AddIncludePath() where to find it\n";
+      ss << "    3) Compile ROOT with the -Dfftw3=ON in the CMake configuration,\n"
+         << "       such that ROOT comes with built-in fftw3 convolution routines\n";
+      oocoutE(nullptr, Eval) << ss.str() << std::endl;
+      throw std::runtime_error("RooFFTConvPdf evaluation Failed! The interpreter could not find the fftw3.h header");
+   }
+
+   gInterpreter->Declare(R"(
+void RooFFTConvPdf_doFFT(int n, double *input1, double *input2, double *output)
+{
+   auto fftr2c1_Out = reinterpret_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * (n / 2 + 1)));
+   auto fftr2c2_Out = reinterpret_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * (n / 2 + 1)));
+   auto fftc2r_In = reinterpret_cast<fftw_complex *>(fftw_malloc(sizeof(fftw_complex) * (n / 2 + 1)));
+
+   fftw_plan fftr2c1_plan = fftw_plan_dft_r2c(1, &n, input1, fftr2c1_Out, FFTW_ESTIMATE);
+   fftw_plan fftr2c2_plan = fftw_plan_dft_r2c(1, &n, input2, fftr2c2_Out, FFTW_ESTIMATE);
+   fftw_plan fftc2r_plan = fftw_plan_dft_c2r(1, &n, fftc2r_In, output, FFTW_ESTIMATE);
+
+   // Real->Complex FFT Transform on p.d.f. samplings
+   fftw_execute(fftr2c1_plan);
+   fftw_execute(fftr2c2_plan);
+
+   // Loop over first half +1 of complex output results, multiply
+   // and set as input of reverse transform
+   for (Int_t i = 0; i < n / 2 + 1; i++) {
+      double re1 = fftr2c1_Out[i][0];
+      double re2 = fftr2c2_Out[i][0];
+      double im1 = fftr2c1_Out[i][1];
+      double im2 = fftr2c2_Out[i][1];
+      fftc2r_In[i][0] = re1 * re2 - im1 * im2;
+      fftc2r_In[i][1] = re1 * im2 + re2 * im1;
+   }
+
+   // Reverse Complex->Real FFT transform product
+   fftw_execute(fftc2r_plan);
+
+   fftw_destroy_plan(fftr2c1_plan);
+   fftw_destroy_plan(fftr2c2_plan);
+   fftw_destroy_plan(fftc2r_plan);
+
+   fftw_free(fftr2c1_Out);
+   fftw_free(fftr2c2_Out);
+   fftw_free(fftc2r_In);
+}
+)");
+
+   doFFT = reinterpret_cast<void(*)(int, double*, double*, double*)>(gInterpreter->ProcessLine("RooFFTConvPdf_doFFT;"));
+   return doFFT;
+}
+
+} // namespace
+
+#endif
+
+using std::endl, std::string, std::ostream;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -147,22 +220,21 @@ ClassImp(RooFFTConvPdf);
 /// The binning used for the FFT sampling is controlled by the binning named "cache" in the convolution observable `convVar`.
 /// If such a binning is not set, the same number of bins as for `convVar` will be used.
 
-RooFFTConvPdf::RooFFTConvPdf(const char *name, const char *title, RooRealVar& convVar, RooAbsPdf& pdf1, RooAbsPdf& pdf2, Int_t ipOrder) :
-  RooAbsCachedPdf(name,title,ipOrder),
-  _x("!x","Convolution Variable",this,convVar),
-  _xprime("!xprime","External Convolution Variable",this,0),
-  _pdf1("!pdf1","pdf1",this,pdf1,false),
-  _pdf2("!pdf2","pdf2",this,pdf2,false),
-  _params("!params","effective parameters",this),
-  _bufFrac(0.1),
-  _bufStrat(Extend),
-  _shift1(0),
-  _shift2(0),
-  _cacheObs("!cacheObs","Cached observables",this,false,false)
+RooFFTConvPdf::RooFFTConvPdf(const char *name, const char *title, RooRealVar &convVar, RooAbsPdf &pdf1, RooAbsPdf &pdf2,
+                             Int_t ipOrder)
+   : RooAbsCachedPdf(name, title, ipOrder),
+     _x("!x", "Convolution Variable", this, convVar),
+     _xprime("!xprime", "External Convolution Variable", this, false),
+     _pdf1("!pdf1", "pdf1", this, pdf1, false),
+     _pdf2("!pdf2", "pdf2", this, pdf2, false),
+     _params("!params", "effective parameters", this),
+     _bufFrac(0.1),
+     _bufStrat(Extend),
+     _shift1(0),
+     _shift2((convVar.getMax("cache") + convVar.getMin("cache")) / 2),
+     _cacheObs("!cacheObs", "Cached observables", this, false, false)
 {
   prepareFFTBinning(convVar);
-
-  _shift2 = (convVar.getMax("cache")+convVar.getMin("cache"))/2 ;
 
   calcParams() ;
 
@@ -170,25 +242,25 @@ RooFFTConvPdf::RooFFTConvPdf(const char *name, const char *title, RooRealVar& co
 
 ////////////////////////////////////////////////////////////////////////////////
 /// \copydoc RooFFTConvPdf(const char*, const char*, RooRealVar&, RooAbsPdf&, RooAbsPdf&, Int_t)
-/// \param[in] pdfConvVar If the variable used for convolution is a PDF, itself, pass the PDF here, and pass the convolution variable to
-/// `convVar`. See also rf210_angularconv.C in the <a href="https://root.cern.ch/root/html/tutorials/roofit/index.html.">roofit tutorials</a>
+/// \param[in] pdfConvVar If the variable used for convolution is a function, itself, pass the function here, and pass
+/// the convolution variable to `convVar`. See also rf210_angularconv.C in the <a
+/// href="https://root.cern/root/html/tutorials/roofit/index.html.">roofit tutorials</a>
 
-RooFFTConvPdf::RooFFTConvPdf(const char *name, const char *title, RooAbsReal& pdfConvVar, RooRealVar& convVar, RooAbsPdf& pdf1, RooAbsPdf& pdf2, Int_t ipOrder) :
-  RooAbsCachedPdf(name,title,ipOrder),
-  _x("!x","Convolution Variable",this,convVar,false,false),
-  _xprime("!xprime","External Convolution Variable",this,pdfConvVar),
-  _pdf1("!pdf1","pdf1",this,pdf1,false),
-  _pdf2("!pdf2","pdf2",this,pdf2,false),
-  _params("!params","effective parameters",this),
-  _bufFrac(0.1),
-  _bufStrat(Extend),
-  _shift1(0),
-  _shift2(0),
-  _cacheObs("!cacheObs","Cached observables",this,false,false)
+RooFFTConvPdf::RooFFTConvPdf(const char *name, const char *title, RooAbsReal &pdfConvVar, RooRealVar &convVar,
+                             RooAbsPdf &pdf1, RooAbsPdf &pdf2, Int_t ipOrder)
+   : RooAbsCachedPdf(name, title, ipOrder),
+     _x("!x", "Convolution Variable", this, convVar, false, false),
+     _xprime("!xprime", "External Convolution Variable", this, pdfConvVar),
+     _pdf1("!pdf1", "pdf1", this, pdf1, false),
+     _pdf2("!pdf2", "pdf2", this, pdf2, false),
+     _params("!params", "effective parameters", this),
+     _bufFrac(0.1),
+     _bufStrat(Extend),
+     _shift1(0),
+     _shift2((convVar.getMax("cache") + convVar.getMin("cache")) / 2),
+     _cacheObs("!cacheObs", "Cached observables", this, false, false)
 {
   prepareFFTBinning(convVar);
-
-  _shift2 = (convVar.getMax("cache")+convVar.getMin("cache"))/2 ;
 
   calcParams() ;
 }
@@ -282,13 +354,13 @@ RooFFTConvPdf::PdfCacheElem* RooFFTConvPdf::createCache(const RooArgSet* nset) c
 RooFFTConvPdf::FFTCacheElem::FFTCacheElem(const RooFFTConvPdf& self, const RooArgSet* nsetIn) :
   PdfCacheElem(self,nsetIn)
 {
-  RooAbsPdf* clonePdf1 = (RooAbsPdf*) self._pdf1.arg().cloneTree() ;
-  RooAbsPdf* clonePdf2 = (RooAbsPdf*) self._pdf2.arg().cloneTree() ;
+  RooAbsPdf* clonePdf1 = static_cast<RooAbsPdf*>(self._pdf1.arg().cloneTree()) ;
+  RooAbsPdf* clonePdf2 = static_cast<RooAbsPdf*>(self._pdf2.arg().cloneTree()) ;
   clonePdf1->attachDataSet(*hist()) ;
   clonePdf2->attachDataSet(*hist()) ;
 
    // Shift observable
-   RooRealVar* convObs = (RooRealVar*) hist()->get()->find(self._x.arg().GetName()) ;
+   RooRealVar* convObs = static_cast<RooRealVar*>(hist()->get()->find(self._x.arg().GetName())) ;
 
    // Install FFT reference range
    string refName = Form("refrange_fft_%s",self.GetName()) ;
@@ -328,6 +400,14 @@ RooFFTConvPdf::FFTCacheElem::FFTCacheElem(const RooFFTConvPdf& self, const RooAr
     pdf2Clone.reset(clonePdf2) ;
   }
 
+  // Cache normalization integral values, since we know they don't change for
+  // the given normalization set in this cache object. When using this cache,
+  // we evaluate the pdfs without normalization set and then do the
+  // normalization manually using these cached values. This has less overhead
+  // compared to letting RooAbsPdf::getVal(normSet) figure out if the normSet
+  // has changed and get the caching right.
+  normVal1 = pdf1Clone->getNorm(hist()->get());
+  normVal2 = pdf2Clone->getNorm(hist()->get());
 
   // Attach cloned pdf to all original parameters of self
   RooArgSet convObsSet{*convObs};
@@ -409,8 +489,8 @@ void RooFFTConvPdf::fillCacheObject(RooAbsCachedPdf::PdfCacheElem& cache) const
 {
   RooDataHist& cacheHist = *cache.hist() ;
 
-  ((FFTCacheElem&)cache).pdf1Clone->setOperMode(ADirty,true) ;
-  ((FFTCacheElem&)cache).pdf2Clone->setOperMode(ADirty,true) ;
+  (static_cast<FFTCacheElem&>(cache)).pdf1Clone->setOperMode(ADirty,true) ;
+  (static_cast<FFTCacheElem&>(cache)).pdf2Clone->setOperMode(ADirty,true) ;
 
   // Determine if there other observables than the convolution observable in the cache
   RooArgSet otherObs ;
@@ -421,11 +501,11 @@ void RooFFTConvPdf::fillCacheObject(RooAbsCachedPdf::PdfCacheElem& cache) const
     otherObs.remove(*histArg,true,true) ;
   }
 
-  //cout << "RooFFTConvPdf::fillCacheObject() otherObs = " << otherObs << endl ;
+  //cout << "RooFFTConvPdf::fillCacheObject() otherObs = " << otherObs << std::endl ;
 
   // Handle trivial scenario -- no other observables
   if (otherObs.empty()) {
-    fillCacheSlice((FFTCacheElem&)cache,RooArgSet()) ;
+    fillCacheSlice(static_cast<FFTCacheElem&>(cache),RooArgSet()) ;
     return ;
   }
 
@@ -433,15 +513,14 @@ void RooFFTConvPdf::fillCacheObject(RooAbsCachedPdf::PdfCacheElem& cache) const
   // Iterator over available slice positions and fill each
 
   // Determine number of bins for each slice position observable
-  Int_t n = otherObs.getSize() ;
+  Int_t n = otherObs.size() ;
   std::vector<int> binCur(n+1);
   std::vector<int> binMax(n+1);
   Int_t curObs = 0 ;
 
   std::vector<RooAbsLValue*> obsLV(n);
   Int_t i(0) ;
-  for (auto const& arg : otherObs) {
-    RooAbsLValue* lvarg = dynamic_cast<RooAbsLValue*>(arg) ;
+  for (auto* lvarg : dynamic_range_cast<RooAbsLValue*>(otherObs)) {
     obsLV[i] = lvarg ;
     binCur[i] = 0 ;
     // coverity[FORWARD_NULL]
@@ -454,10 +533,10 @@ void RooFFTConvPdf::fillCacheObject(RooAbsCachedPdf::PdfCacheElem& cache) const
     // Set current slice position
     for (Int_t j=0 ; j<n ; j++) { obsLV[j]->setBin(binCur[j],binningName()) ; }
 
-//     cout << "filling slice: bin of obsLV[0] = " << obsLV[0]->getBin() << endl ;
+//     std::cout << "filling slice: bin of obsLV[0] = " << obsLV[0]->getBin() << std::endl ;
 
     // Fill current slice
-    fillCacheSlice((FFTCacheElem&)cache,otherObs) ;
+    fillCacheSlice(static_cast<FFTCacheElem&>(cache),otherObs) ;
 
     // Determine which iterator to increment
     while(binCur[curObs]==binMax[curObs]) {
@@ -501,16 +580,29 @@ void RooFFTConvPdf::fillCacheSlice(FFTCacheElem& aux, const RooArgSet& slicePos)
   //
   //
 
-  Int_t N,N2,binShift1,binShift2 ;
+  Int_t N;
+  Int_t N2;
+  Int_t binShift1;
+  Int_t binShift2;
 
-  RooRealVar* histX = (RooRealVar*) cacheHist.get()->find(_x.arg().GetName()) ;
+  RooRealVar* histX = static_cast<RooRealVar*>(cacheHist.get()->find(_x.arg().GetName())) ;
   if (_bufStrat==Extend) histX->setBinning(*aux.scanBinning) ;
-  std::vector<double> input1 = scanPdf((RooRealVar&)_x.arg(),*aux.pdf1Clone,cacheHist,slicePos,N,N2,binShift1,_shift1) ;
-  std::vector<double> input2 = scanPdf((RooRealVar&)_x.arg(),*aux.pdf2Clone,cacheHist,slicePos,N,N2,binShift2,_shift2) ;
+  RooRealVar &xVar = const_cast<RooRealVar &>(static_cast<RooRealVar const&>(_x.arg()));
+  std::vector<double> input1 = scanPdf(xVar,*aux.pdf1Clone,aux.normVal1,cacheHist,slicePos,N,N2,binShift1,_shift1) ;
+  std::vector<double> input2 = scanPdf(xVar,*aux.pdf2Clone,aux.normVal2,cacheHist,slicePos,N,N2,binShift2,_shift2) ;
   if (_bufStrat==Extend) histX->setBinning(*aux.histBinning) ;
 
+#ifndef ROOFIT_MATH_FFTW3
+  // If ROOT was NOT built with the fftw3 interface, we try to include fftw3.h
+  // with the interpreter and run the concolution in the interpreter.
+  std::vector<double> output(N2);
 
-
+   auto doFFT = declareDoFFT();
+   doFFT(N2, input1.data(), input2.data(), output.data());
+#else
+  // If ROOT was built with the fftw3 interface, we can use it as a TVirtualFFT
+  // plugin. The advantage here is that nothing can go wrong if fftw3.h wahs
+  // not istalled by the user separately.
 
   // Retrieve previously defined FFT transformation plans
   if (!aux.fftr2c1) {
@@ -535,7 +627,10 @@ void RooFFTConvPdf::fillCacheSlice(FFTCacheElem& aux, const RooArgSet& slicePos)
   // Loop over first half +1 of complex output results, multiply
   // and set as input of reverse transform
   for (Int_t i=0 ; i<N2/2+1 ; i++) {
-    double re1,re2,im1,im2 ;
+    double re1;
+    double re2;
+    double im1;
+    double im2;
     aux.fftr2c1->GetPointComplex(i,re1,im1) ;
     aux.fftr2c2->GetPointComplex(i,re2,im2) ;
     double re = re1*re2 - im1*im2 ;
@@ -546,6 +641,7 @@ void RooFFTConvPdf::fillCacheSlice(FFTCacheElem& aux, const RooArgSet& slicePos)
 
   // Reverse Complex->Real FFT transform product
   aux.fftc2r->Transform() ;
+#endif
 
   Int_t totalShift = binShift1 + (N2-N)/2 ;
 
@@ -560,10 +656,13 @@ void RooFFTConvPdf::fillCacheSlice(FFTCacheElem& aux, const RooArgSet& slicePos)
     while (j>=N2) j-= N2 ;
 
     iter->Next() ;
-    cacheHist.set(aux.fftc2r->GetPointReal(j)) ;
+    const std::size_t binIdx = cacheHist.getIndex(*cacheHist.get(), /*fast=*/true);
+#ifndef ROOFIT_MATH_FFTW3
+    cacheHist.set(binIdx, output[j], -1.);
+#else
+    cacheHist.set(binIdx, aux.fftc2r->GetPointReal(j), -1.);
+#endif
   }
-
-  // cacheHist.dump2() ;
 }
 
 
@@ -573,11 +672,12 @@ void RooFFTConvPdf::fillCacheSlice(FFTCacheElem& aux, const RooArgSet& slicePos)
 /// The return value is an array of doubles of length N2 with the sampled values. The caller takes ownership
 /// of the array
 
-std::vector<double>  RooFFTConvPdf::scanPdf(RooRealVar& obs, RooAbsPdf& pdf, const RooDataHist& hist, const RooArgSet& slicePos,
-              Int_t& N, Int_t& N2, Int_t& zeroBin, double shift) const
+std::vector<double> RooFFTConvPdf::scanPdf(RooRealVar &obs, RooAbsPdf &pdf, double normVal, const RooDataHist &hist,
+                                           const RooArgSet &slicePos, Int_t &N, Int_t &N2, Int_t &zeroBin,
+                                           double shift) const
 {
 
-  RooRealVar* histX = (RooRealVar*) hist.get()->find(obs.GetName()) ;
+  RooRealVar* histX = static_cast<RooRealVar*>(hist.get()->find(obs.GetName())) ;
 
   // Calculate number of buffer bins on each size to avoid cyclical flow
   N = histX->numBins(binningName()) ;
@@ -609,6 +709,12 @@ std::vector<double>  RooFFTConvPdf::scanPdf(RooRealVar& obs, RooAbsPdf& pdf, con
   while(zeroBin>=N2) zeroBin-= N2 ;
   while(zeroBin<0) zeroBin+= N2 ;
 
+  // To mimic exactly the normalization code in RooAbsPdf::getValV()
+  auto getPdfVal = [&]() {
+     double rawVal = pdf.getVal();
+     return RooFit::Detail::normalizeWithNaNPacking(pdf, rawVal, normVal);
+  };
+
   // First scan hist into temp array
   std::vector<double> tmp(N2);
   Int_t k(0) ;
@@ -618,7 +724,7 @@ std::vector<double>  RooFFTConvPdf::scanPdf(RooRealVar& obs, RooAbsPdf& pdf, con
     // Sample entire extended range (N2 samples)
     for (k=0 ; k<N2 ; k++) {
       histX->setBin(k) ;
-      tmp[k] = pdf.getVal(hist.get()) ;
+      tmp[k] = getPdfVal();
     }
     break ;
 
@@ -627,16 +733,16 @@ std::vector<double>  RooFFTConvPdf::scanPdf(RooRealVar& obs, RooAbsPdf& pdf, con
     // bins with p.d.f. value at respective boundary
     {
       histX->setBin(0) ;
-      double val = pdf.getVal(hist.get()) ;
+      double val = getPdfVal();
       for (k=0 ; k<Nbuf ; k++) {
    tmp[k] = val ;
       }
       for (k=0 ; k<N ; k++) {
    histX->setBin(k) ;
-   tmp[k+Nbuf] = pdf.getVal(hist.get()) ;
+   tmp[k+Nbuf] = getPdfVal();
       }
       histX->setBin(N-1) ;
-      val = pdf.getVal(hist.get()) ;
+      val = getPdfVal();
       for (k=0 ; k<Nbuf ; k++) {
    tmp[N+Nbuf+k] = val ;
       }
@@ -648,13 +754,13 @@ std::vector<double>  RooFFTConvPdf::scanPdf(RooRealVar& obs, RooAbsPdf& pdf, con
     // bins with mirror image of sampled range
     for (k=0 ; k<N ; k++) {
       histX->setBin(k) ;
-      tmp[k+Nbuf] = pdf.getVal(hist.get()) ;
+      tmp[k+Nbuf] = getPdfVal();
     }
     for (k=1 ; k<=Nbuf ; k++) {
       histX->setBin(k) ;
-      tmp[Nbuf-k] = pdf.getVal(hist.get()) ;
+      tmp[Nbuf-k] = getPdfVal();
       histX->setBin(N-k) ;
-      tmp[Nbuf+N+k-1] = pdf.getVal(hist.get()) ;
+      tmp[Nbuf+N+k-1] = getPdfVal();
     }
     break ;
   }
@@ -686,7 +792,7 @@ std::vector<double>  RooFFTConvPdf::scanPdf(RooRealVar& obs, RooAbsPdf& pdf, con
 ///    - all member of nset that are observables of this p.d.f.
 ///
 
-RooArgSet* RooFFTConvPdf::actualObservables(const RooArgSet& nset) const
+RooFit::OwningPtr<RooArgSet> RooFFTConvPdf::actualObservables(const RooArgSet& nset) const
 {
   // Get complete list of observables
   auto obs1 = new RooArgSet{};
@@ -731,7 +837,7 @@ RooArgSet* RooFFTConvPdf::actualObservables(const RooArgSet& nset) const
 
   }
 
-  return obs1 ;
+  return RooFit::OwningPtr<RooArgSet>{obs1};
 }
 
 
@@ -741,12 +847,12 @@ RooArgSet* RooFFTConvPdf::actualObservables(const RooArgSet& nset) const
 /// set nset. For this p.d.f these are the parameters of the input p.d.f.
 /// but never the convolution variable, in case it is not part of nset.
 
-RooArgSet* RooFFTConvPdf::actualParameters(const RooArgSet& nset) const
+RooFit::OwningPtr<RooArgSet> RooFFTConvPdf::actualParameters(const RooArgSet& nset) const
 {
-  RooArgSet* vars = getVariables() ;
+  std::unique_ptr<RooArgSet> vars{getVariables()};
   vars->remove(*std::unique_ptr<RooArgSet>{actualObservables(nset)});
 
-  return vars ;
+  return RooFit::makeOwningPtr(std::move(vars));
 }
 
 
@@ -777,24 +883,24 @@ RooAbsGenContext* RooFFTConvPdf::genContext(const RooArgSet &vars, const RooData
 {
   RooArgSet vars2(vars) ;
   vars2.remove(_x.arg(),true,true) ;
-  Int_t numAddDep = vars2.getSize() ;
+  Int_t numAddDep = vars2.size() ;
 
   RooArgSet dummy ;
-  bool pdfCanDir = (((RooAbsPdf&)_pdf1.arg()).getGenerator(_x.arg(),dummy) != 0 && \
-            ((RooAbsPdf&)_pdf1.arg()).isDirectGenSafe(_x.arg())) ;
-  bool resCanDir = (((RooAbsPdf&)_pdf2.arg()).getGenerator(_x.arg(),dummy) !=0  &&
-            ((RooAbsPdf&)_pdf2.arg()).isDirectGenSafe(_x.arg())) ;
+  bool pdfCanDir = ((static_cast<RooAbsPdf const &>(_pdf1.arg())).getGenerator(_x.arg(), dummy) != 0 &&
+                    (static_cast<RooAbsPdf const &>(_pdf1.arg())).isDirectGenSafe(_x.arg()));
+  bool resCanDir = ((static_cast<RooAbsPdf const &>(_pdf2.arg())).getGenerator(_x.arg(), dummy) != 0 &&
+                    (static_cast<RooAbsPdf const &>(_pdf2.arg())).isDirectGenSafe(_x.arg()));
 
   if (pdfCanDir) {
     cxcoutI(Generation) << "RooFFTConvPdf::genContext() input p.d.f " << _pdf1.arg().GetName()
-         << " has internal generator that is safe to use in current context" << endl ;
+         << " has internal generator that is safe to use in current context" << std::endl ;
   }
   if (resCanDir) {
     cxcoutI(Generation) << "RooFFTConvPdf::genContext() input p.d.f. " << _pdf2.arg().GetName()
-         << " has internal generator that is safe to use in current context" << endl ;
+         << " has internal generator that is safe to use in current context" << std::endl ;
   }
   if (numAddDep>0) {
-    cxcoutI(Generation) << "RooFFTConvPdf::genContext() generation requested for observables other than the convolution observable " << _x.arg().GetName() << endl ;
+    cxcoutI(Generation) << "RooFFTConvPdf::genContext() generation requested for observables other than the convolution observable " << _x.arg().GetName() << std::endl ;
   }
 
 
@@ -803,14 +909,14 @@ RooAbsGenContext* RooFFTConvPdf::genContext(const RooArgSet &vars, const RooData
     // or pdf or resmodel do not support direct generation
     cxcoutI(Generation) << "RooFFTConvPdf::genContext() selecting accept/reject generator context because one or both of the input "
          << "p.d.f.s cannot use internal generator and/or "
-         << "observables other than the convolution variable are requested for generation" << endl ;
+         << "observables other than the convolution variable are requested for generation" << std::endl ;
     return new RooGenContext(*this,vars,prototype,auxProto,verbose) ;
   }
 
   // Any other resolution model: use specialized generator context
   cxcoutI(Generation) << "RooFFTConvPdf::genContext() selecting specialized convolution generator context as both input "
             << "p.d.fs are safe for internal generator and only "
-            << "the convolution observables is requested for generation" << endl ;
+            << "the convolution observables is requested for generation" << std::endl ;
   return new RooConvGenContext(*this,vars,prototype,auxProto,verbose) ;
 }
 
@@ -823,7 +929,7 @@ RooAbsGenContext* RooFFTConvPdf::genContext(const RooArgSet &vars, const RooData
 void RooFFTConvPdf::setBufferFraction(double frac)
 {
   if (frac<0) {
-    coutE(InputArguments) << "RooFFTConvPdf::setBufferFraction(" << GetName() << ") fraction should be greater than or equal to zero" << endl ;
+    coutE(InputArguments) << "RooFFTConvPdf::setBufferFraction(" << GetName() << ") fraction should be greater than or equal to zero" << std::endl ;
     return ;
   }
   _bufFrac = frac ;

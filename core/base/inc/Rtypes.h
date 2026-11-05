@@ -27,7 +27,6 @@
 #include <cstdio>
 #include "strtok.h"     // provides R__STRTOK_R with <cstring> include
 #include "strlcpy.h"    // part of string.h on systems that have it
-#include "snprintf.h"   // part of stdio.h on systems that have it
 #include <type_traits>
 #endif
 
@@ -45,6 +44,7 @@
 //---- forward declared class types --------------------------------------------
 
 class TClass;
+class TBrowser;
 class TBuffer;
 class TDirectory;
 class TMemberInspector;
@@ -59,12 +59,17 @@ enum ESysConstants {
    kMAXSIGNALS       = 16,
    kMAXPATHLEN       = 8192,
    kBUFFERSIZE       = 8192,
-   kItimerResolution = 10      // interval-timer resolution in ms
+   kItimerResolution = 5       ///< interval-timer resolution in ms (used for TThread, TTimer, Emit, Connect, etc.)
 };
 
-enum EColor { kWhite =0,   kBlack =1,   kGray=920,
-              kRed   =632, kGreen =416, kBlue=600, kYellow=400, kMagenta=616, kCyan=432,
-              kOrange=800, kSpring=820, kTeal=840, kAzure =860, kViolet =880, kPink=900 };
+enum EColor { kWhite   =0,   kBlack    =1,   kGray   =920,
+              kRed     =632, kGreen    =416, kBlue   =600, kYellow =400, kMagenta =616, kCyan    =432,
+              kOrange  =800, kSpring   =820, kTeal   =840, kAzure  =860, kViolet  =880, kPink    =900,
+              kGrape   =100, kBrown    =101, kAsh    =102,
+              kP6Blue  =103, kP6Yellow =104, kP6Red  =105, kP6Grape=106, kP6Gray   =107, kP6Violet=108,
+              kP8Blue  =109, kP8Orange =110, kP8Red  =111, kP8Pink =112, kP8Green  =113, kP8Cyan  =114, kP8Azure  =115, kP8Gray  =116,
+              kP10Blue =117, kP10Yellow=118, kP10Red =119, kP10Gray=120, kP10Violet=121, kP10Brown=122, kP10Orange=123, kP10Green=124, kP10Ash=125, kP10Cyan=126
+            };
 
 // There is several streamer concepts.
 class TClassStreamer;   // Streamer functor for a class
@@ -105,6 +110,7 @@ template <class Tmpl> TBuffer &operator<<(TBuffer &buf, const Tmpl *obj);
 namespace ROOT {
 
    class TGenericClassInfo;
+   class TClassAlt;
    typedef void *(*NewFunc_t)(void *);
    typedef void *(*NewArrFunc_t)(Long_t size, void *arena);
    typedef void  (*DelFunc_t)(void *);
@@ -113,6 +119,7 @@ namespace ROOT {
    typedef void  (*DirAutoAdd_t)(void *, TDirectory *);
    typedef Long64_t (*MergeFunc_t)(void *, TCollection *, TFileMergeInfo *);
    typedef void  (*ResetAfterMergeFunc_t)(void *, TFileMergeInfo *);
+   typedef void (*BrowseFunc_t)(const void *, TBrowser *);
 
    template <class RootClass> Short_t SetClassVersion(RootClass *);
 
@@ -122,9 +129,10 @@ namespace ROOT {
                               Int_t dl, Int_t il);
    extern void AddClass(const char *cname, Version_t id, const std::type_info &info,
                         DictFuncPtr_t dict, Int_t pragmabits);
-   extern void RemoveClass(const char *cname);
+   extern void RemoveClass(const char *cname, TClass *cl);
    extern void ResetClassVersion(TClass*, const char*, Short_t);
-   extern void AddClassAlternate(const char *normName, const char *alternate);
+   extern ROOT::TClassAlt* AddClassAlternate(const char *normName, const char *alternate);
+   extern void RemoveClassAlternate(ROOT::TClassAlt*);
 
    extern TNamed *RegisterClassTemplate(const char *name,
                                         const char *file, Int_t line);
@@ -153,7 +161,7 @@ namespace ROOT {
       virtual void Register(const char *cname, Version_t id,
                             const std::type_info &info,
                             DictFuncPtr_t dict, Int_t pragmabits) const = 0;
-      virtual void Unregister(const char *classname) const = 0;
+      virtual void Unregister(const char *classname, TClass *cl) const = 0;
       virtual TClass *CreateClass(const char *cname, Version_t id,
                                   const std::type_info &info, TVirtualIsAProxy *isa,
                                   const char *dfil, const char *ifil,
@@ -168,8 +176,8 @@ namespace ROOT {
          ROOT::AddClass(cname, id, info, dict, pragmabits);
       }
 
-      void Unregister(const char *classname) const override {
-         ROOT::RemoveClass(classname);
+      void Unregister(const char *classname, TClass *cl) const override {
+         ROOT::RemoveClass(classname, cl);
       }
 
       TClass *CreateClass(const char *cname, Version_t id,
@@ -288,7 +296,7 @@ private:                                                                        
    } /** \endcond */                                                                                            \
                                                                                                                 \
 public:                                                                                                         \
-   /** \return Version of this class */ static Version_t Class_Version() { return id; }                         \
+   /** \return Version of this class */ static constexpr Version_t Class_Version() { return id; }               \
    /** \return TClass describing current object */ virtual_keyword TClass *IsA() const overrd                   \
    { return name::Class(); }                                                                                    \
    /** \cond HIDDEN_SYMBOLS */ virtual_keyword void ShowMembers(TMemberInspector &insp) const overrd            \
@@ -361,32 +369,13 @@ public:                                                                         
 #define R__UseDummy(name) \
    class _NAME2_(name,_c) { public: _NAME2_(name,_c)() { if (name) { } } }
 
-#define ClassImpUnique(name,key)                                                                        \
-   namespace ROOT {                                                                                     \
-      /** \cond HIDDEN_SYMBOLS */ TGenericClassInfo *GenerateInitInstance(const name*); /** \endcond */ \
-      namespace {                                                                                       \
-         static int _R__UNIQUE_(_NAME2_(R__dummyint,key)) __attribute__((unused)) =                     \
-            GenerateInitInstance((name*)0x0)->SetImplFile(__FILE__, __LINE__);                          \
-         R__UseDummy(_R__UNIQUE_(_NAME2_(R__dummyint,key)));                                            \
-      }                                                                                                 \
-   }
+#define ClassImpUnique(name, key)
 
 /// \deprecated
 #define ClassImp(name) ClassImpUnique(name,default)
 
 /// Macro for Namespace
-#define NamespaceImpUnique(name,key)                                        \
-   namespace name {                                                         \
-      namespace ROOTDict {                                                  \
-         /** \cond HIDDEN_SYMBOLS */                                        \
-         ::ROOT::TGenericClassInfo *GenerateInitInstance(); /** \endcond */ \
-         namespace {                                                        \
-            static int _R__UNIQUE_(_NAME2_(R__dummyint,key)) =              \
-               GenerateInitInstance()->SetImplFile(__FILE__, __LINE__);     \
-            R__UseDummy(_R__UNIQUE_(_NAME2_(R__dummyint,key)));             \
-         }                                                                  \
-      }                                                                     \
-   }
+#define NamespaceImpUnique(name, key)
 
 #define NamespaceImp(name) NamespaceImpUnique(name,default)
 
@@ -410,13 +399,8 @@ public:                                                                         
 
 #define ClassDefT2(name,Tmpl)
 
-#define templateClassImpUnique(name, key)                                                                           \
-   namespace ROOT {                                                                                                 \
-   /** \cond HIDDEN_SYMBOLS */ static TNamed *                                                                      \
-      _R__UNIQUE_(_NAME2_(R__dummyholder, key)) = ::ROOT::RegisterClassTemplate(_QUOTE_(name), __FILE__, __LINE__); \
-   /** \endcond */                                                                                                  \
-   R__UseDummy(_R__UNIQUE_(_NAME2_(R__dummyholder, key)));                                                          \
-   }
+#define templateClassImpUnique(name, key)
+
 #define templateClassImp(name) templateClassImpUnique(name,default)
 
 #define ClassImpT(name,Tmpl) templateClassImp(name)

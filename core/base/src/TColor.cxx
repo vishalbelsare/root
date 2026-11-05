@@ -18,13 +18,16 @@
 #include "TError.h"
 #include "TMathBase.h"
 #include "TApplication.h"
-#include "snprintf.h"
+#include "TColorGradient.h"
+
 #include <algorithm>
 #include <cmath>
-#include <iostream>
+#include <cstdio>
 #include <fstream>
+#include <iostream>
+#include <sstream>
+#include <stdexcept>
 
-ClassImp(TColor);
 
 namespace {
    static Bool_t& TColor__GrayScaleMode() {
@@ -45,6 +48,8 @@ static Int_t   gHighestColorIndex = 0;   ///< Highest color index defined
 static Float_t gColorThreshold    = -1.; ///< Color threshold used by GetColor
 static Int_t   gDefinedColors     = 0;   ///< Number of defined colors.
 static Int_t   gLastDefinedColors = 649; ///< Previous number of defined colors
+static Int_t   gPaletteType = 0;         ///< selected palete type
+
 
 #define fgGrayscaleMode TColor__GrayScaleMode()
 #define fgPalette TColor__Palette()
@@ -62,6 +67,7 @@ The color creation and management class.
   - [Basic colors](\ref C01)
   - [The color wheel](\ref C02)
   - [Bright and dark colors](\ref C03)
+  - [Accessible Color Schemes](\ref C031)
   - [Gray scale view of of canvas with colors](\ref C04)
   - [Color palettes](\ref C05)
   - [High quality predefined palettes](\ref C06)
@@ -95,7 +101,7 @@ A new color can be created the following way:
 
 ~~~ {.cpp}
    Int_t ci = 1756; // color index
-   TColor *color = new TColor(ci, 0.1, 0.2, 0.3);
+   auto color = new TColor(ci, 0.1, 0.2, 0.3);
 ~~~
 
 \since **6.07/07:**
@@ -104,7 +110,7 @@ unused color index:
 
 ~~~ {.cpp}
    Int_t ci = TColor::GetFreeColorIndex();
-   TColor *color = new TColor(ci, 0.1, 0.2, 0.3);
+   auto color = new TColor(ci, 0.1, 0.2, 0.3);
 ~~~
 
 Two sets of colors are initialized;
@@ -118,7 +124,7 @@ The following image displays the 50 basic colors.
 
 Begin_Macro(source)
 {
-   TCanvas *c = new TCanvas("c","Fill Area colors",0,0,500,200);
+   auto c = new TCanvas("c","Fill Area colors",0,0,500,200);
    c->DrawColorTable();
    return c;
 }
@@ -153,8 +159,8 @@ to use these keywords in user code instead of hardcoded color numbers, e.g.:
 
 Begin_Macro(source)
 {
-   TColorWheel *w = new TColorWheel();
-   cw = new TCanvas("cw","cw",0,0,400,400);
+   auto w  = new TColorWheel();
+   auto cw = new TCanvas("cw","cw",0,0,400,400);
    w->SetCanvas(cw);
    w->Draw();
 }
@@ -180,18 +186,35 @@ simplest is to define an other white color not attached to the color index 0:
 
 \anchor C03
 ## Bright and dark colors
-The dark and bright color are used to give 3-D effects when drawing various
-boxes (see TWbox, TPave, TPaveText, TPaveLabel, etc).
+Dark and bright colors are used to add 3D effects to graphical objects like
+TWbox, TPave, TPaveText, TPaveLabel, etc. and in colored lego plots.
 
-  - The dark colors have an index = color_index+100
-  - The bright colors have an index = color_index+150
-  - Two static functions return the bright and dark color number
-    corresponding to a color index. If the bright or dark color does not
-    exist, they are created:
-   ~~~ {.cpp}
-      Int_t dark   = TColor::GetColorDark(color_index);
-      Int_t bright = TColor::GetColorBright(color_index);
-   ~~~
+Two static functions are available that return the bright or dark color number corresponding
+to a given color index. If these variants don't already exist, they are created as needed:
+~~~ {.cpp}
+   Int_t dark   = TColor::GetColorDark(color_index);
+   Int_t bright = TColor::GetColorBright(color_index);
+~~~
+
+\anchor C031
+## Accessible Color Schemes
+Choosing an appropriate color scheme is essential for making results easy to understand and
+interpret. Factors like colorblindness and converting colors to grayscale for publications
+can impact accessibility. Furthermore, results should be aesthetically pleasing. The following
+three color schemes, recommended by M. Petroff in [arXiv:2107.02270v2](https://arxiv.org/pdf/2107.02270)
+and available on [GitHub](https://github.com/mpetroff/accessible-color-cycles)
+under the MIT License, meet these criteria.
+
+These three color schemes are available as color sets with 6, 8, and 10 colors, named
+`kP[6, 8, 10]ColorName`. For example, `kP6Red` represents the red color within the P6 color scheme
+(`P` for Petroff or Preferred).
+
+Begin_Macro
+../../../tutorials/visualisation/graphics/accessiblecolorschemes.C
+End_Macro
+
+The example hist026_THStack_color_scheme.C illustrates how to use these color schemes in THStack drawings.
+It also demonstrates that they are effective in grayscale.
 
 \anchor C04
 ## Grayscale view of of canvas with colors
@@ -203,8 +226,8 @@ image below shows the ROOT color wheel in grayscale mode.
 
 Begin_Macro(source)
 {
-   TColorWheel *w = new TColorWheel();
-   cw = new TCanvas("cw","cw",0,0,400,400);
+   auto w  = new TColorWheel();
+   auto cw = new TCanvas("cw","cw",0,0,400,400);
    cw->GetCanvas()->SetGrayscale();
    w->SetCanvas(cw);
    w->Draw();
@@ -227,7 +250,7 @@ example demonstrates how to define and use the color palette:
 
 Begin_Macro(source)
 {
-   TCanvas *c1  = new TCanvas("c1","c1",0,0,600,400);
+   auto c1 = new TCanvas("c1","c1",0,0,600,400);
    TF2 *f1 = new TF2("f1","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",1,3,1,3);
    Int_t palette[5];
    palette[0] = 15;
@@ -247,8 +270,8 @@ The following example demonstrates how to proceed:
 
 Begin_Macro(source)
 {
-   TCanvas *c2  = new TCanvas("c2","c2",0,0,600,400);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",1,3,1,3);
+   auto c2 = new TCanvas("c2","c2",0,0,600,400);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",1,3,1,3);
    const Int_t Number = 3;
    Double_t Red[Number]    = { 1.00, 0.00, 0.00};
    Double_t Green[Number]  = { 0.00, 1.00, 0.00};
@@ -293,7 +316,7 @@ display plots using different palettes on the same pad.
 The tutorial multipalette.C illustrates this feature.
 
 Begin_Macro(source)
-../../../tutorials/graphs/multipalette.C
+../../../tutorials/visualisation/graphics/multipalette.C
 End_Macro
 
 \since **6.26:**
@@ -339,8 +362,9 @@ As explained in [Crameri, F., Shephard, G.E. & Heron, P.J. The misuse of colour 
 Nat Commun 11, 5444 (2020)](https://doi.org/10.1038/s41467-020-19160-7) some color maps
 can visually distord data, specially for people with colour-vision deficiencies.
 
-For instance one can immediately see the [disadvantages of the Rainbow color map](https://root.cern.ch/rainbow-color-map),
-which is misleading for colour-blinded people in a 2D plot (not so much in a 3D surfaces).
+For instance one can immediately see the [disadvantages of the Rainbow color
+map](https://root.cern.ch/rainbow-color-map), which is misleading for colour-blinded people in a 2D plot (not so much in
+a 3D surfaces).
 
 The `kCMYK` palette, is also not great because it's dark, then lighter, then
 half-dark again. Some others, like `kAquamarine`, have almost no contrast therefore it would
@@ -371,8 +395,8 @@ if with "colz".
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kBird);
    f2->Draw("surf2Z"); f2->SetTitle("kBird (default)");
 }
@@ -380,8 +404,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kGreyScale);
    f2->Draw("surf2Z"); f2->SetTitle("kGreyScale");
 }
@@ -389,8 +413,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kDarkBodyRadiator);
    f2->Draw("surf2Z"); f2->SetTitle("kDarkBodyRadiator");
 }
@@ -399,8 +423,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kBlueYellow);
    f2->Draw("surf2Z"); f2->SetTitle("kBlueYellow");
 }
@@ -408,8 +432,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kWaterMelon);
    f2->Draw("surf2Z"); f2->SetTitle("kWaterMelon");
 }
@@ -417,8 +441,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kInvertedDarkBodyRadiator);
    f2->Draw("surf2Z"); f2->SetTitle("kInvertedDarkBodyRadiator");
 }
@@ -427,8 +451,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kDeepSea);
    f2->Draw("surf2Z"); f2->SetTitle("kDeepSea");
 }
@@ -436,8 +460,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCubehelix);
    f2->Draw("surf2Z"); f2->SetTitle("kCubehelix");
 }
@@ -445,8 +469,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kGreenRedViolet);
    f2->Draw("surf2Z"); f2->SetTitle("kGreenRedViolet");
 }
@@ -455,8 +479,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kBlueRedYellow);
    f2->Draw("surf2Z"); f2->SetTitle("kBlueRedYellow");
 }
@@ -464,8 +488,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kOcean);
    f2->Draw("surf2Z"); f2->SetTitle("kOcean");
 }
@@ -473,8 +497,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCool);
    f2->Draw("surf2Z"); f2->SetTitle("kCool");
 }
@@ -483,8 +507,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kAlpine);
    f2->Draw("surf2Z"); f2->SetTitle("kAlpine");
 }
@@ -492,8 +516,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kPigeon);
    f2->Draw("surf2Z"); f2->SetTitle("kPigeon");
 }
@@ -501,8 +525,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kPlum);
    f2->Draw("surf2Z"); f2->SetTitle("kPlum");
 }
@@ -511,8 +535,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kGistEarth);
    f2->Draw("surf2Z"); f2->SetTitle("kGistEarth");
 }
@@ -520,8 +544,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kViridis);
    f2->Draw("surf2Z"); f2->SetTitle("kViridis");
 }
@@ -529,8 +553,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kAvocado);
    f2->Draw("surf2Z"); f2->SetTitle("kAvocado");
 }
@@ -539,8 +563,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kRust);
    f2->Draw("surf2Z"); f2->SetTitle("kRust");
 }
@@ -548,8 +572,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCopper);
    f2->Draw("surf2Z"); f2->SetTitle("kCopper");
 }
@@ -557,8 +581,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kBlueGreenYellow);
    f2->Draw("surf2Z"); f2->SetTitle("kBlueGreenYellow");
 }
@@ -567,8 +591,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kSienna);
    f2->Draw("surf2Z"); f2->SetTitle("kSienna");
 }
@@ -576,8 +600,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kSolar);
    f2->Draw("surf2Z"); f2->SetTitle("kSolar");
 }
@@ -585,8 +609,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCandy);
    f2->Draw("surf2Z"); f2->SetTitle("kCandy");
 }
@@ -595,8 +619,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCherry);
    f2->Draw("surf2Z"); f2->SetTitle("kCherry");
 }
@@ -604,8 +628,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCoffee);
    f2->Draw("surf2Z"); f2->SetTitle("kCoffee");
 }
@@ -613,8 +637,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kSouthWest);
    f2->Draw("surf2Z"); f2->SetTitle("kSouthWest");
 }
@@ -623,8 +647,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kStarryNight);
    f2->Draw("surf2Z"); f2->SetTitle("kStarryNight");
 }
@@ -632,8 +656,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kFall);
    f2->Draw("surf2Z"); f2->SetTitle("kFall");
 }
@@ -641,8 +665,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kFruitPunch);
    f2->Draw("surf2Z"); f2->SetTitle("kFruitPunch");
 }
@@ -651,8 +675,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kFuchsia);
    f2->Draw("surf2Z"); f2->SetTitle("kFuchsia");
 }
@@ -660,8 +684,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kGreyYellow);
    f2->Draw("surf2Z"); f2->SetTitle("kGreyYellow");
 }
@@ -669,8 +693,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kGreenBrownTerrain);
    f2->Draw("surf2Z"); f2->SetTitle("kGreenBrownTerrain");
 }
@@ -679,8 +703,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kSunset);
    f2->Draw("surf2Z"); f2->SetTitle("kSunset");
 }
@@ -688,8 +712,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kNeon);
    f2->Draw("surf2Z"); f2->SetTitle("kNeon");
 }
@@ -697,8 +721,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kLake);
    f2->Draw("surf2Z"); f2->SetTitle("kLake");
 }
@@ -707,8 +731,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kValentine);
    f2->Draw("surf2Z"); f2->SetTitle("kValentine");
 }
@@ -716,8 +740,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kLightTerrain);
    f2->Draw("surf2Z"); f2->SetTitle("kLightTerrain");
 }
@@ -725,8 +749,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCividis);
    f2->Draw("surf2Z"); f2->SetTitle("kCividis");
 }
@@ -741,8 +765,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kIsland);
    f2->Draw("surf2Z"); f2->SetTitle("kIsland");
 }
@@ -750,8 +774,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kRainBow);
    f2->Draw("surf2Z"); f2->SetTitle("kRainBow");
 }
@@ -759,8 +783,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kColorPrintableOnGrey);
    f2->Draw("surf2Z"); f2->SetTitle("kColorPrintableOnGrey");
 }
@@ -769,8 +793,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kAquamarine);
    f2->Draw("surf2Z"); f2->SetTitle("kAquamarine");
 }
@@ -778,8 +802,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kArmy);
    f2->Draw("surf2Z"); f2->SetTitle("kArmy");
 }
@@ -787,8 +811,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kAtlantic);
    f2->Draw("surf2Z"); f2->SetTitle("kAtlantic");
 }
@@ -797,8 +821,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kAurora);
    f2->Draw("surf2Z"); f2->SetTitle("kAurora");
 }
@@ -806,8 +830,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kBeach);
    f2->Draw("surf2Z"); f2->SetTitle("kBeach");
 }
@@ -815,8 +839,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kBlackBody);
    f2->Draw("surf2Z"); f2->SetTitle("kBlackBody");
 }
@@ -825,8 +849,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kBrownCyan);
    f2->Draw("surf2Z"); f2->SetTitle("kBrownCyan");
 }
@@ -834,8 +858,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCMYK);
    f2->Draw("surf2Z"); f2->SetTitle("kCMYK");
 }
@@ -843,8 +867,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kDarkRainBow);
    f2->Draw("surf2Z"); f2->SetTitle("kDarkRainBow");
 }
@@ -853,8 +877,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kDarkTerrain);
    f2->Draw("surf2Z"); f2->SetTitle("kDarkTerrain");
 }
@@ -862,8 +886,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kGreenPink);
    f2->Draw("surf2Z"); f2->SetTitle("kGreenPink");
 }
@@ -871,8 +895,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kRedBlue);
    f2->Draw("surf2Z"); f2->SetTitle("kRedBlue");
 }
@@ -881,8 +905,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kRose);
    f2->Draw("surf2Z"); f2->SetTitle("kRose");
 }
@@ -890,8 +914,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kLightTemperature);
    f2->Draw("surf2Z"); f2->SetTitle("kLightTemperature");
 }
@@ -899,8 +923,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kMint);
    f2->Draw("surf2Z"); f2->SetTitle("kMint");
 }
@@ -909,8 +933,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kPastel);
    f2->Draw("surf2Z"); f2->SetTitle("kPastel");
 }
@@ -918,8 +942,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kPearl);
    f2->Draw("surf2Z"); f2->SetTitle("kPearl");
 }
@@ -927,8 +951,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kSandyTerrain);
    f2->Draw("surf2Z"); f2->SetTitle("kSandyTerrain");
 }
@@ -937,8 +961,8 @@ End_Macro
 <tr><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kTemperatureMap);
    f2->Draw("surf2Z"); f2->SetTitle("kTemperatureMap");
 }
@@ -946,8 +970,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kThermometer);
    f2->Draw("surf2Z"); f2->SetTitle("kThermometer");
 }
@@ -955,8 +979,8 @@ End_Macro
 </td><td>
 Begin_Macro
 {
-   c  = new TCanvas("c","c",0,0,300,300);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto c  = new TCanvas("c","c",0,0,300,300);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kVisibleSpectrum);
    f2->Draw("surf2Z"); f2->SetTitle("kVisibleSpectrum");
 }
@@ -972,7 +996,7 @@ method TColor::InvertPalette. The top of the palette becomes the bottom and vice
 Begin_Macro(source)
 {
    auto c  = new TCanvas("c","c",0,0,600,400);
-   TF2 *f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
+   auto f2 = new TF2("f2","0.1+(1-(x-2)*(x-2))*(1-(y-2)*(y-2))",0.999,3.002,0.999,3.002);
    f2->SetContour(99); gStyle->SetPalette(kCherry);
    TColor::InvertPalette();
    f2->Draw("surf2Z"); f2->SetTitle("kCherry inverted");
@@ -995,7 +1019,7 @@ A new color can be created transparent the following way:
 
 ~~~ {.cpp}
    Int_t ci = 1756;
-   TColor *color = new TColor(ci, 0.1, 0.2, 0.3, "", 0.5); // alpha = 0.5
+   auto color = new TColor(ci, 0.1, 0.2, 0.3, "", 0.5); // alpha = 0.5
 ~~~
 
 An example of transparency usage with parallel coordinates can be found
@@ -1004,8 +1028,8 @@ in parallelcoordtrans.C.
 To ease the creation of a transparent color the static method
 `GetColorTransparent(Int_t color, Float_t a)` is provided.
 In the following example the `trans_red` color index point to
-a red color 30% transparent. The alpha value of the color index
-`kRed` is not modified.
+a red color 30% opaque (70% transparent). The alpha value of
+the color index `kRed` is not modified.
 
 ~~~ {.cpp}
    Int_t trans_red = GetColorTransparent(kRed, 0.3);
@@ -1015,20 +1039,37 @@ This function is also used in the methods
 `SetFillColorAlpha()`, `SetLineColorAlpha()`,
 `SetMarkerColorAlpha()` and `SetTextColorAlpha()`.
 In the following example the fill color of the histogram `histo`
-is set to blue with a transparency of 35%. The color `kBlue`
-itself remains fully opaque.
+is set to blue with an opacity of 35% (i.e. a transparency of 65%).
+(The color `kBlue` itself is internally stored as fully opaque.)
 
 ~~~ {.cpp}
    histo->SetFillColorAlpha(kBlue, 0.35);
 ~~~
 
-The transparency is available on all platforms when the flag `OpenGL.CanvasPreferGL` is set to `1`
-in `$ROOTSYS/etc/system.rootrc`, or on Mac with the Cocoa backend. On the file output
-it is visible with PDF, PNG, Gif, JPEG, SVG, TeX ... but not PostScript.
+\anchor col_trans_available
+
+#### Note:
+
+Transparency is supported by the following graphics backends:
+
+- OpenGL
+- Cocoa/Quartz (macOS)
+- SVG
+- PDF
+- TeX
+- PNG, GIF, and JPEG
+- TWebCanvas
+- Future `TCanvasImp` implementations, such as `qt6canvas`
+
+Transparency is **not** supported by the X11 and PostScript backends.
+
+Alternatively, you can call at the top of your script `gStyle->SetCanvasPreferGL();`.
+Or if you prefer to activate GL for a single canvas `c`, then use `c->SetSupportGL(true);`.
+
 The following macro gives an example of transparency usage:
 
 Begin_Macro(source)
-../../../tutorials/graphics/transparency.C
+../../../tutorials/visualisation/graphics/transparency.C
 End_Macro
 
 */
@@ -1046,6 +1087,7 @@ TColor::TColor(): TNamed()
 ////////////////////////////////////////////////////////////////////////////////
 /// Normal color constructor. Initialize a color structure.
 /// Compute the RGB and HLS color components.
+/// The color title is set to its hexadecimal value.
 
 TColor::TColor(Int_t color, Float_t r, Float_t g, Float_t b, const char *name,
                Float_t a)
@@ -1085,6 +1127,7 @@ TColor::TColor(Int_t color, Float_t r, Float_t g, Float_t b, const char *name,
    SetRGB(r, g, b);
    fAlpha = a;
    gDefinedColors++;
+   SetTitle(AsHexString());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1211,6 +1254,38 @@ void TColor::InitializeColors()
       new TColor(19,.95,.95,.95,"grey19");
       new TColor(50, 0.83,0.35,0.33);
 
+      // define the Petroff color schemes
+      new TColor(kGrape,    111./255.,  45./255., 168./255., "kGrape");
+      new TColor(kBrown,    165./255.,  42./255.,  42./255., "kBrown");
+      new TColor(kAsh,      178./255., 190./255., 181./255., "kAsh");
+
+      new TColor(kP6Blue,    87./255., 144./255., 252./255., "kP6Blue");
+      new TColor(kP6Yellow, 248./255., 156./255.,  32./255., "kP6Yellow");
+      new TColor(kP6Red,    228./255.,  37./255.,  54./255., "kP6Red");
+      new TColor(kP6Grape,  150./255.,  74./255., 139./255., "kP6Grape");
+      new TColor(kP6Gray,   156./255., 156./255., 161./255., "kP6Gray");
+      new TColor(kP6Violet, 122./255.,  33./255., 221./255., "kP6Violet");
+
+      new TColor(kP8Blue,    24./255.,  69./255., 251./255., "kP8Blue");
+      new TColor(kP8Orange,        1.,  94./255.,   2./255., "kP8Orange");
+      new TColor(kP8Red,    201./255.,  31./255.,  22./255., "kP8Red");
+      new TColor(kP8Pink,   200./255.,  73./255., 169./255., "kP8Pink");
+      new TColor(kP8Green,  173./255., 173./255., 125./255., "kP8Green");
+      new TColor(kP8Cyan,   134./255., 200./255., 221./255., "kP8Cyan");
+      new TColor(kP8Azure,   87./255., 141./255., 255./255., "kP8Azure");
+      new TColor(kP8Gray,   101./255.,  99./255., 100./255., "kP8Gray");
+
+      new TColor(kP10Blue,    63./255., 144./255., 218./255., "kP10Blue");
+      new TColor(kP10Yellow,        1., 169./255.,  14./255., "kP10Yellow");
+      new TColor(kP10Red,    189./255.,  31./255.,   1./255., "kP10Red");
+      new TColor(kP10Gray,   148./255., 164./255., 162./255., "kP10Gray");
+      new TColor(kP10Violet, 131./255.,  45./255., 182./255., "kP10Violet");
+      new TColor(kP10Brown,  169./255., 107./255.,  89./255., "kP10Brown");
+      new TColor(kP10Orange, 231./255.,  99./255.,        0., "kP10Orange");
+      new TColor(kP10Green,  185./255., 172./255., 112./255., "kP10Green");
+      new TColor(kP10Ash,    113./255., 117./255., 129./255., "kP10Ash");
+      new TColor(kP10Cyan,   146./255., 218./255., 221./255., "kP10Cyan");
+
       // Initialize the Pretty Palette Spectrum Violet->Red
       //   The color model used here is based on the HLS model which
       //   is much more suitable for creating palettes than RGB.
@@ -1327,7 +1402,6 @@ void TColor::CreateColorsCircle(Int_t offset, const char *name, UChar_t *rgb)
       TColor *color = gROOT->GetColor(colorn);
       if (!color) {
          color = new TColor(colorn,rgb[3*n]/255.,rgb[3*n+1]/255.,rgb[3*n+2]/255.);
-         color->SetTitle(color->AsHexString());
          if      (n>10) colorname.Form("%s+%d",name,n-10);
          else if (n<10) colorname.Form("%s-%d",name,10-n);
          else           colorname.Form("%s",name);
@@ -1347,7 +1421,6 @@ void TColor::CreateColorsRectangle(Int_t offset, const char *name, UChar_t *rgb)
       TColor *color = gROOT->GetColor(colorn);
       if (!color) {
          color = new TColor(colorn,rgb[3*n]/255.,rgb[3*n+1]/255.,rgb[3*n+2]/255.);
-         color->SetTitle(color->AsHexString());
          if      (n>9) colorname.Form("%s+%d",name,n-9);
          else if (n<9) colorname.Form("%s-%d",name,9-n);
          else          colorname.Form("%s",name);
@@ -1473,12 +1546,23 @@ Int_t TColor::GetNumberOfColors()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Static function returning kTRUE if some new colors have been defined after
+/// Static method returning kTRUE if some new colors have been defined after
 /// initialisation or since the last call to this method. This allows to avoid
 /// the colors and palette streaming in TCanvas::Streamer if not needed.
+/// If the method is called once with set_always_on = 1, all next canvases will be
+//  saved with the color palette - disregard if new colors created or not.
+/// To reset such mode, just call the method once with set_always_on = -1
 
-Bool_t TColor::DefinedColors()
+Bool_t TColor::DefinedColors(Int_t set_always_on)
 {
+   if (set_always_on > 0)
+      gLastDefinedColors = -1;
+   else if (set_always_on < 0)
+      gLastDefinedColors = gDefinedColors;
+
+   if (gLastDefinedColors < 0)
+      return kTRUE;
+
    // After initialization gDefinedColors == 649. If it is bigger it means some new
    // colors have been defined
    Bool_t hasChanged = (gDefinedColors - gLastDefinedColors) > 50;
@@ -1496,7 +1580,7 @@ ULong_t TColor::GetPixel() const
    if (gVirtualX && !gROOT->IsBatch()) {
       if (gApplication) {
          TApplication::NeedGraphicsLibs();
-         gApplication->InitializeGraphics();
+         gApplication->InitializeGraphics(gROOT->IsWebDisplay());
       }
       return gVirtualX->GetPixel(fNumber);
    }
@@ -1753,8 +1837,34 @@ void TColor::RGB2HLS(Int_t r, Int_t g, Int_t b, Int_t &h, Int_t &l, Int_t &s)
    s = (Int_t) (satur * 255.0f);
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
-/// Initialize this color and its associated colors.
+/// Set the color name and change also the name of the "dark" and "bright" associated
+/// colors if they exist.
+
+void TColor::SetName(const char* name)
+{
+   Int_t nd = GetColorByName(TString::Format("%s_dark",fName.Data()).Data());
+   Int_t nb = GetColorByName(TString::Format("%s_bright",fName.Data()).Data());
+
+   fName = name;
+
+   auto colors = (TObjArray*) gROOT->GetListOfColors();
+
+   if (nd >= 0) {
+      TColor *colord = (TColor*)colors->At(nd);
+      colord->TNamed::SetName(TString::Format("%s_dark",fName.Data()).Data());
+   }
+
+   if (nb >= 0) {
+      TColor *colorb = (TColor*)colors->At(nb);
+      colorb->TNamed::SetName(TString::Format("%s_bright",fName.Data()).Data());
+   }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Initialize this color and its "dark" and "bright" associated colors.
 
 void TColor::SetRGB(Float_t r, Float_t g, Float_t b)
 {
@@ -1766,6 +1876,7 @@ void TColor::SetRGB(Float_t r, Float_t g, Float_t b)
    if (fRed < 0) return;
 
    RGBtoHLS(r, g, b, fHue, fLight, fSaturation);
+   SetTitle(AsHexString());
 
    Int_t nplanes = 16;
    if (gVirtualX) gVirtualX->GetPlanes(nplanes);
@@ -1777,26 +1888,32 @@ void TColor::SetRGB(Float_t r, Float_t g, Float_t b)
 #endif
       Allocate();
 
-   if (fNumber > 50) return;
-
-   // now define associated colors for WBOX shading
+   // change the dark and bright associated colors if they exist
    Float_t dr, dg, db, lr, lg, lb;
 
+   // get the list of all defined colors
+   auto colors = (TObjArray*) gROOT->GetListOfColors();
+
    // set dark color
-   HLStoRGB(fHue, 0.7f*fLight, fSaturation, dr, dg, db);
-   TColor *dark = gROOT->GetColor(100+fNumber);
-   if (dark) {
-      if (nplanes > 8) dark->SetRGB(dr, dg, db);
-      else             dark->SetRGB(0.3f,0.3f,0.3f);
+   Int_t nd = GetColorByName(TString::Format("%s_dark",GetName()).Data());
+   if (nd >= 0) {
+      HLStoRGB(fHue, 0.7f*fLight, fSaturation, dr, dg, db);
+      TColor *colord = (TColor*)colors->At(nd);
+      if (nplanes > 8) colord->SetRGB(dr, dg, db);
+      else             colord->SetRGB(0.3f,0.3f,0.3f);
+      colord->SetTitle(colord->AsHexString());
    }
 
-   // set light color
-   HLStoRGB(fHue, 1.2f*fLight, fSaturation, lr, lg, lb);
-   TColor *light = gROOT->GetColor(150+fNumber);
-   if (light) {
-      if (nplanes > 8) light->SetRGB(lr, lg, lb);
-      else             light->SetRGB(0.8f,0.8f,0.8f);
+   // set bright color
+   Int_t nb = GetColorByName(TString::Format("%s_bright",GetName()).Data());
+   if (nb >= 0) {
+      HLStoRGB(fHue, 1.2f*fLight, fSaturation, lr, lg, lb);
+      TColor *colorb = (TColor*)colors->At(nb);
+      if (nplanes > 8) colorb->SetRGB(lr, lg, lb);
+      else             colorb->SetRGB(0.8f,0.8f,0.8f);
+      colorb->SetTitle(colorb->AsHexString());
    }
+
    gDefinedColors++;
 }
 
@@ -1806,14 +1923,14 @@ void TColor::SetRGB(Float_t r, Float_t g, Float_t b)
 void TColor::Allocate()
 {
    if (gVirtualX && !gROOT->IsBatch())
-
       gVirtualX->SetRGB(fNumber, GetRed(), GetGreen(), GetBlue());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Static method returning color number for color specified by
 /// hex color string of form: "#rrggbb", where rr, gg and bb are in
-/// hex between [0,FF], e.g. "#c0c0c0".
+/// hex between [0,FF], e.g. "#c0c0c0". Also alpha channel is applied when
+/// hex string includes fourth number e.g "#c0c0c0ff"
 ///
 /// The color retrieval is done using a threshold defined by SetColorThreshold.
 ///
@@ -1823,8 +1940,10 @@ void TColor::Allocate()
 Int_t TColor::GetColor(const char *hexcolor)
 {
    if (hexcolor && *hexcolor == '#') {
-      Int_t r, g, b;
-      if (sscanf(hexcolor+1, "%02x%02x%02x", &r, &g, &b) == 3)
+      Int_t r, g, b, a;
+      if (strlen(hexcolor) == 9 && sscanf(hexcolor + 1, "%02x%02x%02x%02x", &r, &g, &b, &a) == 4)
+         return GetColor(r, g, b, a / 255.);
+      if (sscanf(hexcolor + 1, "%02x%02x%02x", &r, &g, &b) == 3)
          return GetColor(r, g, b);
    }
    ::Error("TColor::GetColor(const char*)", "incorrect color string");
@@ -1841,14 +1960,9 @@ Int_t TColor::GetColor(const char *hexcolor)
 /// with as name "#rrggbb" with rr, gg and bb in hex between
 /// [0,FF].
 
-Int_t TColor::GetColor(Float_t r, Float_t g, Float_t b)
+Int_t TColor::GetColor(Float_t r, Float_t g, Float_t b, Float_t a)
 {
-   Int_t rr, gg, bb;
-   rr = Int_t(r * 255);
-   gg = Int_t(g * 255);
-   bb = Int_t(b * 255);
-
-   return GetColor(rr, gg, bb);
+   return GetColor(Int_t(r * 255), Int_t(g * 255), Int_t(b * 255), a);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1906,24 +2020,35 @@ void TColor::SetColorThreshold(Float_t t)
 ///
 /// The color retrieval is done using a threshold defined by SetColorThreshold.
 
-
-Int_t TColor::GetColor(Int_t r, Int_t g, Int_t b)
+Int_t TColor::GetColor(Int_t r, Int_t g, Int_t b, Float_t a)
 {
    TColor::InitializeColors();
-   if (r < 0) r = 0;
-   if (g < 0) g = 0;
-   if (b < 0) b = 0;
-   if (r > 255) r = 255;
-   if (g > 255) g = 255;
-   if (b > 255) b = 255;
+   if (r < 0)
+      r = 0;
+   else if (r > 255)
+      r = 255;
+   if (g < 0)
+      g = 0;
+   else if (g > 255)
+      g = 255;
+   if (b < 0)
+      b = 0;
+   else if (b > 255)
+      b = 255;
+   if (a > 1.)
+      a = 1.;
+   else if (a < 0.)
+      a = 0.;
 
    // Get list of all defined colors
    TObjArray *colors = (TObjArray*) gROOT->GetListOfColors();
 
-   TColor *color = nullptr;
+   TString name = TString::Format("#%02x%02x%02x", r, g, b);
+   if (a != 1.)
+      name.Append(TString::Format("%02x", Int_t(a*255)));
 
    // Look for color by name
-   if ((color = (TColor*) colors->FindObject(Form("#%02x%02x%02x", r, g, b))))
+   if (auto color = static_cast<TColor *>(colors->FindObject(name.Data())))
       // We found the color by name, so we use that right away
       return color->GetNumber();
 
@@ -1938,17 +2063,18 @@ Int_t TColor::GetColor(Int_t r, Int_t g, Int_t b)
    if (gColorThreshold >= 0) {
       thres = gColorThreshold;
    } else {
-      Int_t nplanes = 16;
-      thres = 1.0f/31.0f;   // 5 bits per color : 0 - 0x1F !
+      Int_t nplanes = 24;
+      thres = 1.0f/255.0f;       // 8 bits per color : 0 - 0xFF !
       if (gVirtualX) gVirtualX->GetPlanes(nplanes);
-      if (nplanes >= 24) thres = 1.0f/255.0f;       // 8 bits per color : 0 - 0xFF !
+      if ((nplanes > 0) && (nplanes <= 16)) thres = 1.0f/31.0f; // 5 bits per color : 0 - 0x1F !
    }
 
    // Loop over all defined colors
-   while ((color = (TColor*)next())) {
+   while (auto color = static_cast<TColor *>(next())) {
       if (TMath::Abs(color->GetRed() - rr) > thres)   continue;
       if (TMath::Abs(color->GetGreen() - gg) > thres) continue;
       if (TMath::Abs(color->GetBlue() - bb) > thres)  continue;
+      if (TMath::Abs(color->GetAlpha() - a) > thres)  continue;
       // We found a matching color in the color table
       return color->GetNumber();
    }
@@ -1956,79 +2082,115 @@ Int_t TColor::GetColor(Int_t r, Int_t g, Int_t b)
    // We didn't find a matching color in the color table, so we
    // add it. Note name is of the form "#rrggbb" where rr, etc. are
    // hexadecimal numbers.
-   color = new TColor(colors->GetLast()+1, rr, gg, bb,
-                      Form("#%02x%02x%02x", r, g, b));
+   auto color = new TColor(colors->GetLast()+1, rr, gg, bb, name.Data(), a);
 
    return color->GetNumber();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Static method returning color index for a color specified by name.
+/// The list of defined colors and their names is given by TColor::ListColors.
+/// If the specified color name does not exist -1 is returned.
+
+Int_t TColor::GetColorByName(const char *colorname)
+{
+   TObjArray *colors = (TObjArray*) gROOT->GetListOfColors();
+   if (auto color = static_cast<TColor *>(colors->FindObject(colorname))) {
+      return color->GetNumber();
+   } else {
+     return -1;
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Static function: Returns the bright color number corresponding to n
-/// If the TColor object does not exist, it is created.
-/// The convention is that the bright color nb = n+150
+/// If the TColor object does not exist, it is created at a free color index.
 
 Int_t TColor::GetColorBright(Int_t n)
 {
    if (n < 0) return -1;
 
    // Get list of all defined colors
-   TObjArray *colors = (TObjArray*) gROOT->GetListOfColors();
+   auto colors = (TObjArray*) gROOT->GetListOfColors();
    Int_t ncolors = colors->GetSize();
+
    // Get existing color at index n
    TColor *color = nullptr;
    if (n < ncolors) color = (TColor*)colors->At(n);
    if (!color) return -1;
 
+   // in case color is not named, assign a unique name.
+   if (strlen(color->GetName()) == 0)
+      color->SetName(TString::Format("Color%d",n).Data());
+
+   // check if the bright color already exists, if yes return it
+   TString nameb = TString::Format("%s_bright",color->GetName()).Data();
+   Int_t nb = GetColorByName(nameb.Data());
+   TColor *colorb = nullptr;
+   if (nb >= 0) {
+      colorb = (TColor*)colors->At(nb);
+      return colorb->GetNumber();
+   }
+
    //Get the rgb of the new bright color corresponding to color n
    Float_t r,g,b;
    HLStoRGB(color->GetHue(), 1.2f*color->GetLight(), color->GetSaturation(), r, g, b);
 
-   //Build the bright color (unless the slot nb is already used)
-   Int_t nb = n+150;
-   TColor *colorb = nullptr;
-   if (nb < ncolors) colorb = (TColor*)colors->At(nb);
-   if (colorb) return nb;
+   //Build the bright color
+   nb = GetFirstFreeColorIndex();
    colorb = new TColor(nb,r,g,b);
-   colorb->SetName(Form("%s_bright",color->GetName()));
+   colorb->SetName(nameb.Data());
+   colorb->SetTitle(colorb->AsHexString());
    colors->AddAtAndExpand(colorb,nb);
    return nb;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Static function: Returns the dark color number corresponding to n
-/// If the TColor object does not exist, it is created.
-/// The convention is that the dark color nd = n+100
+/// If the TColor object does not exist, it is created at a free color index.
 
 Int_t TColor::GetColorDark(Int_t n)
 {
    if (n < 0) return -1;
 
    // Get list of all defined colors
-   TObjArray *colors = (TObjArray*) gROOT->GetListOfColors();
+   auto colors = (TObjArray*) gROOT->GetListOfColors();
    Int_t ncolors = colors->GetSize();
+
    // Get existing color at index n
    TColor *color = nullptr;
    if (n < ncolors) color = (TColor*)colors->At(n);
    if (!color) return -1;
 
+   // in case color is not named, assign a unique name.
+   if (strlen(color->GetName()) == 0)
+      color->SetName(TString::Format("Color%d",n).Data());
+
+   // check if the dark color already exists, if yes return it
+   TString named = TString::Format("%s_dark",color->GetName()).Data();
+   Int_t nd = GetColorByName(named.Data());
+   TColor *colord = nullptr;
+   if (nd >= 0) {
+      colord = (TColor*)colors->At(nd);
+      return colord->GetNumber();
+   }
+
    //Get the rgb of the new dark color corresponding to color n
    Float_t r,g,b;
    HLStoRGB(color->GetHue(), 0.7f*color->GetLight(), color->GetSaturation(), r, g, b);
 
-   //Build the dark color (unless the slot nd is already used)
-   Int_t nd = n+100;
-   TColor *colord = nullptr;
-   if (nd < ncolors) colord = (TColor*)colors->At(nd);
-   if (colord) return nd;
+   //Build the dark color
+   nd = GetFirstFreeColorIndex();
    colord = new TColor(nd,r,g,b);
-   colord->SetName(Form("%s_dark",color->GetName()));
+   colord->SetName(named.Data());
+   colord->SetTitle(colord->AsHexString());
    colors->AddAtAndExpand(colord,nd);
    return nd;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Static function: Returns the transparent color number corresponding to n.
-/// The transparency level is given by the alpha value a. If a color with the same
+/// The opacity level is given by the alpha value a. If a color with the same
 /// RGBa values already exists it is returned.
 
 Int_t TColor::GetColorTransparent(Int_t n, Float_t a)
@@ -2051,7 +2213,7 @@ Int_t TColor::GetColorTransparent(Int_t n, Float_t a)
       TColor *colort = new TColor(gROOT->GetListOfColors()->GetLast()+1,
                                   color->GetRed(), color->GetGreen(), color->GetBlue());
       colort->SetAlpha(a);
-      colort->SetName(Form("%s_transparent",color->GetName()));
+      colort->SetName(TString::Format("%s_transparent",color->GetName()).Data());
       return colort->GetNumber();
    } else {
       ::Error("TColor::GetColorTransparent", "color with index %d not defined", n);
@@ -2060,17 +2222,232 @@ Int_t TColor::GetColorTransparent(Int_t n, Float_t a)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Static function: Returns a free color index which can be used to define
-/// a user custom color.
+/// Static function: Returns the linear gradient color number corresponding to specified parameters.
+/// First parameter set direction as angle in grad. Value 0 is horizontal direction, 90 - vertical
+/// List of colors defines interpolation colors for the gradient
+/// Optional positions can define relative color positions and must be sorted array of values between 0 and 1.
+/// If such gradient not exists - it will be created new
+/// Returns -1 if wrong parameters where specified
+
+Int_t TColor::GetLinearGradient(Double_t angle, const std::vector<Int_t> &colors, const std::vector<Double_t> &positions)
+{
+   if (colors.size() < 2) {
+      ::Error("TColor::GetLinearGradient", "number of specified colors %d not enough to create gradients", (int) colors.size());
+      return -1;
+   }
+
+   std::vector<Double_t> raw_colors(colors.size()*4);
+   std::vector<Double_t> raw_positions(colors.size());
+   for (unsigned indx = 0; indx < colors.size(); indx++) {
+      TColor *color = gROOT->GetColor(colors[indx]);
+      if (!color) {
+         ::Error("TColor::GetLinearGradient", "Not able to get %d color", (int) colors.size());
+         return -1;
+      }
+      raw_colors[indx*4] = color->GetRed();
+      raw_colors[indx*4+1] = color->GetGreen();
+      raw_colors[indx*4+2] = color->GetBlue();
+      raw_colors[indx*4+3] = color->GetAlpha();
+
+      raw_positions[indx] = indx < positions.size() ? positions[indx] : indx / (colors.size() - 1.);
+   }
+
+   Double_t _cos = std::cos(angle / 180. * 3.1415), _sin = std::sin(angle / 180. * 3.1415);
+   Double_t x0 = (_cos >= 0. ? 0. : 1.), y0 = (_sin >= 0. ? 0. : 1.);
+   Double_t scale = TMath::Max(TMath::Abs(_cos), TMath::Abs(_sin));
+
+   TLinearGradient::Point start(x0, y0), end(x0 + _cos/scale, y0 + _sin/scale);
+
+
+   TObjArray *root_colors = (TObjArray*) gROOT->GetListOfColors();
+
+   TIter iter(root_colors);
+
+   while (auto col = static_cast<TColor *>(iter())) {
+      if (col->IsA() != TLinearGradient::Class())
+         continue;
+
+      auto grad = static_cast<TLinearGradient *>(col);
+
+      if (grad->GetNumberOfSteps() != colors.size())
+         continue;
+
+      Bool_t match = kTRUE;
+      for (unsigned n = 0; n < raw_colors.size(); ++n)
+         if (TMath::Abs(raw_colors[n] - grad->GetColors()[n]) > 1e-3)
+            match = kFALSE;
+
+      for (unsigned n = 0; n < raw_positions.size(); ++n)
+         if (TMath::Abs(raw_positions[n] - grad->GetColorPositions()[n]) > 1e-2)
+            match = kFALSE;
+
+      if (TMath::Abs(grad->GetStart().fX - start.fX) > 1e-2 ||
+          TMath::Abs(grad->GetStart().fY - start.fY) > 1e-2 ||
+          TMath::Abs(grad->GetEnd().fX - end.fX) > 1e-2 ||
+          TMath::Abs(grad->GetEnd().fY - end.fY) > 1e-2)
+         match = kFALSE;
+
+      if (match)
+         return col->GetNumber();
+   }
+
+   auto grad = new TLinearGradient(root_colors->GetLast() + 1, colors.size(), raw_positions.data(), raw_colors.data());
+
+   grad->SetStartEnd(start, end);
+
+   return grad->GetNumber();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Static function: Returns the radial gradient color number corresponding to specified parameters.
+/// First parameter set direction as angle in grad. Value 0 is horizontal direction, 90 - vertical
+/// List of colors defines interpolation colors for the gradient
+/// Optional positions can define relative color positions and must be sorted array of values between 0 and 1.
+/// If such gradient not exists - it will be created new
+/// Returns -1 if wrong parameter where specified
+
+Int_t TColor::GetRadialGradient(Double_t radius, const std::vector<Int_t> &colors, const std::vector<Double_t> &positions)
+{
+   if (colors.size() < 2) {
+      ::Error("TColor::GetRadialGradient", "number of specified colors %d not enough to create gradients", (int) colors.size());
+      return -1;
+   }
+
+   std::vector<Double_t> raw_colors(colors.size()*4);
+   std::vector<Double_t> raw_positions(colors.size());
+   for (unsigned indx = 0; indx < colors.size(); indx++) {
+      TColor *color = gROOT->GetColor(colors[indx]);
+      if (!color) {
+         ::Error("TColor::GetRadialGradient", "Not able to get %d color", (int) colors.size());
+         return -1;
+      }
+      raw_colors[indx*4] = color->GetRed();
+      raw_colors[indx*4+1] = color->GetGreen();
+      raw_colors[indx*4+2] = color->GetBlue();
+      raw_colors[indx*4+3] = color->GetAlpha();
+
+      raw_positions[indx] = indx < positions.size() ? positions[indx] : indx / (colors.size() - 1.);
+   }
+
+   TRadialGradient::Point start(0.5, 0.5);
+
+   TObjArray *root_colors = (TObjArray*) gROOT->GetListOfColors();
+
+   TIter iter(root_colors);
+
+   while (auto col = static_cast<TColor *>(iter())) {
+      if (col->IsA() != TRadialGradient::Class())
+         continue;
+
+      auto grad = static_cast<TRadialGradient *>(col);
+
+      if (grad->GetNumberOfSteps() != colors.size())
+         continue;
+
+      if (grad->GetGradientType() != TRadialGradient::kSimple)
+         continue;
+
+      Bool_t match = kTRUE;
+      for (unsigned n = 0; n < raw_colors.size(); ++n)
+         if (TMath::Abs(raw_colors[n] - grad->GetColors()[n]) > 1e-3)
+            match = kFALSE;
+
+      for (unsigned n = 0; n < raw_positions.size(); ++n)
+         if (TMath::Abs(raw_positions[n] - grad->GetColorPositions()[n]) > 1e-2)
+            match = kFALSE;
+
+      if (TMath::Abs(grad->GetStart().fX - start.fX) > 1e-2 ||
+          TMath::Abs(grad->GetStart().fY - start.fY) > 1e-2 ||
+          TMath::Abs(grad->GetR1() - radius) > 1e-2)
+         match = kFALSE;
+
+      if (match)
+         return col->GetNumber();
+   }
+
+   auto grad = new TRadialGradient(root_colors->GetLast() + 1, colors.size(), raw_positions.data(), raw_colors.data());
+
+   grad->SetRadialGradient(start, radius);
+
+   return grad->GetNumber();
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+/// Static function: Returns the free color index greater than the highest defined color
+/// index. All the color indices after this index are also free. It can be used to
+/// define a user custom color.
 ///
 /// ~~~ {.cpp}
 ///   Int_t ci = TColor::GetFreeColorIndex();
-///   TColor *color = new TColor(ci, 0.1, 0.2, 0.3);
+///   auto color = new TColor(ci, 0.1, 0.2, 0.3);
 /// ~~~
 
 Int_t TColor::GetFreeColorIndex()
 {
    return gHighestColorIndex+1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Static function: Returns the first free color greater in the list of colors.
+/// index. It can be used to define a user custom color.
+///
+/// ~~~ {.cpp}
+///   Int_t ci = TColor::GetFirstFreeColorIndex();
+///   auto color = new TColor(ci, 0.1, 0.2, 0.3);
+/// ~~~
+
+Int_t TColor::GetFirstFreeColorIndex()
+{
+   TObjArray *colors = (TObjArray*) gROOT->GetListOfColors();
+   const Int_t ncolors = colors->GetSize();
+   TColor *color = nullptr;
+   for (Int_t i = kP10Cyan+1; i<ncolors; i++) {
+      color = (TColor*)colors->At(i);
+      if (!color) return i;
+   }
+   return -1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// List `nb` colors from the color index `ci`.
+/// If `nb=0` all the colors are printed.
+/// If showEmpty is set to kTRUE, empty color indices are also printed
+
+void TColor::ListColors(Int_t ci, Int_t nb, Bool_t showEmpty)
+{
+   TObjArray *colors = (TObjArray*) gROOT->GetListOfColors();
+   const Int_t ncolors = colors->GetSize();
+   Int_t last = ci+nb;
+   if (nb==0 || last>=ncolors) last = ncolors;
+   TColor *color = nullptr;
+   Int_t nc =0 ;
+
+   printf("   +------+-------+-------+-------+-------+--------------------+--------------------+\n");
+   printf("   | Idx  | Red   | Green | Blue  | Alpha |     Color Name     |    Color Title     |\n");
+   printf("   +------+-------+-------+-------+-------+--------------------+--------------------+\n");
+
+   for (Int_t i = ci; i<last; i++) {
+      color = (TColor*)colors->At(i);
+      if (color) {
+         printf("   | %4d | %5.3f | %5.3f | %5.3f | %5.3f | %18s | %18s |\n", i,
+                                                           color->GetRed(),
+                                                           color->GetGreen(),
+                                                           color->GetBlue(),
+                                                           color->GetAlpha(),
+                                                           color->GetName(),
+                                                           color->GetTitle());
+         nc++;
+      } else if (showEmpty) {
+         printf("   | %4d |   ?   |   ?   |   ?   |   ?   |                  ? |                  ? |\n",i);
+      }
+   }
+   printf("   +------+-------+-------+-------+-------+--------------------+--------------------+\n");
+   printf("   | Number of possible colors = %4d                                               |\n",ncolors);
+   printf("   | Number of defined colors between %4d and %4d = %4d                          |\n",ci,last,nc);
+   printf("   | Number of free indices between %4d and %4d   = %4d                          |\n",ci,last,last-ci-nc);
+   printf("   +--------------------------------------------------------------------------------+\n\n");
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2127,9 +2504,9 @@ ULong_t TColor::RGB2Pixel(Int_t r, Int_t g, Int_t b)
    if (b > 255) b = 255;
 
    ColorStruct_t color;
-   color.fRed   = UShort_t(r * 257);  // 65535/255
-   color.fGreen = UShort_t(g * 257);
-   color.fBlue  = UShort_t(b * 257);
+   color.fRed   = UShort_t(r * 256);  // 65536/256
+   color.fGreen = UShort_t(g * 256);
+   color.fBlue  = UShort_t(b * 256);
    color.fMask  = kDoRed | kDoGreen | kDoBlue;
    gVirtualX->AllocColor(gVirtualX->GetColormap(), color);
    return color.fPixel;
@@ -2160,9 +2537,13 @@ void TColor::Pixel2RGB(ULong_t pixel, Int_t &r, Int_t &g, Int_t &b)
    ColorStruct_t color;
    color.fPixel = pixel;
    gVirtualX->QueryColor(gVirtualX->GetColormap(), color);
-   r = color.fRed / 257;
-   g = color.fGreen / 257;
-   b = color.fBlue / 257;
+   // color is between 0 and 65535 inclusive.
+   // We need to move it to the 0 to 255 range (inclusive).
+   // So we need to resample the 65536 values into 256 indices.
+   // This would mean equal blocks of 256 high-res values per color index.
+   r = color.fRed / 256;
+   g = color.fGreen / 256;
+   b = color.fBlue / 256;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2182,42 +2563,46 @@ const char *TColor::PixelAsHexString(ULong_t pixel)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Save a color with index > 228 as a C++ statement(s) on output stream out.
+/// Convert color in C++ statement which can be used in SetColor directives
+/// Produced statement either includes TColor::GetColor() invocation or just plain color index as integer
+/// Method should be used is SavePrimitive methods for color storage
 
-void TColor::SaveColor(std::ostream &out, Int_t ci)
+TString TColor::SavePrimitiveColor(Int_t ci)
 {
-   char quote = '"';
-   Float_t r,g,b,a;
-   Int_t ri, gi, bi;
-   TString cname;
+   TColor *c = ci <= 228 ? nullptr : gROOT->GetColor(ci);
+   if (!c)
+      return TString::Format("%d", ci);
 
-   TColor *c = gROOT->GetColor(ci);
-   if (c) {
-      c->GetRGB(r, g, b);
-      a = c->GetAlpha();
-   } else {
-      return;
-   }
+   Float_t r, g, b, a;
 
-   if (gROOT->ClassSaved(TColor::Class())) {
-      out << std::endl;
-   } else {
-      out << std::endl;
-      out << "   Int_t ci;      // for color index setting" << std::endl;
-      out << "   TColor *color; // for color definition with alpha" << std::endl;
-   }
+   c->GetRGB(r, g, b);
+   a = c->GetAlpha();
+   Int_t ri = (Int_t)(255 * r), gi = (Int_t)(255 * g), bi = (Int_t)(255 * b), ai = (Int_t)(255 * a);
 
-   if (a<1) {
-      out<<"   ci = "<<ci<<";"<<std::endl;
-      out<<"   color = new TColor(ci, "<<r<<", "<<g<<", "<<b<<", "
-      <<"\" \", "<<a<<");"<<std::endl;
-   } else {
-      ri = (Int_t)(255*r);
-      gi = (Int_t)(255*g);
-      bi = (Int_t)(255*b);
-      cname.Form("#%02x%02x%02x", ri, gi, bi);
-      out<<"   ci = TColor::GetColor("<<quote<<cname.Data()<<quote<<");"<<std::endl;
-   }
+   if (ai < 255)
+      return TString::Format("TColor::GetColor(\"#%02x%02x%02x%02x\")", ri, gi, bi, ai);
+
+   return TString::Format("TColor::GetColor(\"#%02x%02x%02x\")", ri, gi, bi);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Save a color with index > 228 as a C++ statement(s) on output stream out.
+/// Return kFALSE if color not saved in the output stream
+/// Consider use of SavePrimitiveColor() method instead
+
+Bool_t TColor::SaveColor(std::ostream &out, Int_t ci)
+{
+   if ((ci <= 228) || !gROOT->GetColor(ci))
+      return kFALSE;
+
+   if (gROOT->ClassSaved(TColor::Class()))
+      out << "   ci = ";
+   else
+      out << "   Int_t ci = ";
+
+   out << SavePrimitiveColor(ci) << ";\n";
+
+   return kTRUE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2259,9 +2644,10 @@ void TColor::SetGrayscale(Bool_t set /*= kTRUE*/)
 /// \param fileName: Name of a .txt file (ASCII) containing three floats per
 /// line, separated by spaces, namely the r g b fractions of the color, each
 /// value being in the range [0,1].
-/// \param alpha the global transparency for all colors within this palette
+/// \param alpha the global opacity for all colors within this palette
 /// \return a positive value on success and -1 on error.
 /// \author Fernando Hueso-González
+
 Int_t TColor::CreateColorTableFromFile(TString fileName, Float_t alpha)
 {
    std::ifstream f(fileName.Data());
@@ -2563,8 +2949,6 @@ void TColor::SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha)
 {
    Int_t i;
 
-   static Int_t paletteType = 0;
-
    Int_t palette[50] = {19,18,17,16,15,14,13,12,11,20,
                         21,22,23,24,25,26,27,28,29,30, 8,
                         31,32,33,34,35,36,37,38,39,40, 9,
@@ -2576,7 +2960,7 @@ void TColor::SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha)
       ncolors = 50;
       fgPalette.Set(ncolors);
       for (i=0;i<ncolors;i++) fgPalette.fArray[i] = palette[i];
-      paletteType = 1;
+      gPaletteType = 1;
       return;
    }
 
@@ -2586,7 +2970,7 @@ void TColor::SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha)
       fgPalette.Set(ncolors);
       for (i=0;i<ncolors-1;i++) fgPalette.fArray[i] = 51+i;
       fgPalette.fArray[ncolors-1] = kRed; // the last color of this palette is red
-      paletteType = 2;
+      gPaletteType = 2;
       return;
    }
 
@@ -2600,10 +2984,10 @@ void TColor::SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha)
       if (Idx > 0) {
          Double_t alphas = 10*(fgPalettesList.fArray[ncolors-51]-Idx);
          Bool_t same_alpha = TMath::Abs(alpha-alphas) < 0.0001;
-         if (paletteType == ncolors && same_alpha) return; // The current palette is already this one.
+         if (gPaletteType == ncolors && same_alpha) return; // The current palette is already this one.
          fgPalette.Set(255); // High quality palettes have 255 entries
          for (i=0;i<255;i++) fgPalette.fArray[i] = Idx+i;
-         paletteType = ncolors;
+         gPaletteType = ncolors;
 
          // restore the palette transparency if needed
           if (alphas>0 && !same_alpha) {
@@ -2612,7 +2996,7 @@ void TColor::SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha)
                 ca = gROOT->GetColor(Idx+i);
                 ca->SetAlpha(alpha);
              }
-             fgPalettesList.fArray[paletteType-51] = (Double_t)Idx+alpha/10.;
+             fgPalettesList.fArray[gPaletteType-51] = (Double_t)Idx+alpha/10.;
           }
          return;
       }
@@ -3255,10 +3639,10 @@ void TColor::SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha)
          ::Error("SetPalette", "Unknown palette number %d", ncolors);
          return;
       }
-      paletteType = ncolors;
-      if (Idx>0) fgPalettesList.fArray[paletteType-51] = (Double_t)Idx;
-      else       fgPalettesList.fArray[paletteType-51] = 0.;
-      if (alpha > 0.) fgPalettesList.fArray[paletteType-51] += alpha/10.0f;
+      gPaletteType = ncolors;
+      if (Idx>0) fgPalettesList.fArray[gPaletteType-51] = (Double_t)Idx;
+      else       fgPalettesList.fArray[gPaletteType-51] = 0.;
+      if (alpha > 0.) fgPalettesList.fArray[gPaletteType-51] += alpha/10.0f;
       return;
    }
 
@@ -3270,9 +3654,32 @@ void TColor::SetPalette(Int_t ncolors, Int_t *colors, Float_t alpha)
       fgPalette.Set(TMath::Min(50,ncolors));
       for (i=0;i<TMath::Min(50,ncolors);i++) fgPalette.fArray[i] = palette[i];
    }
-   paletteType = 3;
+   gPaletteType = 3;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Store current palette in the output macro
+
+void TColor::SaveColorsPalette(std::ostream &out)
+{
+   if ((gPaletteType == 1) || (gPaletteType == 2))
+      out << "   TColor::SetPalette(" << (gPaletteType - 1) << ", nullptr);\n";
+   else if ((gPaletteType == 3) && (fgPalette.fN <= 50)) {
+      out << "   TColor::SetPalette(" << fgPalette.fN << ", (Int_t []) ";
+      for (int i = 0; i < fgPalette.fN; i++)
+         out << (i == 0 ? "{ " : ", ") << TColor::SavePrimitiveColor(fgPalette.fArray[i]);
+      out << " });\n";
+   } else if (gPaletteType > 50) {
+      out << "   TColor::SetPalette(" << gPaletteType << ", nullptr";
+
+      Int_t Idx = (Int_t)fgPalettesList.fArray[gPaletteType - 51];
+      Double_t alphas = 10 * (fgPalettesList.fArray[gPaletteType - 51] - Idx);
+
+      if (alphas < 1)
+         out << ", " << alphas;
+      out << ");\n";
+   }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Invert the current color palette.
@@ -3282,3 +3689,51 @@ void TColor::InvertPalette()
 {
    std::reverse(fgPalette.fArray, fgPalette.fArray + fgPalette.GetSize());
 }
+
+////////////////////////////////////////////////////////////////////////////////
+/// The `color` string argument argument will be evaluated
+/// to get the actual ROOT color number, like `kRed`.
+/// Here is how the string is parsed:
+///
+///   1. Match against single-character color codes following the matplotlib convention.
+///      For example, to get red color (equivalent to `kRed`):
+///      ~~~ {.cxx}
+///      hist.SetLineColor("r")
+///      ~~~
+///   2. Check if the string matches an en existing TColor name (see TColor::GetColorByName()).
+///      For example:
+///      ~~~ {.cxx}
+///      hist.SetLineColor("kRed+1")
+///      ~~~
+///
+/// In case no corresponding color is found, a `std::invalid_argument` exception is thrown.
+
+TColorNumber::TColorNumber(std::string const &color)
+{
+   using Map = std::unordered_map<std::string, Int_t>;
+   // Color dictionary to define matplotlib conventions and other special colors.
+   // We can't use TColor::GetColorByName() with "kWhite" and "kBlack", as
+   // these are the only identifiers that are an enum values, but there is no
+   // corresponding color with the same name in the global list of colors.
+   // That's why they are looked up in this special map instead.
+   static Map colorMap{
+      {"r", kRed},   {"b", kBlue},    {"g", kGreen}, {"y", kYellow},     {"w", kWhite},
+      {"k", kBlack}, {"m", kMagenta}, {"c", kCyan},  {"kWhite", kWhite}, {"kBlack", kBlack},
+   };
+   auto found = colorMap.find(color);
+   if (found != colorMap.end()) {
+      fNumber = found->second;
+      return;
+   }
+
+   fNumber = TColor::GetColorByName(color.c_str());
+   if (fNumber == -1) {
+      std::stringstream msg;
+      msg << "\"" << color << "\" is not a valid color name";
+      throw std::invalid_argument(msg.str());
+   }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Instantiate a color from a tuple of RGB values between 0.0 and 1.0.
+TColorNumber::TColorNumber(std::array<Float_t, 3> rgb) : fNumber{TColor::GetColor(rgb[0], rgb[1], rgb[2])} {}

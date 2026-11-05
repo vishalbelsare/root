@@ -26,7 +26,7 @@
 
 #include "TNamed.h"
 #include "TTimer.h"
-#include <stdarg.h>
+#include <cstdarg>
 
 #ifdef R__LESS_INCLUDES
 class TCondition;
@@ -171,7 +171,7 @@ public:
 
    // XActions
    static void      Printf(const char *fmt, ...)   // format and print
-#if defined(__GNUC__) && !defined(__CINT__)
+#if defined(__GNUC__)
    __attribute__((format(printf, 1, 2)))
 #endif
    ;
@@ -202,10 +202,10 @@ public:
 
 class TThreadTimer : public TTimer {
 public:
-   // if this time is less or equal to kItimerResolution, TUnixSystem::DispatchOneEvent i
+   // if this time is less or equal to kItimerResolution, TUnixSystem::DispatchOneEvent
    // can not exit and have its caller react to the other TTimer's actions (like the request
    // to stop the event loop) until there is another type of event.
-   TThreadTimer(Long_t ms = kItimerResolution + 10);
+   TThreadTimer(Long_t ms = kItimerResolution + 5);
    Bool_t Notify() override;
 };
 

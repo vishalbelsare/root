@@ -23,7 +23,7 @@ namespace cling {
     llvm::DenseSet<NamedDecl*> m_HandledDecls;
   private:
   public:
-    AutoFixer(Sema* S) : m_Sema(S), m_FoundDRE(0) {}
+    AutoFixer(Sema* S) : m_Sema(S), m_FoundDRE(nullptr) {}
 
     CompoundStmt* Fix(CompoundStmt* CS) {
       if (!CS->size())
@@ -43,9 +43,14 @@ namespace cling {
           m_HandledDecls.insert(m_FoundDRE->getDecl());
         }
       }
-      if (CS->size() != Stmts.size())
-        return CompoundStmt::Create(m_Sema->getASTContext(), Stmts,
+      if (CS->size() != Stmts.size()) {
+        FPOptionsOverride FPFeatures;
+        if (CS->hasStoredFPFeatures()) {
+          FPFeatures = CS->getStoredFPFeatures();
+        }
+        return CompoundStmt::Create(m_Sema->getASTContext(), Stmts, FPFeatures,
                                     CS->getLBracLoc(), CS->getRBracLoc());
+      }
       return nullptr;
     }
 
@@ -77,7 +82,7 @@ namespace cling {
     bool VisitDeclRefExpr(DeclRefExpr* DRE) {
       const Decl* D = DRE->getDecl();
       if (const AnnotateAttr* A = D->getAttr<AnnotateAttr>())
-        if (A->getAnnotation().equals("__Auto")) {
+        if (A->getAnnotation() == "__Auto") {
           m_FoundDRE = DRE;
           return false; // we abort on the first found candidate.
         }

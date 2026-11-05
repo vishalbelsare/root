@@ -9,14 +9,7 @@
 ################################################################################
 
 r'''
-/**
-\class ROOT::RDataFrame
-\brief \parblock \endparblock
-\htmlonly
-<div class="pyrootbox">
-\endhtmlonly
-\anchor python
-## Efficient analysis in Python
+\pythondoc ROOT::RDataFrame
 
 You can use RDataFrame in Python thanks to the dynamic Python/C++ translation of [PyROOT](https://root.cern/manual/python). In general, the interface
 is the same as for C++, a simple example follows.
@@ -103,18 +96,39 @@ Note that this functionality requires the Python packages `numba` and `cffi` to 
 
 Eventually, you probably would like to inspect the content of the RDataFrame or process the data further
 with Python libraries. For this purpose, we provide the `AsNumpy()` function, which returns the columns
-of your RDataFrame as a dictionary of NumPy arrays. See a simple example below or a full tutorial [here](df026__AsNumpyArrays_8py.html).
+of your RDataFrame as a dictionary of NumPy arrays. See a few simple examples below or a full tutorial [here](df026__AsNumpyArrays_8py.html).
 
+\anchor asnumpy_scalar_columns
+##### Scalar columns
+If your column contains scalar values of fundamental types (e.g., integers, floats), `AsNumpy()` produces NumPy arrays with the appropriate `dtype`:
 ~~~{.py}
-df = ROOT.RDataFrame("myTree", "myFile.root")
-cols = df.Filter("x > 10").AsNumpy(["x", "y"]) # retrieve columns "x" and "y" as NumPy arrays
-print(cols["x"], cols["y"]) # the values of the cols dictionary are NumPy arrays
+rdf = ROOT.RDataFrame(10).Define("int_col", "1").Define("float_col", "2.3")
+print(rdf.AsNumpy(["int_col", "float_col"]))
+# Output: {'int_col': array([...], dtype=int32), 'float_col': array([...], dtype=float64)}
 ~~~
+
+Columns containing non-fundamental types (e.g., objects, strings) will result in NumPy arrays with `dtype=object`.
+
+##### Collection Columns
+If your column contains collections of fundamental types (e.g., std::vector<int>), `AsNumpy()` produces a NumPy array with `dtype=object` where each 
+element is a NumPy array representing the collection for its corresponding entry in the column.
+
+If the collection at a certain entry contains values of fundamental types, or if it is a regularly shaped multi-dimensional array of a fundamental type, 
+then the numpy array representing the collection for that entry will have the `dtype` associated with the value type of the collection, for example:
+~~~{.py}
+rdf = rdf.Define("v_col", "std::vector<int>{{1, 2, 3}}")
+print(rdf.AsNumpy(["v_col", "int_col", "float_col"]))
+# Output: {'v_col': array([array([1, 2, 3], dtype=int32), ...], dtype=object), ...}
+~~~
+
+If the collection at a certain entry contains values of a non-fundamental type, `AsNumpy()` will fallback on the [default behavior](\ref asnumpy_scalar_columns) and produce a NumPy array with `dtype=object` for that collection.
+
+For more complex collection types in your entries, e.g. when every entry has a jagged array value, refer to the section on [interoperability with AwkwardArray](\ref awkward_interop).
 
 #### Processing data stored in NumPy arrays
 
 In case you have data in NumPy arrays in Python and you want to process the data with ROOT, you can easily
-create an RDataFrame using `ROOT.RDF.MakeNumpyDataFrame`. The factory function accepts a dictionary where
+create an RDataFrame using `ROOT.RDF.FromNumpy`. The factory function accepts a dictionary where
 the keys are the column names and the values are NumPy arrays, and returns a new RDataFrame with the provided
 columns.
 
@@ -125,10 +139,54 @@ Data is read directly from the arrays: no copies are performed.
 # Read data from NumPy arrays
 # The column names in the RDataFrame are taken from the dictionary keys
 x, y = numpy.array([1, 2, 3]), numpy.array([4, 5, 6])
-df = ROOT.RDF.MakeNumpyDataFrame({"x": x, "y": y})
+df = ROOT.RDF.FromNumpy({"x": x, "y": y})
 
 # Use RDataFrame as usual, e.g. write out a ROOT file
 df.Define("z", "x + y").Snapshot("tree", "file.root")
+~~~
+
+
+\anchor awkward_interop
+### Interoperability with [AwkwardArray](https://awkward-array.org/doc/main/user-guide/how-to-convert-rdataframe.html)
+
+The function for RDataFrame to Awkward conversion is ak.from_rdataframe(). The argument to this function accepts a tuple of strings that are the RDataFrame column names. By default this function returns ak.Array type.
+
+~~~{.py}
+import awkward as ak
+import ROOT
+
+array = ak.from_rdataframe(
+    df,
+    columns=(
+        "x",
+        "y",
+        "z",
+    ),
+)
+~~~
+
+The function for Awkward to RDataFrame conversion is ak.to_rdataframe().
+
+The argument to this function requires a dictionary: { <column name string> : <awkward array> }. This function always returns an RDataFrame object.
+
+The arrays given for each column have to be equal length:
+
+~~~{.py}
+array_x = ak.Array(
+    [
+        {"x": [1.1, 1.2, 1.3]},
+        {"x": [2.1, 2.2]},
+        {"x": [3.1]},
+        {"x": [4.1, 4.2, 4.3, 4.4]},
+        {"x": [5.1]},
+    ]
+)
+array_y = ak.Array([1, 2, 3, 4, 5])
+array_z = ak.Array([[1.1], [2.1, 2.3, 2.4], [3.1], [4.1, 4.2, 4.3], [5.1]])
+
+assert len(array_x) == len(array_y) == len(array_z)
+
+df = ak.to_rdataframe({"x": array_x, "y": array_y, "z": array_z})
 ~~~
 
 ### Construct histogram and profile models from a tuple
@@ -165,19 +223,25 @@ df_transformed = ROOT.MyTransformation(ROOT.RDF.AsRNode(df))
 df2 = df.Filter("x > 42")
 df2_transformed = ROOT.MyTransformation(ROOT.RDF.AsRNode(df2))
 ~~~
-\htmlonly
-</div>
-\endhtmlonly
 
-\anchor reference
-*/
+\endpythondoc
 '''
-import sys
+
+from __future__ import annotations
+
+import warnings
+from typing import Iterable, Optional
+
 from . import pythonization
 from ._pyz_utils import MethodTemplateGetter, MethodTemplateWrapper
 
 
-def RDataFrameAsNumpy(df, columns=None, exclude=None, lazy=False):
+def RDataFrameAsNumpy(
+    df: ROOT.RDataFrame,  # noqa: F821
+    columns: Optional[Iterable[str]] = None,
+    exclude: Optional[Iterable[str]] = None,
+    lazy: bool = False,
+):
     """Read-out the RDataFrame as a collection of numpy arrays.
 
     The values of the dataframe are read out as numpy array of the respective type
@@ -195,6 +259,7 @@ def RDataFrameAsNumpy(df, columns=None, exclude=None, lazy=False):
     event-loop.
 
     Parameters:
+        df: The RDataFrame to read out.
         columns: If None return all branches as columns, otherwise specify names in iterable.
         exclude: Exclude branches from selection.
         lazy: Determines whether this action is instant (False, default) or lazy (True).
@@ -204,16 +269,19 @@ def RDataFrameAsNumpy(df, columns=None, exclude=None, lazy=False):
             1D numpy arrays with content as values; if lazy, AsNumpyResult containing
             the result pointers obtained from the Take actions.
     """
+
+    import ROOT
+
     # Sanitize input arguments
     if isinstance(columns, str):
-        raise TypeError("The columns argument requires a list of strings")
+        raise TypeError("The columns argument requires an iterable of strings")
     if isinstance(exclude, str):
-        raise TypeError("The exclude argument requires a list of strings")
+        raise TypeError("The exclude argument requires an iterable of strings")
 
     # Early check for numpy
     try:
-        import numpy
-    except:
+        import numpy  # noqa: F401
+    except ImportError:
         raise ImportError("Failed to import numpy during call of RDataFrame.AsNumpy.")
 
     # Find all column names in the dataframe if no column are specified
@@ -221,22 +289,38 @@ def RDataFrameAsNumpy(df, columns=None, exclude=None, lazy=False):
         columns = [str(c) for c in df.GetColumnNames()]
 
     # Exclude the specified columns
-    if exclude == None:
+    if exclude is None:
         exclude = []
-    columns = [col for col in columns if not col in exclude]
+    columns = [col for col in columns if col not in exclude]
 
     # Register Take action for each column
     result_ptrs = {}
     for column in columns:
         column_type = df.GetColumnType(column)
-        result_ptrs[column] = df.Take[column_type](column)
+        if column_type == "char":
+            column_type = "unsigned char"
+            warnings.warn(
+                f"RDataFrame.AsNumpy: column '{column}' has type 'char', which would be automatically converted to a "
+                "Python string. Interpreting as 'unsigned char' instead, which results in a numpy array of dtype uint8. "
+                "If you use this column for numeric values, consider migrating this column to a type other than 'char', "
+                "which is usually used for text. For example, migrate to 'signed char' or 'unsigned char' or, "
+                "preferrably, 'std::int8_t' or 'std::uint8_t'."
+            )
+
+        # If the column type is a class, make sure cling knows about it
+        tclass = ROOT.TClass.GetClass(column_type)
+        if tclass and not tclass.GetClassInfo():
+            raise RuntimeError(
+                f'The column named "{column}" is of type "{column_type}", which is not known to the ROOT interpreter. Please load the corresponding header files or dictionaries.'
+            )
+        # We take the values via ROOT::RVec to avoid having to deal with std::vector<bool>
+        # This uses one single data structure for all array types, which exposes the array interface
+        # allowing zero-copy conversion to numpy array
+        result_ptrs[column] = df.Take[f"{column_type}, ROOT::RVec<{column_type}>"](column)
 
     result = AsNumpyResult(result_ptrs, columns)
 
-    if lazy:
-        return result
-    else:
-        return result.GetValue()
+    return result if lazy else result.GetValue()
 
 
 class AsNumpyResult(object):
@@ -252,6 +336,7 @@ class AsNumpyResult(object):
         _result_ptrs (dict): results of the AsNumpy action. The key is the
             column name, the value is the result pointer for that column.
     """
+
     def __init__(self, result_ptrs, columns):
         """Constructs an AsNumpyResult object.
 
@@ -266,7 +351,7 @@ class AsNumpyResult(object):
         self._columns = columns
         self._py_arrays = None
 
-    def GetValue(self):
+    def GetValue(self) -> dict:
         """Triggers, if necessary, the event loop to run the Take actions for
         the requested columns and produce the NumPy arrays as result.
 
@@ -277,19 +362,24 @@ class AsNumpyResult(object):
 
         if self._py_arrays is None:
             import numpy
-            from ROOT._pythonization._rdf_utils import ndarray
+
+            from ._rdf_utils import ndarray
 
             # Convert the C++ vectors to numpy arrays
             self._py_arrays = {}
             for column in self._columns:
                 cpp_reference = self._result_ptrs[column].GetValue()
                 if hasattr(cpp_reference, "__array_interface__"):
-                    tmp = numpy.asarray(cpp_reference) # This adopts the memory of the C++ object.
+                    tmp = numpy.asarray(cpp_reference)  # This adopts the memory of the C++ object.
                     self._py_arrays[column] = ndarray(tmp, self._result_ptrs[column])
                 else:
-                    tmp = numpy.empty(len(cpp_reference), dtype=numpy.object)
+                    tmp = numpy.empty(len(cpp_reference), dtype=object)
                     for i, x in enumerate(cpp_reference):
-                        tmp[i] = x # This creates only the wrapping of the objects and does not copy.
+                        if hasattr(x, "__array_interface__"):
+                            tmp[i] = numpy.asarray(x)
+                        else:
+                            tmp[i] = x
+
                     self._py_arrays[column] = ndarray(tmp, self._result_ptrs[column])
 
         return self._py_arrays
@@ -309,9 +399,11 @@ class AsNumpyResult(object):
         """
 
         if self._py_arrays is None or other._py_arrays is None:
-            raise RuntimeError("Merging instances of 'AsNumpyResult' failed because either of them didn't compute "
-                               "their result yet. Make sure to call the 'GetValue' method on both objects before "
-                               "trying to merge again.")
+            raise RuntimeError(
+                "Merging instances of 'AsNumpyResult' failed because either of them didn't compute "
+                "their result yet. Make sure to call the 'GetValue' method on both objects before "
+                "trying to merge again."
+            )
 
         try:
             import numpy
@@ -322,9 +414,7 @@ class AsNumpyResult(object):
             raise ValueError("The two dictionary of numpy arrays have different keys.")
 
         self._py_arrays = {
-            key: numpy.concatenate([self._py_arrays[key],
-                                    other._py_arrays[key]])
-            for key in self._py_arrays
+            key: numpy.concatenate([self._py_arrays[key], other._py_arrays[key]]) for key in self._py_arrays
         }
 
     def __getstate__(self):
@@ -344,30 +434,42 @@ class AsNumpyResult(object):
         self._py_arrays = state
 
 
+def _clone_asnumpyresult(res: AsNumpyResult) -> AsNumpyResult:
+    """
+    Clones the internal actions held by the input result and returns a new
+    result.
+    """
+    import ROOT
+
+    return AsNumpyResult(
+        {col: ROOT.Internal.RDF.CloneResultAndAction(ptr) for (col, ptr) in res._result_ptrs.items()}, res._columns
+    )
+
+
 class HistoProfileWrapper(MethodTemplateWrapper):
-    '''
+    """
     Subclass of MethodTemplateWrapper that pythonizes HistoXD and ProfileXD
     method templates.
     It relies on the `_original_method` and `_extra_args` attributes of the
     superclass, to invoke the original implementation of the method template
     and get the model class, respectively.
-    '''
+    """
 
     def __call__(self, *args):
-        '''
+        """
         Pythonization of HistoXD and ProfileXD method templates.
         Checks whether the user made a call with a tuple as first argument; in
         that case, extracts the tuple items to construct a model object and
         calls the original implementation of the method with that object.
 
-	Args:
-	    args: arguments of a HistoXD or ProfileXD call.
+        Args:
+            args: arguments of a HistoXD or ProfileXD call.
 
         Returns:
             return value of the original HistoXD or ProfileXD implementations.
-        '''
+        """
 
-        model_class, = self._extra_args
+        (model_class,) = self._extra_args
 
         if args and isinstance(args[0], tuple):
             # Construct the model with the elements of the tuple
@@ -380,7 +482,7 @@ class HistoProfileWrapper(MethodTemplateWrapper):
             else:
                 # Covers the case of the overloads with only model passed
                 # as argument
-               res = self._original_method(model)
+                res = self._original_method(model)
         # If the first argument is not a tuple, nothing to do, just call
         # the original implementation
         else:
@@ -389,12 +491,28 @@ class HistoProfileWrapper(MethodTemplateWrapper):
         return res
 
 
+class HistWrapper(MethodTemplateWrapper):
+    def __call__(self, *args):
+        """
+        Pythonization of Hist method template.
+        If the first argument is a list, convert to std::vector<RAxisVariant> to work around limitations for variadic function template with parameter packs.
+        """
+
+        if len(args) > 0 and isinstance(args[0], list):
+            import ROOT
+
+            axes = ROOT.std.vector["ROOT::Experimental::RAxisVariant"](args[0])
+            args = (axes, *args[1:])
+
+        return self._original_method(*args)
+
+
 @pythonization("RInterface<", ns="ROOT::RDF", is_prefix=True)
 def pythonize_rdataframe(klass):
     # Parameters:
     # klass: class to be pythonized
 
-    from cppyy.gbl.ROOT import RDF
+    from ROOT import RDF
 
     # Add asNumpy feature
     klass.AsNumpy = RDataFrameAsNumpy
@@ -402,26 +520,78 @@ def pythonize_rdataframe(klass):
     # Replace the implementation of the following RDF methods
     # to convert a tuple argument into a model object
     methods_with_TModel = {
-            'Histo1D' : RDF.TH1DModel,
-            'Histo2D' : RDF.TH2DModel,
-            'Histo3D' : RDF.TH3DModel,
-            'Profile1D' : RDF.TProfile1DModel,
-            'Profile2D' : RDF.TProfile2DModel
-            }
+        "Histo1D": RDF.TH1DModel,
+        "Histo2D": RDF.TH2DModel,
+        "Histo3D": RDF.TH3DModel,
+        "Profile1D": RDF.TProfile1DModel,
+        "Profile2D": RDF.TProfile2DModel,
+    }
 
     for method_name, model_class in methods_with_TModel.items():
         # Replace the original implementation of the method
         # with an object that can handle template arguments
         # and stores a reference to such implementation
-        getter = MethodTemplateGetter(getattr(klass, method_name),
-                                      HistoProfileWrapper,
-                                      model_class)
+        getter = MethodTemplateGetter(getattr(klass, method_name), HistoProfileWrapper, model_class)
         setattr(klass, method_name, getter)
-    
-    # Pythonization for Filters only to be implemented in Python3
-    if sys.version_info >= (3, 7):
-        klass._OriginalFilter = klass.Filter
-        klass._OriginalDefine = klass.Define
-        from ._rdf_pyz import _PyFilter, _PyDefine
-        klass.Filter = _PyFilter
-        klass.Define = _PyDefine
+
+    if hasattr(klass, "Hist"):
+        klass.Hist = MethodTemplateGetter(klass.Hist, HistWrapper)
+
+    klass._OriginalFilter = klass.Filter
+    klass._OriginalDefine = klass.Define
+    from ._rdf_pyz import _PyDefine, _PyFilter
+
+    klass.Filter = _PyFilter
+    klass.Define = _PyDefine
+
+
+def _make_name_rvec_pair(key, value):
+    import ROOT
+
+    # Get name of key
+    if not isinstance(key, str):
+        raise RuntimeError("Object not convertible: Dictionary key is not convertible to a string.")
+
+    try:
+        # Convert value to RVec and attach to dictionary
+        pyvec = ROOT.VecOps.AsRVec(value)
+    except TypeError as e:
+        if "Cannot create an RVec from a numpy array of data type object" in str(e):
+            raise RuntimeError(
+                f"Failure in creating column '{key}' for RDataFrame: the input column type is 'object', which is not supported. Make sure your column type is supported."
+            ) from e
+        else:
+            raise
+
+    # Add pairs of column name and associated RVec to signature
+    return ROOT.std.pair["std::string", type(pyvec)](key, ROOT.std.move(pyvec))
+
+
+def _MakeNumpyDataFrame(np_dict):
+    r"""
+    Make an RDataFrame from a dictionary of numpy arrays
+
+    \param[in] self Always null, since this is a module function.
+    \param[in] pydata Dictionary with numpy arrays
+
+    This function takes a dictionary of numpy arrays and creates an RDataFrame
+    using the keys as column names and the numpy arrays as data.
+    """
+    import ROOT
+    from ROOT.libROOTPythonizations import PyObjRefCounterAsStdAny
+
+    if not isinstance(np_dict, dict):
+        raise RuntimeError("Object not convertible: Python object is not a dictionary.")
+
+    if len(np_dict) == 0:
+        raise RuntimeError("Object not convertible: Dictionary is empty.")
+
+    args = (_make_name_rvec_pair(key, value) for key, value in np_dict.items())
+
+    # To keep the NumPy arrays around as long as the RDataSource is alive,
+    # create a new dict with references to the NumPy arrays, and pass a
+    # reference count to the C++ side via std::any. We use a copy of the
+    # original dict, because otherwise the caller of _MakeNumpyDataFrame can
+    # invalidate our cache by mutating the np_dict after the call.
+
+    return ROOT.Internal.RDF.MakeRVecDataFrame(PyObjRefCounterAsStdAny(dict(**np_dict)), *args)

@@ -5,7 +5,7 @@
  * Project: TMVA - a Root-integrated toolkit for multivariate data analysis       *
  * Package: TMVA                                                                  *
  * Class  : MinuitFitter                                                          *
- * Web    : http://tmva.sourceforge.net                                           *
+ *                                             *
  *                                                                                *
  * Description:                                                                   *
  *       Fitter using MINUIT                                                      *
@@ -19,7 +19,7 @@
  *                                                                                *
  * Redistribution and use in source and binary forms, with or without             *
  * modification, are permitted according to the terms listed in LICENSE           *
- * (http://tmva.sourceforge.net/LICENSE)                                          *
+ * (see tmva/doc/LICENSE)                                          *
  **********************************************************************************/
 
 #ifndef ROOT_TMVA_MinuitFitter
@@ -56,8 +56,8 @@ namespace TMVA {
 
       void Init();
 
-      Double_t Run( std::vector<Double_t>& pars );
-      Double_t EstimatorFunction( std::vector<Double_t>& pars );
+      Double_t Run( std::vector<Double_t>& pars ) override;
+      Double_t EstimatorFunction( std::vector<Double_t>& pars ) override;
 
    protected:
 
@@ -65,7 +65,7 @@ namespace TMVA {
 
    private:
 
-      void DeclareOptions();
+      void DeclareOptions() override;
 
       Int_t      fErrorLevel;              ///< minuit error level
       Int_t      fPrintLevel;              ///< minuit printout level
@@ -77,7 +77,7 @@ namespace TMVA {
       Int_t      fMaxCalls;                ///< (approximate) maximum number of function calls
       Double_t   fTolerance;               ///< tolerance to the function value at the minimum
 
-      ClassDef(MinuitFitter,0); // Fitter using a Genetic Algorithm
+      ClassDefOverride(MinuitFitter,0); // Fitter using a Genetic Algorithm
    };
 
 } // namespace TMVA

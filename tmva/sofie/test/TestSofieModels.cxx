@@ -11,6 +11,7 @@
 #include "TMVA/RModelParser_ONNX.hxx"
 
 #include  "gtest/gtest.h"
+//#define USE_ONNXSIM
 
 bool verbose = true;
 int sessionId = 0;
@@ -39,9 +40,16 @@ int DeclareCode(std::string modelName)
    // TMacro m("testSofie"); m.AddLine("std::vector<float> testSofie(float *x) { return s.infer(x);}")
    // std::vector<float> * result = (std::vector<float> *)m.Exec(Form(float*)0x%lx , xinput.data));
    std::string code = std::string("#include \"") + modelName + ".hxx\"\n";
-   code += "TMVA_SOFIE_" + modelName + "::Session s" + std::to_string(sessionId) + ";\n";
+   std::string sessionName = "s" + std::to_string(sessionId);
+   code += "TMVA_SOFIE_" + modelName + "::Session " + sessionName + ";\n";
 
-   gInterpreter->Declare(code.c_str());
+   if(!gInterpreter->Declare(code.c_str())) {
+      return 0;
+   }
+   // Verify that the session object is available now
+   if(gInterpreter->Calc(("&" + sessionName).c_str()) == 0) {
+      return 0;
+   }
    return sessionId;
 }
 
@@ -76,6 +84,8 @@ void TestLinear(int nbatches, bool useBN = false, int inputSize = 10, int nlayer
 
    int id = DeclareCode(modelName);
 
+   ASSERT_NE(id, 0) << "Declareing model code to interpreter failed!";
+
    // input data
    std::vector<float> xinput(nbatches * inputSize);
    for (int ib = 0; ib < nbatches; ib++) {
@@ -93,11 +103,7 @@ void TestLinear(int nbatches, bool useBN = false, int inputSize = 10, int nlayer
       f >> refValue[i];
       if (verbose)
          std::cout << " result " << result.at(i) << " reference " << refValue[i] << std::endl;
-      if (std::abs(refValue[i]) > 0.5)
-         EXPECT_FLOAT_EQ(result.at(i), refValue[i]);
-      else
-         // expect float fails for small values
-         EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
+      EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
    }
 }
 
@@ -136,7 +142,8 @@ void TestConv( std::string type, int nbatches, bool useBN = false, int ngroups =
    printf("executing %s\n", command.c_str());
    gSystem->Exec(command.c_str());
 
-   // some model needs some semplifications
+   // some model needs some simplifications
+#ifdef USE_ONNXSIM
    if (usePool == 2) {
       printf("simplify onnx model using onnxsim tool \n");
       std::string cmd = "python3 -m onnxsim " + modelName + ".onnx " + modelName + ".onnx";
@@ -147,11 +154,14 @@ void TestConv( std::string type, int nbatches, bool useBN = false, int ngroups =
          return;
       }
    }
+#endif
 
 
    ExecuteSofieParser(modelName);
 
    int id = DeclareCode(modelName);
+
+   ASSERT_NE(id, 0) << "Declareing model code to interpreter failed!";
 
    // input data
    std::vector<float> xinput(nbatches*inputSize);
@@ -174,11 +184,7 @@ void TestConv( std::string type, int nbatches, bool useBN = false, int ngroups =
    for (size_t i = 0; i < refValue.size(); ++i) {
       f >> refValue[i];
       if (verbose) std::cout << " result " << result.at(i) << " reference " << refValue[i] << std::endl;
-      if (std::abs(refValue[i]) > 0.5)
-         EXPECT_FLOAT_EQ(result.at(i), refValue[i]);
-      else
-         // expect float fails for small values
-         EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
+      EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
    }
 }
 
@@ -203,6 +209,7 @@ void TestRecurrent(std::string type, int nbatches, int inputSize = 5, int seqSiz
    printf("executing %s\n", command.c_str());
    gSystem->Exec(command.c_str());
    // need to simplify obtained recurrent ONNX model
+#ifdef USE_ONNXSIM
    printf("simplify onnx model using onnxsim tool \n");
    std::string cmd = "python3 -m onnxsim " + modelName + ".onnx " + modelName + ".onnx";
    int ret = gSystem->Exec(cmd.c_str());
@@ -211,10 +218,15 @@ void TestRecurrent(std::string type, int nbatches, int inputSize = 5, int seqSiz
       GTEST_SKIP();
       return;
    }
+#endif
 
    ExecuteSofieParser(modelName);
 
    int id = DeclareCode(modelName);
+
+   std::cout << "id " << id << std::endl;
+
+   ASSERT_NE(id, 0) << "Declareing model code to interpreter failed!";
 
    // input data
    std::vector<float> xinput(nbatches * seqSize * inputSize);
@@ -248,11 +260,7 @@ void TestRecurrent(std::string type, int nbatches, int inputSize = 5, int seqSiz
       f >> refValue[i];
       if (verbose)
          std::cout << " result " << result.at(i) << " reference " << refValue[i] << std::endl;
-      if (std::abs(refValue[i]) > 0.5)
-         EXPECT_FLOAT_EQ(result.at(i), refValue[i]);
-      else
-         // expect float fails for small values
-         EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
+      EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
    }
 }
 
@@ -308,6 +316,8 @@ void TestConvTranspose( std::string type, int nbatches, bool useBN = false, int 
 
    int id = DeclareCode(modelName);
 
+   ASSERT_NE(id, 0) << "Declareing model code to interpreter failed!";
+
    // input data
    std::vector<float> xinput(nbatches*inputSize);
    for (int ib = 0; ib < nbatches; ib++) {
@@ -331,11 +341,7 @@ void TestConvTranspose( std::string type, int nbatches, bool useBN = false, int 
    for (size_t i = 0; i < refValue.size(); ++i) {
       f >> refValue[i];
       if (verbose) std::cout << " result " << result.at(i) << " reference " << refValue[i] << std::endl;
-      if (std::abs(refValue[i]) > 0.5)
-         EXPECT_FLOAT_EQ(result.at(i), refValue[i]);
-      else
-         // expect float fails for small values
-         EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
+      EXPECT_NEAR(result.at(i), refValue[i], 10 * std::numeric_limits<float>::epsilon());
    }
 }
 

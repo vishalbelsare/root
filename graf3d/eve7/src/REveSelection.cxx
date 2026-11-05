@@ -39,9 +39,7 @@ REveSelection::REveSelection(const std::string& n, const std::string& t,
                              Color_t col_visible, Color_t col_hidden) :
    REveElement       (n, t),
    fVisibleEdgeColor (col_visible),
-   fHiddenEdgeColor  (col_hidden),
-   fActive           (kTRUE),
-   fIsMaster         (kTRUE)
+   fHiddenEdgeColor  (col_hidden)
 {
    // Managing complete selection state on element level.
    //
@@ -84,18 +82,6 @@ void REveSelection::SetHiddenEdgeColorRGB(UChar_t r, UChar_t g, UChar_t b)
 {
    fHiddenEdgeColor = TColor::GetColor(r, g, b);
    StampObjProps();
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Set to 'highlight' mode.
-
-void REveSelection::SetHighlightMode()
-{
-   // Most importantly, this sets the pointers-to-function-members in
-   // REveElement that are used to mark elements as (un)selected and
-   // implied-(un)selected.
-
-   fIsMaster     = kFALSE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -191,7 +177,7 @@ void REveSelection::AddNieceForSelection(REveElement* el, bool secondary, const 
       DoElementSelect(i);
       SelectionAdded(el);
    }
-   StampObjPropsPreChk();
+   StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -209,7 +195,7 @@ void REveSelection::RemoveNieceInternal(REveElement* el)
          SelectionRemoved(el);
       }
       fMap.erase(i);
-      StampObjPropsPreChk();
+      StampObjProps();
    }
    else
    {
@@ -232,7 +218,7 @@ void REveSelection::RemoveNieces()
    }
    fMap.clear();
    if (fActive) SelectionCleared();
-   StampObjPropsPreChk();
+   StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,7 +242,7 @@ void REveSelection::RemoveImpliedSelected(REveElement *el)
       }
    }
 
-   if (changed) StampObjPropsPreChk();
+   if (changed) StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -279,7 +265,7 @@ void REveSelection::RecheckImpliedSet(SelMap_i &smi)
       }
    }
 
-   if (changed) StampObjPropsPreChk();
+   if (changed) StampObjProps();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -350,7 +336,7 @@ void REveSelection::ActivateSelection()
 {
    if (fActive) return;
 
-   fActive = kTRUE;
+   fActive = true;
    for (auto i = fMap.begin(); i != fMap.end(); ++i) {
       DoElementSelect(i);
       SelectionAdded(i->first);
@@ -368,7 +354,7 @@ void REveSelection::DeactivateSelection()
       DoElementUnselect(i);
    }
    SelectionCleared();
-   fActive = kFALSE;
+   fActive = false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -632,7 +618,7 @@ void REveSelection::NewElementPickedStr(ElementId_t id, bool multi, bool seconda
 {
    static const REveException eh("REveSelection::NewElementPickedStr ");
 
-   if (secondary_idcs == 0 || secondary_idcs[0] == 0)
+   if (secondary_idcs == nullptr || secondary_idcs[0] == 0)
    {
       NewElementPicked(id, multi, secondary);
       return;
@@ -699,6 +685,8 @@ Int_t REveSelection::WriteCoreJson(nlohmann::json &j, Int_t /* rnr_offset */)
 
    j["fVisibleEdgeColor"] = fVisibleEdgeColor;
    j["fHiddenEdgeColor"]  = fHiddenEdgeColor;
+   j["fIsMater"] = fIsMaster;
+   j["fIsHighlight"] = fIsHighlight;
 
    nlohmann::json sel_list = nlohmann::json::array();
 
@@ -715,11 +703,11 @@ Int_t REveSelection::WriteCoreJson(nlohmann::json &j, Int_t /* rnr_offset */)
       // XXX if not empty ???
       for (auto &imp_el : i.second.f_implied) {
          imp.push_back(imp_el->GetElementId());
-         imp_el->FillExtraSelectionData(rec["extra"], sec);
+         if (imp_el->RequiresExtraSelectionData())
+            imp_el->FillExtraSelectionData(rec["extra"], sec);
 
       }
       rec["implied"]  = imp;
-
 
       if (i.first->RequiresExtraSelectionData()) {
          i.first->FillExtraSelectionData(rec["extra"], sec);
@@ -728,7 +716,7 @@ Int_t REveSelection::WriteCoreJson(nlohmann::json &j, Int_t /* rnr_offset */)
       rec["sec_idcs"] = sec;
 
       // stream tooltip in highlight type
-      if (!fIsMaster)
+      if (fIsHighlight)
          rec["tooltip"] = i.first->GetHighlightTooltip(i.second.f_sec_idcs);
 
       sel_list.push_back(rec);

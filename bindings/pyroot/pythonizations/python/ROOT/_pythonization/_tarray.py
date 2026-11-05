@@ -9,13 +9,7 @@
 ################################################################################
 
 r'''
-/**
-\class TArray
-\brief \parblock \endparblock
-\htmlonly
-<div class="pyrootbox">
-\endhtmlonly
-## PyROOT
+\pythondoc TArray
 
 When used from Python, the subclasses of TArray (TArrayC, TArrayS, TArrayI, TArrayL, TArrayF and TArrayD) benefit from the following extra features:
 
@@ -39,14 +33,11 @@ print(a[0]) # prints '0.2'
 for elem in a:
     print(elem)
 \endcode
-\htmlonly
-</div>
-\endhtmlonly
-*/
+
+\endpythondoc
 '''
 
 from . import pythonization
-
 from ._generic import _add_getitem_checked
 
 
@@ -56,10 +47,7 @@ def pythonize_tarray(klass, name):
     # klass: class to be pythonized
     # name: string containing the name of the class
 
-    if name == 'TArray':
-        # Support `len(a)` as `a.GetSize()`
-        klass.__len__ = klass.GetSize
-    else:
+    if not name == 'TArray':
         # Add checked __getitem__. It has to be directly added to the TArray
         # subclasses, which have a default __getitem__.
         # The new __getitem__ allows to throw pythonic IndexError when index
